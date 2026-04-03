@@ -2,7 +2,14 @@
 function showToast(msg, ms = 3000) {
     const t = document.createElement('div');
     t.className = 'toast';
-    t.textContent = msg;
+    const isError = msg.toLowerCase().startsWith('error') || msg.toLowerCase().includes('failed');
+    const icon = isError
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+    t.innerHTML = icon + '<span>' + msg + '</span>';
+    t.style.display = 'flex';
+    t.style.alignItems = 'center';
+    t.style.gap = '0.5rem';
     document.body.appendChild(t);
     requestAnimationFrame(() => t.classList.add('visible'));
     setTimeout(() => { t.classList.remove('visible'); setTimeout(() => t.remove(), 300); }, ms);
@@ -40,6 +47,21 @@ function toggleTheme() {
 }
 
 window.addEventListener('DOMContentLoaded', () => applyThemeIcon(document.documentElement.getAttribute('data-theme')));
+
+// --- Collapsible Panel Sections ---
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.panel-header').forEach(header => {
+        header.addEventListener('click', () => {
+            header.classList.toggle('collapsed');
+            // Find next sibling elements until the next panel-header
+            let el = header.nextElementSibling;
+            while (el && !el.classList.contains('panel-header')) {
+                el.style.display = header.classList.contains('collapsed') ? 'none' : '';
+                el = el.nextElementSibling;
+            }
+        });
+    });
+});
 
 // --- Sidebar Toggle (responsive + desktop) ---
 let _sidebarHidden = false;
@@ -264,13 +286,35 @@ function exportDOT() {
 function searchNode() {
     if (!cy) return;
     const q = document.getElementById('searchInput').value.toLowerCase();
-    if (!q) { cy.nodes().style({ 'border-width': 0, 'border-color': 'transparent' }); return; }
-    const nodes = cy.nodes().filter(n => n.id().toLowerCase().includes(q));
-    cy.nodes().style({ 'border-width': 0, 'border-color': 'transparent' });
-    if (nodes.length) {
-        nodes.style({ 'border-width': 4, 'border-color': '#facc15', 'border-style': 'solid' });
-        cy.animate({ center: { eles: nodes[0] }, zoom: 1.5 }, { duration: 500 });
-    } else showToast('No matching files found');
+    if (!q) {
+        cy.nodes().style({ 'border-width': 0, 'border-color': 'transparent' });
+        cy.nodes().style('opacity', 1);
+        cy.edges().style('opacity', 0.7);
+        return;
+    }
+    const matches = cy.nodes().filter(n => n.id().toLowerCase().includes(q));
+    const nonMatches = cy.nodes().filter(n => !n.id().toLowerCase().includes(q));
+
+    // Dim non-matching nodes
+    nonMatches.style('opacity', 0.15);
+    cy.edges().style('opacity', 0.08);
+
+    // Highlight matches
+    matches.style({
+        'border-width': 4,
+        'border-color': '#facc15',
+        'border-style': 'solid',
+        opacity: 1
+    });
+
+    if (matches.length) {
+        cy.animate({ center: { eles: matches[0] }, zoom: 1.5 }, { duration: 500 });
+        showToast(`Found ${matches.length} match${matches.length > 1 ? 'es' : ''}`);
+    } else {
+        cy.nodes().style('opacity', 1);
+        cy.edges().style('opacity', 0.7);
+        showToast('No matching files found');
+    }
 }
 
 // --- Main Render ---
@@ -362,6 +406,12 @@ function renderGraph(data) {
     cy.on('dbltap', 'node', evt => { if (!evt.target.isParent()) openPreview(evt.target.id()); });
     cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
     // Escape handled by global shortcut system below
+
+    // Show graph status bar and path hint
+    if (data.nodes && data.nodes.length) {
+        document.getElementById('graphStatusBar').style.display = 'flex';
+        document.getElementById('pathHint').style.display = 'block';
+    }
 
     // --- Ref list ---
     const refList = document.getElementById('ref-list');
@@ -469,7 +519,17 @@ function loadGraph() {
     fetch('/api/graph?' + new URLSearchParams({ dir: document.getElementById('dirInput').value, ...getFilterValues() }))
         .then(r => r.json()).then(d => {
             if (d.error) showToast('Error: ' + d.error, 4000);
-            else { renderGraph(d); showDetectedLanguages(d.detected); }
+            else {
+                renderGraph(d);
+                showDetectedLanguages(d.detected);
+                // Smooth fade-in transition
+                const cy = document.getElementById('cy');
+                cy.style.opacity = '0';
+                requestAnimationFrame(() => {
+                    cy.style.transition = 'opacity 0.4s ease';
+                    cy.style.opacity = '1';
+                });
+            }
             loading.classList.remove('active');
         }).catch(() => loading.classList.remove('active'));
 }

@@ -37,7 +37,7 @@
 
             <div class="input-wrap input-dir">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                <input type="text" id="dirInput" placeholder="Directory path..." value="test_files" onkeydown="if(event.key==='Enter')loadGraph()">
+                <input type="text" id="dirInput" placeholder="Directory path..." value="test_files" onkeydown="if(event.key==='Enter')loadGraph()" aria-label="Directory path">
             </div>
 
             <button class="btn btn-primary" onclick="loadGraph()">
@@ -47,7 +47,7 @@
 
             <div class="input-wrap input-search">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="searchInput" placeholder="Search..." onkeydown="if(event.key==='Enter')searchNode()">
+                <input type="text" id="searchInput" placeholder="Search..." onkeydown="if(event.key==='Enter')searchNode()" aria-label="Search files">
             </div>
 
             <div style="flex:1;"></div>
@@ -101,7 +101,7 @@
                 <div class="dropdown-body">
                     <div class="input-wrap" style="width:100%;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                        <input type="text" id="filterDirInput" placeholder="Filter by subdirectory..." value="" onkeydown="if(event.key==='Enter')updateGraph()" style="width:100%;">
+                        <input type="text" id="filterDirInput" placeholder="Filter by subdirectory..." value="" onkeydown="if(event.key==='Enter')updateGraph()" style="width:100%;" aria-label="Filter by subdirectory">
                     </div>
                     <label class="check-label">
                         <input type="checkbox" id="hideSystemHeaders" checked onchange="updateGraph()">
@@ -158,13 +158,20 @@
 
         <div id="emptyState" class="empty-state">
             <div class="empty-state-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3m-6.36-2.64 2.12-2.12m8.48-8.48 2.12-2.12M3 12h3m12 0h3M5.64 5.64l2.12 2.12m8.48 8.48 2.12 2.12"/></svg>
             </div>
             <div class="empty-state-title">No files found</div>
             <div class="empty-state-desc">Check the directory path and make sure a language is enabled in Filters.</div>
         </div>
 
         <div class="path-hint" id="pathHint">Click a node to trace dependencies &middot; Double-click to view source &middot; Esc to clear</div>
+
+        <div class="graph-status-bar" id="graphStatusBar">
+            <span class="status-item"><span class="legend-dot" style="background:#6366f1;"></span> Upstream</span>
+            <span class="status-item"><span class="legend-dot" style="background:#f97316;"></span> Downstream</span>
+            <span class="status-item"><span class="legend-dot" style="background:#facc15;"></span> Selected</span>
+            <span class="status-item"><span class="legend-dot" style="background:#ef4444;"></span> Cycle</span>
+        </div>
 
         <!-- File preview drawer -->
         <div class="preview-drawer" id="previewDrawer">
@@ -199,28 +206,28 @@
              SIDEBAR
              ============================================================ -->
         <div class="sidebar" id="sidebar">
-            <div class="sidebar-tabs">
-                <div class="sidebar-tab active" data-panel="panel-refs" onclick="switchTab(this)" title="References">
+            <div class="sidebar-tabs" role="tablist">
+                <div class="sidebar-tab active" data-panel="panel-refs" onclick="switchTab(this)" title="References" role="tab">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 22h2a2 2 0 0 0 2-2V7l-5-5H8a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><circle cx="8" cy="16" r="6"/><path d="M9.5 17.5 8 16.25V14"/></svg>
                     <span>Refs</span>
                 </div>
-                <div class="sidebar-tab" data-panel="panel-analysis" onclick="switchTab(this)" title="Analysis">
+                <div class="sidebar-tab" data-panel="panel-analysis" onclick="switchTab(this)" title="Analysis" role="tab">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
                     <span>Analysis</span>
                 </div>
-                <div class="sidebar-tab" data-panel="panel-unused" onclick="switchTab(this)" title="Unused files">
+                <div class="sidebar-tab" data-panel="panel-unused" onclick="switchTab(this)" title="Unused files" role="tab">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                     <span>Unused</span>
                 </div>
-                <div class="sidebar-tab" data-panel="panel-layers" onclick="switchTab(this)" title="Layering violations">
+                <div class="sidebar-tab" data-panel="panel-layers" onclick="switchTab(this)" title="Layering violations" role="tab">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.84Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
                     <span>Layers</span>
                 </div>
-                <div class="sidebar-tab" data-panel="panel-rules" onclick="switchTab(this)" title="Dependency rules">
+                <div class="sidebar-tab" data-panel="panel-rules" onclick="switchTab(this)" title="Dependency rules" role="tab">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
                     <span>Rules</span>
                 </div>
-                <div class="sidebar-tab" data-panel="panel-diff" onclick="switchTab(this)" title="Diff mode">
+                <div class="sidebar-tab" data-panel="panel-diff" onclick="switchTab(this)" title="Diff mode" role="tab">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
                     <span>Diff</span>
                 </div>
@@ -228,7 +235,7 @@
 
             <div class="sidebar-scroll">
                 <!-- Refs panel -->
-                <div id="panel-refs" class="sidebar-panel active">
+                <div id="panel-refs" class="sidebar-panel active" role="tabpanel">
                     <div class="panel-header" id="cycles-header" style="display:none;">Circular Dependencies</div>
                     <div id="cycles-list"></div>
                     <div class="panel-header">Reference Counts <span id="nodeCountBadge" class="count-badge"></span></div>
@@ -240,7 +247,7 @@
                 </div>
 
                 <!-- Analysis panel -->
-                <div id="panel-analysis" class="sidebar-panel">
+                <div id="panel-analysis" class="sidebar-panel" role="tabpanel">
                     <div class="panel-header">Directory Coupling</div>
                     <div id="coupling-list"></div>
                     <div class="panel-header">Node Analysis</div>
@@ -250,14 +257,14 @@
                 </div>
 
                 <!-- Unused files panel -->
-                <div id="panel-unused" class="sidebar-panel">
+                <div id="panel-unused" class="sidebar-panel" role="tabpanel">
                     <div class="panel-header">Potentially Unused <span id="unusedCountBadge" class="count-badge"></span></div>
                     <div class="panel-hint">Files with zero inbound edges. Entry points (main, index) naturally appear here.</div>
                     <div id="unused-list"></div>
                 </div>
 
                 <!-- Layers panel -->
-                <div id="panel-layers" class="sidebar-panel">
+                <div id="panel-layers" class="sidebar-panel" role="tabpanel">
                     <div class="panel-header">Layering Violations</div>
                     <div class="panel-hint">Define layers top-to-bottom (e.g. ui, service, data, util). Imports going "upward" are flagged.</div>
                     <div class="action-row">
@@ -268,7 +275,7 @@
                 </div>
 
                 <!-- Rules panel -->
-                <div id="panel-rules" class="sidebar-panel">
+                <div id="panel-rules" class="sidebar-panel" role="tabpanel">
                     <div class="panel-header">Dependency Rules</div>
                     <div class="panel-hint">Define rules to enforce dependency boundaries. Violations appear as badges on graph nodes.</div>
 
@@ -298,7 +305,7 @@
                 </div>
 
                 <!-- Diff panel -->
-                <div id="panel-diff" class="sidebar-panel">
+                <div id="panel-diff" class="sidebar-panel" role="tabpanel">
                     <div class="panel-header">Diff Mode</div>
                     <div class="panel-hint">Compare against a second directory to see added/removed nodes and edges.</div>
                     <div class="action-row">
