@@ -13,6 +13,8 @@ It scans source trees or uploaded archives, builds a dependency graph, highlight
 - **Go** — parses `import` declarations (single and grouped), resolves local packages via `go.mod` (`.go`)
 - **Rust** — parses `use`, `mod`, and `extern crate` declarations (`.rs`)
 - **C#** — parses `using` directives, resolves namespaces to project files and directories (`.cs`)
+- **Swift** — parses `import` declarations, resolves local modules to files and directories (`.swift`)
+- **Ruby** — parses `require`, `require_relative`, and `load` statements (`.rb`)
 
 Language detection is automatic — DepGraph scans the target directory and enables the relevant parsers based on which file types are present.
 
@@ -58,34 +60,51 @@ Language detection is automatic — DepGraph scans the target directory and enab
 ## Project Layout
 
 - `app.py` — Flask server, multi-language parsing, graph construction, and upload handling
+- `cli.py` — CLI entry point (`depgraph` command)
+- `pyproject.toml` — package config for `pip install .`
 - `static/index.html` — single-page frontend UI built with Cytoscape.js
 - `static/app.js` — all frontend logic: graph rendering, layouts, analysis panels, keyboard shortcuts
 - `static/style.css` — UI styles with light/dark theme support
 - `render.yaml` — Render deployment configuration
 - `test_dir/`, `test_cycle/`, `test_files/` — sample C/C++ source trees
-- `test_py/`, `test_js/`, `test_java/`, `test_go/`, `test_rust/`, `test_csharp/` — sample source trees for each language
+- `test_py/`, `test_js/`, `test_java/`, `test_go/`, `test_rust/`, `test_csharp/`, `test_swift/`, `test_ruby/` — sample source trees for each language
 
-## Requirements
-
-- Python 3
-- Flask
-- Gunicorn (for production deployment)
-
-Install dependencies with:
+## Installation
 
 ```bash
-pip install -r requirements.txt
+pip install .
 ```
 
-## Running Locally
+This installs the `depgraph` command globally. Flask is included as a dependency for the web UI.
 
-Start the application from the repository root:
+## CLI
+
+```bash
+depgraph ./my-project                        # print dependency tree in terminal
+depgraph ./src --lang rust                   # force a specific language
+depgraph ./src --hide-external               # hide system/stdlib imports
+depgraph ./src --hide-isolated               # hide files with no dependencies
+depgraph ./src --filter-dir utils            # only show files under a subdirectory
+depgraph ./src --json                        # output JSON to stdout
+depgraph ./src --json -o deps.json           # write JSON to file
+depgraph ./src --dot                         # output Graphviz DOT
+depgraph ./src --dot | dot -Tpng -o graph.png  # pipe to Graphviz for PNG
+depgraph ./src --mermaid                     # output Mermaid diagram
+depgraph ./src --serve                       # launch web UI and open browser
+depgraph ./src --serve --port 3000           # web UI on a custom port
+```
+
+Run `depgraph --help` for the full list of options.
+
+## Web UI
+
+Start the web server directly:
 
 ```bash
 python app.py
 ```
 
-The server runs on [http://localhost:8080](http://localhost:8080). Set the `PORT` environment variable to change the port, and `FLASK_DEBUG=false` to disable debug mode.
+The server runs on [http://localhost:8080](http://localhost:8080). Set the `PORT` environment variable to change the port, and `FLASK_DEBUG=true` to enable debug mode (shows the directory input and search bar).
 
 ## Using the App
 
@@ -102,7 +121,7 @@ Upload a `.zip` archive or any supported source file from the UI. ZIP uploads ar
 
 ### Filters and controls
 
-- Toggle visibility per language group (C, headers, C++, JS/TS, Python, Java, Go, Rust, C#)
+- Toggle visibility per language group (C, headers, C++, JS/TS, Python, Java, Go, Rust, C#, Swift, Ruby)
 - Hide system headers (C/C++ angle-bracket includes) and external/stdlib packages
 - Hide isolated nodes with no graph edges
 - Filter the graph to a relative directory prefix
@@ -154,7 +173,7 @@ Query parameters:
 - `mode` — set to `auto` to detect languages automatically
 - `hide_system` — hide system/stdlib imports (`true` / `false`)
 - `show_c`, `show_h`, `show_cpp` — toggle C/header/C++ files (default `true`)
-- `show_js`, `show_py`, `show_java`, `show_go`, `show_rust`, `show_cs` — toggle other languages (default `false`)
+- `show_js`, `show_py`, `show_java`, `show_go`, `show_rust`, `show_cs`, `show_swift`, `show_ruby` — toggle other languages (default `false`)
 - `hide_isolated` — hide nodes with no edges (`true` / `false`)
 - `filter_dir` — optional path prefix filter
 
@@ -206,5 +225,7 @@ A `render.yaml` is included for deploying to Render as a Python web service with
 - Rust `mod` declarations follow the standard `foo.rs` / `foo/mod.rs` convention.
 - Java wildcard imports expand to all `.java` files in the matching package directory.
 - C# `using` directives reference namespaces — DepGraph resolves them to project files by stripping the root namespace prefix and matching against directories and file names. System/framework namespaces (System, Microsoft, etc.) are classified as external.
+- Swift `import` declarations resolve module names to local `.swift` files or directories. System frameworks (Foundation, UIKit, SwiftUI, etc.) are classified as external.
+- Ruby `require_relative` paths resolve relative to the source file; `require` paths resolve against the project tree. Standard library and popular gem names are classified as external.
 - Uploaded files are processed in a temporary directory that persists until the next upload (to support file preview).
 - The frontend depends on Cytoscape.js and cytoscape-dagre from CDNs.

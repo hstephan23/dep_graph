@@ -90,15 +90,14 @@ body {
     display: flex;
     flex-direction: column;
     -webkit-font-smoothing: antialiased;
+    overflow: hidden;
 }
 
 /* ================================================================
    TOOLBAR
    ================================================================ */
 .toolbar {
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--border);
-    box-shadow: var(--shadow-xs);
+    background: var(--bg);
     z-index: 10;
     flex-shrink: 0;
 }
@@ -106,9 +105,58 @@ body {
 .toolbar-top {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.625rem 1rem;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.toolbar-zone {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.35rem 0.6rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.toolbar-zone-left {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+.toolbar-zone-left::-webkit-scrollbar { display: none; }
+
+.toolbar-zone-right {
+    flex-shrink: 0;
+    gap: 0.35rem;
+}
+
+.toolbar-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    flex-wrap: wrap;
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.toolbar-controls-spacer {
+    flex: 1;
+    min-width: 0;
+}
+
+.input-search-controls {
+    width: 240px;
+    min-width: 150px;
+    flex-shrink: 1;
+    margin-left: auto;
 }
 
 .toolbar-bottom {
@@ -157,11 +205,85 @@ body {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    height: 32px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: 0.3rem 0.65rem;
+    padding: 0 0.65rem;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+    box-sizing: border-box;
+}
+
+/* Inside the controls row, groups are transparent — the label + pill-group do the work */
+.toolbar-controls .toolbar-group {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    gap: 0.4rem;
+    height: auto;
+}
+
+/* Pill-groups inside the controls row get the polished treatment */
+.toolbar-controls .pill-group {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-xs);
+}
+
+.toolbar-controls .pill-group label:hover {
+    background: var(--bg-elevated);
+}
+
+/* Dividers between control groups */
+.toolbar-controls .toolbar-group + .toolbar-group::before {
+    content: '';
+    display: block;
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin-right: 0.1rem;
+    flex-shrink: 0;
+}
+
+/* btn-icon inside controls toolbar-group needs its own subtle bg */
+.toolbar-controls .toolbar-group .btn-icon {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    width: 28px;
+    height: 28px;
+    box-shadow: var(--shadow-xs);
+}
+.toolbar-controls .toolbar-group .btn-icon:hover {
+    border-color: var(--primary);
+}
+
+/* Filters dropdown matches pill-group styling in the controls row */
+.toolbar-controls > details.dropdown > summary {
+    height: 30px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0 0.6rem;
+    box-shadow: var(--shadow-xs);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: all var(--transition);
+}
+
+.toolbar-controls > details.dropdown > summary:hover {
+    border-color: var(--border-hover);
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+}
+
+.toolbar-controls > details[open] > summary {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-soft);
 }
 
 .toolbar-group-label {
@@ -182,6 +304,11 @@ body {
     opacity: 0.6;
 }
 
+/* In controls row, hide internal dividers — groups are already visually separated */
+.toolbar-controls .toolbar-group-divider {
+    display: none;
+}
+
 /* Inline wrapper for treemap metric selector inside the View group */
 .treemap-metric-inline {
     display: flex;
@@ -195,11 +322,13 @@ body {
 .input-wrap {
     display: flex;
     align-items: center;
+    height: 32px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     transition: border-color var(--transition), box-shadow var(--transition);
     overflow: hidden;
+    box-sizing: border-box;
 }
 
 .input-wrap:focus-within {
@@ -216,7 +345,8 @@ body {
 .input-wrap input {
     border: none;
     background: transparent;
-    padding: 0.4rem 0.6rem;
+    padding: 0 0.6rem;
+    height: 100%;
     font-size: 0.8rem;
     outline: none;
     color: var(--text);
@@ -230,8 +360,10 @@ body {
 .btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.35rem;
-    padding: 0.4rem 0.75rem;
+    height: 32px;
+    padding: 0 0.75rem;
     font-size: 0.8rem;
     font-weight: 500;
     font-family: inherit;
@@ -240,7 +372,8 @@ body {
     cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     white-space: nowrap;
-    line-height: 1.3;
+    line-height: 1;
+    box-sizing: border-box;
 }
 
 .btn:focus-visible {
@@ -287,11 +420,19 @@ body {
 }
 
 .btn-icon {
-    padding: 0.4rem;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
+    box-sizing: border-box;
+    cursor: pointer;
+    flex-shrink: 0;
 }
 .btn-icon:hover {
     background: var(--primary-soft);
@@ -312,7 +453,8 @@ body {
 /* btn-icon inside a toolbar-group: remove its own border to blend in */
 .toolbar-group .btn-icon {
     border-color: transparent;
-    padding: 0.25rem;
+    width: 26px;
+    height: 26px;
 }
 .toolbar-group .btn-icon:hover {
     border-color: var(--primary);
@@ -459,13 +601,15 @@ details.dropdown .dropdown-body {
     display: none;
     align-items: center;
     gap: 0.4rem;
+    height: 32px;
     color: var(--danger);
     font-size: 0.75rem;
     font-weight: 600;
     background: var(--danger-soft);
-    padding: 0.3rem 0.65rem;
+    padding: 0 0.65rem;
     border-radius: 9999px;
     border: 1px solid var(--danger-border);
+    box-sizing: border-box;
 }
 
 /* ================================================================
@@ -616,12 +760,16 @@ details.dropdown .dropdown-body {
 .sidebar {
     width: var(--sidebar-width);
     background: var(--bg-elevated);
-    border-left: 1px solid var(--border);
+    border: none;
+    border-radius: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     z-index: 5;
     flex-shrink: 0;
+    margin: 0;
+    box-shadow: none;
+    border-left: 1px solid var(--border);
 }
 
 .sidebar.collapsed {
@@ -633,6 +781,7 @@ details.dropdown .dropdown-body {
     flex-shrink: 0;
     padding: 0.75rem 0.65rem 0;
     background: var(--bg-elevated);
+    border-radius: 16px 16px 0 0;
 }
 
 .sidebar-tab-row {
@@ -715,27 +864,25 @@ details.dropdown .dropdown-body {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    scrollbar-width: thin;
     position: relative;
     mask-image: linear-gradient(
         to bottom,
         transparent 0px,
-        black 8px,
-        black calc(100% - 8px),
-        transparent 100%
+        black 8px
     );
     -webkit-mask-image: linear-gradient(
         to bottom,
         transparent 0px,
-        black 8px,
-        black calc(100% - 8px),
-        transparent 100%
+        black 8px
     );
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
 }
 
 .sidebar-scroll::-webkit-scrollbar {
-    width: 5px;
+    width: 6px;
+    background: transparent;
 }
 
 .sidebar-scroll::-webkit-scrollbar-track {
@@ -749,6 +896,11 @@ details.dropdown .dropdown-body {
 
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
     background: var(--border-hover);
+}
+
+/* Overlay the scrollbar so it doesn't shrink content width */
+@supports (overflow-y: overlay) {
+    .sidebar-scroll { overflow-y: overlay; }
 }
 
 /* --- Panel Layout --- */
@@ -1518,17 +1670,20 @@ details.dropdown .dropdown-body {
 
 /* --- Tablets (≤900px): sidebar becomes a drawer --- */
 @media (max-width: 900px) {
-    /* Sidebar → off-canvas drawer */
+    /* Sidebar → off-canvas floating drawer */
     .sidebar {
         position: fixed;
-        top: 0;
-        right: 0;
-        height: 100vh;
+        top: 8px;
+        right: 8px;
+        bottom: 8px;
+        height: auto;
         width: min(var(--sidebar-width), 85vw);
-        transform: translateX(100%);
+        transform: translateX(calc(100% + 16px));
         transition: transform 0.25s ease;
-        box-shadow: var(--shadow-lg);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
         z-index: 50;
+        border-radius: 16px;
+        border: 1px solid var(--border);
     }
     .sidebar.open { transform: translateX(0); }
 
@@ -1554,6 +1709,7 @@ details.dropdown .dropdown-body {
 
     /* Toolbar: let top row wrap */
     .toolbar-top { flex-wrap: wrap; gap: 0.4rem; padding: 0.5rem 0.75rem; }
+    .toolbar-controls { gap: 0.4rem; padding: 0.25rem 0.75rem 0.35rem; }
 
     /* Bottom row (dir input) */
     .toolbar-bottom { gap: 0.4rem; padding: 0.4rem 0.75rem; }
@@ -1561,7 +1717,7 @@ details.dropdown .dropdown-body {
     .input-search { width: 140px; }
 
     /* Compact toolbar groups */
-    .toolbar-group { padding: 0.25rem 0.5rem; }
+    .toolbar-group { padding: 0 0.5rem; height: 30px; }
     .toolbar-group-label { font-size: 0.6rem; }
 }
 
@@ -1581,19 +1737,20 @@ details.dropdown .dropdown-body {
     .toolbar-separator { display: none; }
 
     /* Hide text labels on toolbar buttons, keep icons */
-    .toolbar-top > .btn-ghost > span,
-    .toolbar-top > .btn-upload > span,
-    .toolbar-top > details > summary > span,
+    .toolbar-zone-right .btn-ghost > span,
+    .toolbar-zone-right .btn-upload > span,
+    .toolbar-zone-right details > summary > span,
     #fisheyeToggle > span { display: none; }
+    .toolbar-controls { gap: 0.35rem; padding: 0.2rem 0.6rem 0.3rem; }
+    .input-search-controls { width: 140px; min-width: 100px; }
 
     /* Bottom row inputs become fluid */
     .input-dir { width: auto; flex: 1; min-width: 100px; }
-    .input-search { width: auto; flex: 1; min-width: 80px; }
     .btn-primary > span { display: none; }
 
     /* Compact layout/filter controls */
     .toolbar-group-label { display: none; }
-    .toolbar-group { flex-wrap: wrap; padding: 0.2rem 0.4rem; }
+    .toolbar-group { flex-wrap: wrap; padding: 0 0.4rem; height: auto; min-height: 28px; }
     .pill-group label { padding: 0.25rem 0.4rem; font-size: 0.68rem; }
 
     /* Filters dropdown text */
@@ -1621,12 +1778,12 @@ details.dropdown .dropdown-body {
     /* Action buttons (theme, help, sidebar toggle) shrink */
     .btn-icon { width: 28px; height: 28px; }
 
-    /* Hide layout pills — just use keyboard shortcuts or dropdown */
-    .toolbar-group .pill-group { display: none; }
-    .toolbar-group { display: none; }
-
-    /* Filters button stays visible as icon */
-    .toolbar-top > .dropdown { flex-shrink: 0; }
+    /* On phones, hide control groups but keep search visible */
+    .toolbar-controls { justify-content: flex-end; }
+    .toolbar-controls .toolbar-group,
+    .toolbar-controls > details.dropdown,
+    .toolbar-controls-spacer { display: none; }
+    .input-search-controls { width: 100%; }
 
     /* Bottom row (dev-only): stack vertically */
     .toolbar-bottom {
@@ -1640,8 +1797,8 @@ details.dropdown .dropdown-body {
 
     .cycle-badge { font-size: 0.66rem; padding: 0.15rem 0.4rem; }
 
-    /* Sidebar takes full width on phones */
-    .sidebar { width: 100vw; }
+    /* Sidebar takes nearly full width on phones, keeping floating look */
+    .sidebar { width: calc(100vw - 16px); }
 
     /* Bottom drawer fills full width */
     .preview-drawer { right: 0; left: 0; }
@@ -1926,30 +2083,20 @@ details.dropdown .dropdown-body {
 /* ================================================================
    MINIMAP
    ================================================================ */
-.minimap {
-    position: absolute;
-    bottom: 12px;
-    right: calc(var(--sidebar-width) + 12px);
-    width: 220px;
-    background: var(--bg-elevated);
+/* Minimap — pinned to sidebar bottom */
+.sidebar-minimap {
+    flex-shrink: 0;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-    z-index: 17;
     display: none;
     flex-direction: column;
     overflow: hidden;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    animation: minimapIn 0.2s ease;
+    margin: 0.4rem;
+    box-shadow: var(--shadow-xs);
 }
 
-.minimap.open {
+.sidebar-minimap.open {
     display: flex;
-}
-
-@keyframes minimapIn {
-    from { opacity: 0; transform: translateY(8px) scale(0.95); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .minimap-header {
@@ -1987,10 +2134,11 @@ details.dropdown .dropdown-body {
 
 .minimap-body {
     position: relative;
-    height: 150px;
+    height: 200px;
     overflow: hidden;
     cursor: pointer;
     background: var(--bg-sunken);
+    border-radius: 0 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px);
 }
 
 .minimap-body canvas {
@@ -2003,7 +2151,7 @@ details.dropdown .dropdown-body {
     position: absolute;
     border: 2px solid var(--primary);
     background: rgba(99, 102, 241, 0.08);
-    border-radius: 2px;
+    border-radius: 3px;
     pointer-events: none;
     transition: none;
 }
@@ -2013,15 +2161,10 @@ details.dropdown .dropdown-body {
     border-color: var(--primary);
 }
 
-/* Responsive: shift minimap when sidebar is hidden or on mobile */
+/* Responsive: minimap is now inside sidebar, shrink on mobile */
 @media (max-width: 900px) {
-    .minimap {
-        right: 12px;
-        bottom: 70px; /* above the FAB */
-        width: 180px;
-    }
     .minimap-body {
-        height: 120px;
+        height: 100px;
     }
 }
 
@@ -3519,13 +3662,30 @@ details.dropdown .dropdown-body {
 
 /* --- Toolbar: subtle bottom glow instead of flat border --- */
 [data-theme="dark"] .toolbar {
-    background: var(--bg-elevated);
-    border-bottom-color: transparent;
-    box-shadow: 0 1px 0 var(--border), 0 4px 24px rgba(0, 0, 0, 0.4);
+    background: var(--bg);
 }
 
-[data-theme="dark"] .toolbar-top {
-    border-bottom-color: var(--border);
+[data-theme="dark"] .toolbar-zone {
+    background: var(--bg-elevated);
+    border-color: var(--border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .toolbar-controls {
+    background: var(--bg-elevated);
+    border-color: var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .toolbar-controls > details.dropdown > summary {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .toolbar-controls > details[open] > summary {
+    background: var(--primary-soft);
+    border-color: rgba(139, 143, 255, 0.3);
 }
 
 /* Brand icon: brighter gradient in dark mode */
@@ -3539,6 +3699,33 @@ details.dropdown .dropdown-body {
     background: rgba(255, 255, 255, 0.03);
     border-color: var(--border);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* In controls row, groups are transparent in dark mode too */
+[data-theme="dark"] .toolbar-controls .toolbar-group {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+[data-theme="dark"] .toolbar-controls .pill-group {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .toolbar-controls .pill-group label:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .toolbar-controls .toolbar-group .btn-icon {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .toolbar-controls .toolbar-group-divider + .toolbar-group::before {
+    background: var(--border);
 }
 
 /* --- Buttons: glow on hover --- */
@@ -3617,8 +3804,8 @@ details.dropdown .dropdown-body {
 /* --- Sidebar: refined surface --- */
 [data-theme="dark"] .sidebar {
     background: var(--bg-elevated);
-    border-left-color: var(--border);
-    box-shadow: -1px 0 24px rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.06);
+    box-shadow: none;
 }
 
 [data-theme="dark"] .sidebar-tabs-wrap {
@@ -3758,11 +3945,9 @@ details.dropdown .dropdown-body {
     border: 1px solid var(--border);
 }
 
-/* --- Minimap: warmer --- */
-[data-theme="dark"] .minimap {
-    background: var(--bg-elevated);
-    border-color: var(--border);
-    box-shadow: var(--shadow-md);
+/* --- Minimap: sidebar-integrated dark overrides --- */
+[data-theme="dark"] .sidebar-minimap {
+    border-color: rgba(148, 163, 184, 0.15);
 }
 
 [data-theme="dark"] .minimap-viewport {
@@ -3801,3 +3986,58 @@ details.dropdown .dropdown-body {
 [data-theme="dark"] .tm-group {
     border-color: rgba(255, 255, 255, 0.12);
 }
+
+/* ================================================================
+   DEPTH WARNING BANNER
+   ================================================================ */
+.depth-warning-banner { display:none; flex-direction:column; background:var(--warning-soft); border-bottom:1px solid rgba(245,158,11,0.25); font-size:0.78rem; animation:depthBannerSlideIn 0.3s ease; }
+@keyframes depthBannerSlideIn { from{opacity:0;transform:translateY(-100%)} to{opacity:1;transform:translateY(0)} }
+.depth-warning-banner-inner { display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.85rem; min-height:36px; }
+.depth-warning-critical { background:var(--danger-soft); border-bottom-color:var(--danger-border); }
+.depth-warning-icon { flex-shrink:0; display:flex; align-items:center; color:var(--warning); }
+.depth-warning-critical .depth-warning-icon { color:var(--danger); }
+.depth-warning-content { flex:1; min-width:0; display:flex; align-items:center; gap:0.5rem; overflow:hidden; }
+.depth-warning-title { font-weight:600; color:var(--warning); white-space:nowrap; }
+.depth-warning-critical .depth-warning-title { color:var(--danger); }
+.depth-warning-summary { color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.depth-warning-expand-btn, .depth-warning-settings-btn, .depth-warning-dismiss-btn { flex-shrink:0; display:flex; align-items:center; justify-content:center; width:26px; height:26px; border:none; background:transparent; color:var(--text-muted); border-radius:var(--radius-sm); cursor:pointer; transition:background var(--transition),color var(--transition); }
+.depth-warning-expand-btn:hover, .depth-warning-settings-btn:hover, .depth-warning-dismiss-btn:hover { background:rgba(0,0,0,0.06); color:var(--text); }
+.depth-warning-expand-btn svg { transition:transform 0.2s ease; }
+.depth-warning-expand-btn.expanded svg { transform:rotate(180deg); }
+.depth-warning-details { padding:0 0.85rem 0.5rem; display:flex; flex-direction:column; gap:0.25rem; max-height:200px; overflow-y:auto; }
+.depth-warning-row { display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0.5rem; border-radius:var(--radius-sm); background:rgba(0,0,0,0.02); transition:background var(--transition); }
+.depth-warning-row:hover { background:rgba(0,0,0,0.05); }
+.depth-warning-row-badge { font-size:0.65rem; font-weight:600; text-transform:uppercase; padding:0.1rem 0.4rem; border-radius:4px; letter-spacing:0.03em; flex-shrink:0; }
+.depth-warning-row-file { font-weight:500; color:var(--text); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; }
+.depth-warning-row-file:hover { color:var(--primary); text-decoration:underline; }
+.depth-warning-row-reasons { color:var(--text-muted); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.depth-warning-row-stats { display:flex; gap:0.5rem; flex-shrink:0; }
+.depth-warning-stat { font-size:0.7rem; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+
+/* --- Depth Settings Modal --- */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:10000; animation:modalFadeIn 0.15s ease; }
+@keyframes modalFadeIn { from{opacity:0} to{opacity:1} }
+.modal { background:var(--bg-elevated); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); min-width:360px; max-width:460px; width:90vw; animation:modalSlideIn 0.2s ease; }
+@keyframes modalSlideIn { from{opacity:0;transform:translateY(-12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+.modal-header { display:flex; align-items:center; justify-content:space-between; padding:0.85rem 1rem; border-bottom:1px solid var(--border); }
+.modal-title { font-weight:600; font-size:0.85rem; color:var(--text); }
+.modal-body { padding:1rem; display:flex; flex-direction:column; gap:1rem; }
+.depth-settings-group { display:flex; flex-direction:column; gap:0.3rem; }
+.depth-settings-label { font-size:0.78rem; font-weight:500; color:var(--text); }
+.depth-settings-row { display:flex; align-items:center; gap:0.75rem; }
+.depth-settings-row input[type="range"] { flex:1; height:4px; -webkit-appearance:none; appearance:none; background:var(--border); border-radius:2px; outline:none; }
+.depth-settings-row input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--primary); cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,0.15); }
+.depth-settings-val { font-size:0.75rem; font-weight:600; min-width:36px; text-align:center; padding:0.15rem 0.4rem; border-radius:4px; }
+.depth-settings-hint { font-size:0.7rem; color:var(--text-muted); }
+.depth-settings-actions { display:flex; justify-content:flex-end; gap:0.5rem; padding-top:0.5rem; border-top:1px solid var(--border); }
+
+/* --- Dark theme overrides for depth warnings --- */
+[data-theme="dark"] .depth-warning-banner { border-bottom-color:rgba(251,191,36,0.15); }
+[data-theme="dark"] .depth-warning-critical { border-bottom-color:rgba(255,107,107,0.2); }
+[data-theme="dark"] .depth-warning-expand-btn:hover,
+[data-theme="dark"] .depth-warning-settings-btn:hover,
+[data-theme="dark"] .depth-warning-dismiss-btn:hover { background:rgba(255,255,255,0.06); }
+[data-theme="dark"] .depth-warning-row { background:rgba(255,255,255,0.02); }
+[data-theme="dark"] .depth-warning-row:hover { background:rgba(255,255,255,0.05); }
+[data-theme="dark"] .modal-overlay { background:rgba(0,0,0,0.6); }
+[data-theme="dark"] .depth-settings-row input[type="range"] { background:var(--border); }

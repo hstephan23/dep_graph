@@ -161,13 +161,10 @@ function toggleSidebar() {
     } else {
         // Desktop: toggle via inline styles (avoids CSS caching issues)
         _sidebarHidden = !_sidebarHidden;
-        const minimap = document.getElementById('minimap');
         if (_sidebarHidden) {
             sidebar.setAttribute('style', 'display:none !important');
-            if (minimap) minimap.style.right = '12px';
         } else {
             sidebar.removeAttribute('style');
-            if (minimap) minimap.style.right = '';
             // Force Cytoscape to resize into the reclaimed space
             if (typeof cy !== 'undefined' && cy) {
                 setTimeout(() => cy.resize(), 50);
@@ -1592,7 +1589,7 @@ function uploadZip() {
     fetch('/api/upload', { method: 'POST', headers: _csrfHeaders(), body: fd })
         .then(r => r.json()).then(d => {
             if (d.error) showToast('Error: ' + d.error, 5000);
-            else { currentUploadToken = d.upload_token || null; renderGraph(d); showDetectedLanguages(d.detected); }
+            else { currentUploadToken = d.upload_token || null; renderGraph(d); showDetectedLanguages(d.detected); showDepthWarnings(d); }
             document.getElementById('loading').classList.remove('active');
         }).catch(() => { showToast('Upload failed.', 5000); document.getElementById('loading').classList.remove('active'); });
 }
@@ -1601,7 +1598,7 @@ function getFilterValues() {
     const m = document.querySelector('input[name="langMode"]:checked').value;
     const common = { hide_system: document.getElementById('hideSystemHeaders').checked, hide_isolated: document.getElementById('hideIsolated').checked, filter_dir: document.getElementById('filterDirInput').value };
     if (m === 'auto') return { mode: 'auto', ...common };
-    return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust', show_cs: m === 'cs' };
+    return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust', show_cs: m === 'cs', show_swift: m === 'swift', show_ruby: m === 'ruby' };
 }
 
 function showDetectedLanguages(det) {
@@ -1611,6 +1608,7 @@ function showDetectedLanguages(det) {
     if (det.has_c) langs.push('C'); if (det.has_h) langs.push('Headers'); if (det.has_cpp) langs.push('C++');
     if (det.has_js) langs.push('JS/TS'); if (det.has_py) langs.push('Python'); if (det.has_java) langs.push('Java');
     if (det.has_go) langs.push('Go'); if (det.has_rust) langs.push('Rust'); if (det.has_cs) langs.push('C#');
+    if (det.has_swift) langs.push('Swift'); if (det.has_ruby) langs.push('Ruby');
     el.textContent = langs.length ? 'Detected: ' + langs.join(', ') : 'No supported files detected';
     el.style.display = '';
 }
@@ -1625,6 +1623,7 @@ function loadGraph() {
             else {
                 renderGraph(d);
                 showDetectedLanguages(d.detected);
+                showDepthWarnings(d);
                 // Smooth fade-in transition
                 const cy = document.getElementById('cy');
                 cy.style.opacity = '0';
@@ -2411,6 +2410,169 @@ window.addEventListener('DOMContentLoaded', () => {
         grid.appendChild(section);
     });
 });
+
+// ============================================================
+// DEPENDENCY DEPTH WARNINGS
+// ============================================================
+
+const _depthConfig = {
+    reachWarn: 30,
+    reachCrit: 50,
+    depthWarn: 5,
+    depthCrit: 8,
+};
+
+let _depthWarnings = [];
+
+function _computeClientDepthWarnings(data) {
+    if (!data || !data.nodes) return [];
+    const total = data.nodes.length || 1;
+    const warnings = [];
+    data.nodes.forEach(n => {
+        const d = n.data;
+        const depth = d.depth || 0;
+        const impact = d.impact || 0;
+        const reachPct = Math.round(impact / total * 1000) / 10;
+        let severity = null;
+        const reasons = [];
+
+        if (reachPct >= _depthConfig.reachCrit) {
+            severity = 'critical';
+            reasons.push('pulls in ' + reachPct + '% of codebase');
+        } else if (reachPct >= _depthConfig.reachWarn) {
+            severity = 'warning';
+            reasons.push('pulls in ' + reachPct + '% of codebase');
+        }
+
+        if (depth >= _depthConfig.depthCrit) {
+            severity = 'critical';
+            reasons.push('dependency chain ' + depth + ' levels deep');
+        } else if (depth >= _depthConfig.depthWarn) {
+            if (severity !== 'critical') severity = 'warning';
+            reasons.push('dependency chain ' + depth + ' levels deep');
+        }
+
+        if (severity) {
+            warnings.push({ file: d.id, severity, depth, impact, reach_pct: reachPct, reasons });
+        }
+    });
+    warnings.sort((a, b) => {
+        if (a.severity !== b.severity) return a.severity === 'critical' ? -1 : 1;
+        return b.reach_pct - a.reach_pct;
+    });
+    return warnings;
+}
+
+function showDepthWarnings(data) {
+    _depthWarnings = _computeClientDepthWarnings(data);
+    const banner = document.getElementById('depthWarningBanner');
+    const details = document.getElementById('depthWarningDetails');
+    const expandBtn = document.getElementById('depthWarningExpandBtn');
+
+    if (!_depthWarnings.length) {
+        banner.style.display = 'none';
+        return;
+    }
+
+    const critCount = _depthWarnings.filter(w => w.severity === 'critical').length;
+    const warnCount = _depthWarnings.filter(w => w.severity === 'warning').length;
+
+    const titleEl = document.getElementById('depthWarningTitle');
+    const summaryEl = document.getElementById('depthWarningSummary');
+
+    if (critCount > 0) {
+        banner.className = 'depth-warning-banner depth-warning-critical';
+        titleEl.textContent = critCount + ' Critical';
+    } else {
+        banner.className = 'depth-warning-banner depth-warning-warn';
+        titleEl.textContent = warnCount + ' Warning' + (warnCount !== 1 ? 's' : '');
+    }
+
+    const parts = [];
+    if (critCount) parts.push(critCount + ' critical');
+    if (warnCount) parts.push(warnCount + ' warning' + (warnCount !== 1 ? 's' : ''));
+    const topFile = _depthWarnings[0];
+    summaryEl.textContent = parts.join(', ') + ' — worst: ' + topFile.file.split('/').pop() + ' (' + topFile.reasons.join(', ') + ')';
+
+    // Build details list
+    details.innerHTML = '';
+    _depthWarnings.forEach(w => {
+        const row = document.createElement('div');
+        row.className = 'depth-warning-row depth-warning-row-' + w.severity;
+        row.innerHTML =
+            '<span class="depth-warning-row-badge badge-' + (w.severity === 'critical' ? 'red' : 'yellow') + '">' + w.severity + '</span>' +
+            '<span class="depth-warning-row-file" title="Click to focus">' + _escapeHtml(w.file) + '</span>' +
+            '<span class="depth-warning-row-reasons">' + _escapeHtml(w.reasons.join(' · ')) + '</span>' +
+            '<span class="depth-warning-row-stats">' +
+                '<span class="depth-warning-stat">Reach ' + w.reach_pct + '%</span>' +
+                '<span class="depth-warning-stat">Depth ' + w.depth + '</span>' +
+            '</span>';
+        row.querySelector('.depth-warning-row-file').onclick = () => {
+            if (typeof cy !== 'undefined' && cy) {
+                const node = cy.getElementById(w.file);
+                if (node.length) cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 400 });
+            }
+        };
+        details.appendChild(row);
+    });
+
+    details.style.display = 'none';
+    expandBtn.classList.remove('expanded');
+    banner.style.display = 'flex';
+}
+
+function toggleDepthWarningDetails() {
+    const details = document.getElementById('depthWarningDetails');
+    const expandBtn = document.getElementById('depthWarningExpandBtn');
+    const isOpen = details.style.display !== 'none';
+    details.style.display = isOpen ? 'none' : 'block';
+    expandBtn.classList.toggle('expanded', !isOpen);
+}
+
+function dismissDepthWarnings() {
+    document.getElementById('depthWarningBanner').style.display = 'none';
+}
+
+function openDepthSettings() {
+    document.getElementById('reachWarnSlider').value = _depthConfig.reachWarn;
+    document.getElementById('reachWarnVal').textContent = _depthConfig.reachWarn + '%';
+    document.getElementById('reachCritSlider').value = _depthConfig.reachCrit;
+    document.getElementById('reachCritVal').textContent = _depthConfig.reachCrit + '%';
+    document.getElementById('depthWarnSlider').value = _depthConfig.depthWarn;
+    document.getElementById('depthWarnVal').textContent = _depthConfig.depthWarn;
+    document.getElementById('depthCritSlider').value = _depthConfig.depthCrit;
+    document.getElementById('depthCritVal').textContent = _depthConfig.depthCrit;
+    document.getElementById('depthSettingsOverlay').style.display = 'flex';
+}
+
+function closeDepthSettings() {
+    document.getElementById('depthSettingsOverlay').style.display = 'none';
+}
+
+function resetDepthSettings() {
+    _depthConfig.reachWarn = 30; _depthConfig.reachCrit = 50;
+    _depthConfig.depthWarn = 5; _depthConfig.depthCrit = 8;
+    openDepthSettings(); // refresh sliders
+}
+
+function applyDepthSettings() {
+    _depthConfig.reachWarn = parseInt(document.getElementById('reachWarnSlider').value);
+    _depthConfig.reachCrit = parseInt(document.getElementById('reachCritSlider').value);
+    _depthConfig.depthWarn = parseInt(document.getElementById('depthWarnSlider').value);
+    _depthConfig.depthCrit = parseInt(document.getElementById('depthCritSlider').value);
+
+    // Ensure warn < crit
+    if (_depthConfig.reachWarn >= _depthConfig.reachCrit) {
+        _depthConfig.reachWarn = Math.max(10, _depthConfig.reachCrit - 10);
+    }
+    if (_depthConfig.depthWarn >= _depthConfig.depthCrit) {
+        _depthConfig.depthWarn = Math.max(2, _depthConfig.depthCrit - 1);
+    }
+
+    closeDepthSettings();
+    if (currentGraphData) showDepthWarnings(currentGraphData);
+    showToast('Thresholds updated');
+}
 
 loadGraph();
 
