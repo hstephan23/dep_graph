@@ -74,87 +74,6 @@ function toggleTheme() {
 
 window.addEventListener('DOMContentLoaded', () => applyThemeIcon(document.documentElement.getAttribute('data-theme')));
 
-// --- Shareable URL ---
-function buildShareableURL() {
-    const params = new URLSearchParams();
-    const dir = document.getElementById('dirInput').value;
-    if (dir && dir !== 'test_files') params.set('dir', dir);
-    const langMode = document.querySelector('input[name="langMode"]:checked').value;
-    if (langMode !== 'auto') params.set('lang', langMode);
-    if (!document.getElementById('hideSystemHeaders').checked) params.set('sys', '1');
-    if (!document.getElementById('hideIsolated').checked) params.set('iso', '1');
-    const filterDir = document.getElementById('filterDirInput').value;
-    if (filterDir) params.set('fdir', filterDir);
-    if (currentLayout !== 'cose') params.set('layout', currentLayout);
-    const theme = document.documentElement.getAttribute('data-theme');
-    if (theme === 'dark') params.set('theme', 'dark');
-    const qs = params.toString();
-    return window.location.origin + window.location.pathname + (qs ? '?' + qs : '');
-}
-
-function pushURLState() {
-    const url = buildShareableURL();
-    if (url !== window.location.href) {
-        history.replaceState(null, '', url);
-    }
-}
-
-function copyShareableURL() {
-    pushURLState();
-    const url = buildShareableURL();
-    navigator.clipboard.writeText(url).then(
-        () => showToast('Link copied to clipboard'),
-        () => {
-            // Fallback for older browsers
-            const ta = document.createElement('textarea');
-            ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
-            document.body.appendChild(ta); ta.select();
-            document.execCommand('copy'); document.body.removeChild(ta);
-            showToast('Link copied to clipboard');
-        }
-    );
-}
-
-function restoreFromURL() {
-    const params = new URLSearchParams(window.location.search);
-    if (!params.toString()) return false;
-
-    // Directory
-    const dir = params.get('dir');
-    if (dir) document.getElementById('dirInput').value = dir;
-
-    // Language mode
-    const lang = params.get('lang');
-    if (lang) {
-        const radio = document.querySelector(`input[name="langMode"][value="${lang}"]`);
-        if (radio) radio.checked = true;
-    }
-
-    // Filters
-    if (params.get('sys') === '1') document.getElementById('hideSystemHeaders').checked = false;
-    if (params.get('iso') === '1') document.getElementById('hideIsolated').checked = false;
-    const fdir = params.get('fdir');
-    if (fdir) document.getElementById('filterDirInput').value = fdir;
-
-    // Layout
-    const layout = params.get('layout');
-    if (layout) {
-        currentLayout = layout;
-        const radio = document.querySelector(`input[name="layoutMode"][value="${layout}"]`);
-        if (radio) radio.checked = true;
-    }
-
-    // Theme
-    const theme = params.get('theme');
-    if (theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
-        applyThemeIcon(theme);
-    }
-
-    return true;
-}
-
 // --- Collapsible Panel Sections ---
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.panel-header').forEach(header => {
@@ -223,7 +142,6 @@ function changeLayout(name) {
     currentLayout = name;
     localStorage.setItem('layout', name);
     if (cy) { cy.layout(getLayoutConfig(name)).run(); }
-    pushURLState();
 }
 
 (function restoreLayout() {
@@ -1001,7 +919,6 @@ function loadGraph() {
             else {
                 renderGraph(d);
                 showDetectedLanguages(d.detected);
-                pushURLState();
                 // Smooth fade-in transition
                 const cy = document.getElementById('cy');
                 cy.style.opacity = '0';
@@ -1472,7 +1389,6 @@ const SHORTCUTS = [
         { keys: 'e p',         desc: 'Export PNG',                     action: () => exportPNG(),         combo: true },
         { keys: 'e d',         desc: 'Export DOT',                     action: () => exportDOT(),         combo: true },
         { keys: 'e m',         desc: 'Export Mermaid',                 action: () => exportMermaid(),     combo: true },
-        { keys: 'e l',         desc: 'Copy shareable link',            action: () => copyShareableURL(),  combo: true },
     ]},
 ];
 
@@ -1603,5 +1519,4 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-restoreFromURL();
 loadGraph();
