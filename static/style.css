@@ -2661,3 +2661,190 @@ details.dropdown .dropdown-body {
         display: none;
     }
 }
+
+/* ================================================================
+   GUIDED TOUR (step-by-step)
+   ================================================================ */
+.tour-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.tour-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.tour-overlay.closing {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+/* ---- SVG spotlight mask ---- */
+.tour-cutout {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.tour-spotlight {
+    transition: x 0.35s ease, y 0.35s ease, width 0.35s ease, height 0.35s ease;
+}
+
+/* ---- Tooltip card ---- */
+.tour-tooltip {
+    position: fixed;
+    z-index: 10003;
+    width: 320px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.15rem 0.85rem;
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    transition: opacity 0.2s ease, top 0.35s ease, left 0.35s ease;
+}
+
+.tour-overlay.open .tour-tooltip {
+    opacity: 1;
+}
+
+.tour-tooltip-step {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--primary);
+    margin-bottom: 0.35rem;
+}
+
+.tour-tooltip-label {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.3rem;
+}
+
+.tour-tooltip-desc {
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin-bottom: 0.85rem;
+}
+
+/* ---- Footer: dots + nav buttons ---- */
+.tour-tooltip-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.tour-dots {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.tour-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    border: none;
+    padding: 0;
+    background: var(--border-hover);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tour-dot:hover {
+    background: var(--text-muted);
+    transform: scale(1.3);
+}
+
+.tour-dot.visited {
+    background: var(--primary-glow);
+}
+
+.tour-dot.active {
+    background: var(--primary);
+    transform: scale(1.35);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.tour-tooltip-nav {
+    display: flex;
+    gap: 0.4rem;
+}
+
+/* ---- Buttons ---- */
+.tour-btn {
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.tour-btn:hover {
+    border-color: var(--border-hover);
+    color: var(--text);
+    background: var(--bg-sunken);
+}
+
+.tour-btn-primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+}
+
+.tour-btn-primary:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+    color: #fff;
+}
+
+/* ---- Skip button (top-right) ---- */
+.tour-skip-btn {
+    position: fixed;
+    top: 14px;
+    right: 16px;
+    z-index: 10004;
+    font-family: inherit;
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 0.35rem 0.7rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.4);
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: all var(--transition);
+}
+
+.tour-skip-btn:hover {
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 900px) {
+    .tour-tooltip {
+        width: calc(100vw - 32px);
+        max-width: 320px;
+    }
+}
