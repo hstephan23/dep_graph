@@ -110,10 +110,10 @@ _GO_IMPORT_RE = re.compile(
 )
 _GO_IMPORT_PATH_RE = re.compile(r'"([^"]+)"')
 
-# Rust: use path::to::thing; mod foo; extern crate bar;
-_RUST_USE_RE = re.compile(r'^use\s+([\w:]+)', re.MULTILINE)
-_RUST_MOD_RE = re.compile(r'^mod\s+(\w+)\s*;', re.MULTILINE)
-_RUST_EXTERN_RE = re.compile(r'^extern\s+crate\s+(\w+)\s*;', re.MULTILINE)
+# Rust: use path::to::thing; pub use re_export; mod foo; extern crate bar;
+_RUST_USE_RE = re.compile(r'^\s*(?:pub\s+)?use\s+([\w:]+)', re.MULTILINE)
+_RUST_MOD_RE = re.compile(r'^\s*(?:pub(?:\([\w:]+\))?\s+)?mod\s+(\w+)\s*[;{]', re.MULTILINE)
+_RUST_EXTERN_RE = re.compile(r'^\s*extern\s+crate\s+(\w+)(?:\s+as\s+\w+)?\s*;', re.MULTILINE)
 
 # C#: using System; using System.Collections.Generic; using static Foo.Bar;
 _CS_USING_RE = re.compile(
@@ -770,17 +770,31 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
                 )
                 _add_edge(filename, resolved)
             for m in _RUST_USE_RE.finditer(content):
-                use_path = m.group(1)
+                use_path = m.group(1).rstrip(':')  # strip trailing :: from glob/group imports
                 top_crate = use_path.split('::')[0]
                 if top_crate in ('crate', 'self', 'super'):
                     # Local use — try to resolve to a file
-                    parts = use_path.split('::')
+                    parts = [p for p in use_path.split('::') if p]
                     if parts[0] == 'crate':
                         parts = parts[1:]
                     elif parts[0] == 'self':
-                        parts = [os.path.dirname(filename)] + parts[1:]
+                        # self:: refers to the current module's directory
+                        self_dir = os.path.dirname(filename)
+                        parts = [self_dir] + parts[1:] if self_dir else parts[1:]
                     elif parts[0] == 'super':
-                        parts = [os.path.dirname(os.path.dirname(filename))] + parts[1:]
+                        # Handle one or more consecutive super:: prefixes
+                        super_count = 0
+                        for p in parts:
+                            if p == 'super':
+                                super_count += 1
+                            else:
+                                break
+                        base = filename
+                        for _ in range(super_count + 1):
+                            base = os.path.dirname(base)
+                        parts = ([base] if base else []) + parts[super_count:]
+                    # Filter out empty parts (from trailing :: etc.)
+                    parts = [p for p in parts if p]
                     if parts:
                         candidate = os.path.join(*parts) + '.rs'
                         if candidate in known_files:

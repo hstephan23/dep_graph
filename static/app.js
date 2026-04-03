@@ -181,34 +181,49 @@ let currentLayout = 'cose';
 let currentMode = 'local', currentUploadedFile = null, currentUploadToken = null;
 
 // ============================================================
-// PROGRESSIVE DISCLOSURE
-// For large graphs (>100 nodes), files are collapsed into
-// clickable directory nodes. Clicking expands one level;
-// clicking again collapses. A toolbar toggle lets the user
-// switch between directory and all-files view.
+// COMPOUND NODE SYSTEM
+// Directories are Cytoscape compound (parent) nodes.
+// Files sit visually inside their directory container.
+// Collapse hides children and aggregates edges at the dir level.
+// Expand reveals children in-place with smooth animation.
 // ============================================================
 
-const PD_THRESHOLD = 100;
-let _pd = { active: false, raw: null, expanded: new Set() };
+const COMPOUND_THRESHOLD = 100;
+let _compound = {
+    active: false,       // whether compound mode is on
+    raw: null,           // original graph data
+    collapsed: new Set(),// set of collapsed directory IDs
+    dirMap: new Map(),   // dirId → Set<fileId>
+    allDirs: [],         // all unique directory IDs
+};
 
 // --- Helpers ---
 
-function _pdDir(fileId) {
+function _cDir(fileId) {
     const i = fileId.lastIndexOf('/');
     return i === -1 ? '.' : fileId.substring(0, i);
 }
 
-const _PD_PALETTE = [
+/** Get all ancestor directories for a path, e.g. "a/b/c" → ["a", "a/b", "a/b/c"] */
+function _cAncestors(dirId) {
+    if (dirId === '.') return ['.'];
+    const parts = dirId.split('/');
+    const result = [];
+    for (let i = 1; i <= parts.length; i++) result.push(parts.slice(0, i).join('/'));
+    return result;
+}
+
+const _COMPOUND_PALETTE = [
     '#6366f1','#818cf8','#8b5cf6','#7c3aed','#6d28d9',
     '#3b82f6','#60a5fa','#0ea5e9','#06b6d4','#14b8a6',
     '#0d9488','#475569','#64748b','#7dd3fc','#a78bfa',
     '#38bdf8','#2dd4bf','#a5b4fc','#94a3b8','#5eead4',
 ];
 
-function _pdColor(id) {
+function _cColor(id) {
     let h = 0;
     for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
-    return _PD_PALETTE[Math.abs(h) % _PD_PALETTE.length];
+    return _COMPOUND_PALETTE[Math.abs(h) % _COMPOUND_PALETTE.length];
 }
 
 // --- Shared Cytoscape style definitions ---
@@ -216,7 +231,7 @@ function _pdColor(id) {
 function _baseNodeStyle() {
     return {
         width: 'data(size)', height: 'data(size)',
-        'background-color': 'data(color)', label: 'data(id)',
+        'background-color': 'data(color)', label: 'data(label)',
         color: '#fff', 'text-outline-color': 'data(color)', 'text-outline-width': 2,
         'font-size': ele => Math.max(14, Math.min(36, (ele.data('size') || 80) / 8)) + 'px',
         'text-valign': 'center', 'text-halign': 'center',
@@ -243,266 +258,418 @@ function _normalStyles() {
     ];
 }
 
-function _pdStyles() {
-    const fileNode = { ..._baseNodeStyle(), 'transition-property': 'opacity', 'transition-duration': '0.25s' };
+/** Styles for compound node mode — directory containers + file children + aggregated edges */
+function _compoundStyles() {
     return [
-        { selector: 'node[!isDir]', style: fileNode },
-        { selector: 'node[?isDir]', style: {
-            width: 'data(size)', height: 'data(size)',
-            'background-color': 'data(color)', 'background-opacity': 0.15,
-            'border-width': 3, 'border-color': 'data(color)', 'border-style': 'solid',
-            label: ele => (ele.data('pdExpanded') ? '−  ' : '+  ') + ele.data('id') + '/ (' + ele.data('fileCount') + ')',
-            color: 'data(color)',
-            'text-outline-color': '#000', 'text-outline-width': 1, 'text-outline-opacity': 0.3,
-            'font-size': ele => Math.max(16, Math.min(40, (ele.data('size') || 100) / 6)) + 'px',
-            'font-weight': 'bold',
-            'text-valign': 'center', 'text-halign': 'center',
-            shape: 'round-rectangle',
-            'transition-property': 'background-opacity, border-width',
+        // File nodes (children inside directories)
+        { selector: 'node[?isFile]', style: {
+            ..._baseNodeStyle(),
+            'transition-property': 'opacity',
             'transition-duration': '0.25s',
         }},
-        { selector: 'node[?pdExpanded]', style: { 'border-style': 'dashed', 'background-opacity': 0.06 } },
-        { selector: 'node[?isDir].pd-hover', style: {
-            'border-width': 5, 'background-opacity': 0.25,
-            'overlay-color': 'data(color)', 'overlay-opacity': 0.08,
+        // Directory compound nodes (expanded)
+        { selector: 'node[?isDir]', style: {
+            'background-color': 'data(color)',
+            'background-opacity': 0.08,
+            'border-width': 2,
+            'border-color': 'data(color)',
+            'border-style': 'solid',
+            'border-opacity': 0.6,
+            shape: 'round-rectangle',
+            'padding': '30px',
+            label: ele => ele.data('label'),
+            color: 'data(color)',
+            'text-outline-color': '#0a0a0f',
+            'text-outline-width': 1,
+            'text-outline-opacity': 0.5,
+            'font-size': '14px',
+            'font-weight': 'bold',
+            'text-valign': 'top',
+            'text-halign': 'center',
+            'text-margin-y': '-8px',
+            'min-width': '80px',
+            'min-height': '60px',
+            'transition-property': 'background-opacity, border-width, padding',
+            'transition-duration': '0.3s',
         }},
-        { selector: 'edge', style: {
+        // Collapsed directory nodes (no children visible — acts like a single node)
+        { selector: 'node[?isCollapsed]', style: {
+            'background-opacity': 0.2,
+            'border-width': 3,
+            'border-style': 'solid',
+            'padding': '10px',
+            'min-width': 'data(collapsedSize)',
+            'min-height': 'data(collapsedSize)',
+            label: ele => '▸ ' + ele.data('label') + ' (' + ele.data('fileCount') + ')',
+            'font-size': ele => Math.max(14, Math.min(32, (ele.data('collapsedSize') || 80) / 5)) + 'px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-margin-y': '0px',
+        }},
+        // Expanded directory (override label)
+        { selector: 'node[?isDir][!isCollapsed]', style: {
+            label: ele => '▾ ' + ele.data('label'),
+        }},
+        // Hover on directory
+        { selector: 'node[?isDir].dir-hover', style: {
+            'border-width': 4,
+            'background-opacity': 0.18,
+            'overlay-color': 'data(color)',
+            'overlay-opacity': 0.06,
+        }},
+        // Aggregated edges (between collapsed dirs)
+        { selector: 'edge[?isAggregated]', style: {
             ..._baseEdgeStyle(),
-            width: 'data(width)',
+            width: 'data(aggWidth)',
             label: ele => (ele.data('edgeCount') || 0) > 1 ? ele.data('edgeCount') : '',
-            'font-size': '12px', color: '#94a3b8',
-            'text-outline-color': '#000', 'text-outline-width': 1, 'text-outline-opacity': 0.4,
+            'font-size': '12px',
+            color: '#94a3b8',
+            'text-outline-color': '#000',
+            'text-outline-width': 1,
+            'text-outline-opacity': 0.4,
             'text-rotation': 'autorotate',
-            'transition-property': 'opacity', 'transition-duration': '0.2s',
         }},
+        // Normal file-level edges
+        { selector: 'edge[!isAggregated]', style: _baseEdgeStyle() },
         { selector: 'edge.cycle', style: _cycleEdgeStyle() },
     ];
 }
 
-// --- Data aggregation ---
+// --- Build compound elements from raw graph data ---
 
-function _pdResolveNode(fileId) {
-    const dir = _pdDir(fileId);
-    if (_pd.expanded.has(dir)) return fileId;
-    const parts = dir.split('/');
-    for (let i = parts.length - 1; i > 0; i--) {
-        if (_pd.expanded.has(parts.slice(0, i).join('/'))) return parts.slice(0, i + 1).join('/');
-    }
-    return parts[0] || '.';
+function _cBuildDirMap(data) {
+    const dirMap = new Map();
+    data.nodes.forEach(n => {
+        const dir = _cDir(n.data.id);
+        if (!dirMap.has(dir)) dirMap.set(dir, new Set());
+        dirMap.get(dir).add(n.data.id);
+    });
+    return dirMap;
 }
 
-function _pdBuildView() {
-    const data = _pd.raw;
-    const fileToDisplay = {};
-    const groups = new Map();       // displayId → Set of file ids
+/** Get the immediate parent directory of a directory */
+function _cParentDir(dirId) {
+    if (dirId === '.') return null;
+    const i = dirId.lastIndexOf('/');
+    return i === -1 ? '.' : dirId.substring(0, i);
+}
 
-    data.nodes.forEach(n => {
-        const display = _pdResolveNode(n.data.id);
-        fileToDisplay[n.data.id] = display;
-        if (!groups.has(display)) groups.set(display, new Set());
-        groups.get(display).add(n.data.id);
+/** Build all compound elements: directory parent nodes + file child nodes + edges */
+function _cBuildElements(data) {
+    const dirMap = _cBuildDirMap(data);
+    _compound.dirMap = dirMap;
+
+    // Collect all unique directories including intermediate ones
+    const allDirIds = new Set();
+    dirMap.forEach((files, dir) => {
+        _cAncestors(dir).forEach(d => allDirIds.add(d));
+    });
+    _compound.allDirs = [...allDirIds].sort();
+
+    const elements = [];
+
+    // 1. Create directory (parent) nodes — sorted by depth so parents are added first
+    const sortedDirs = _compound.allDirs.slice().sort((a, b) => {
+        const da = a === '.' ? 0 : a.split('/').length;
+        const db = b === '.' ? 0 : b.split('/').length;
+        return da - db;
     });
 
-    // Build node list
-    const nodes = [];
-    const sizeIndex = new Map(data.nodes.map(n => [n.data.id, n.data.size || 80]));
+    // Skip root '.' if it's the only directory (flat project structure)
+    const skipRoot = allDirIds.size === 1 && allDirIds.has('.');
 
-    groups.forEach((files, displayId) => {
-        const isDir = files.size > 1 || !files.has(displayId);
+    sortedDirs.forEach(dirId => {
+        if (skipRoot && dirId === '.') return;
 
-        // Single-file directories → show the file directly
-        if (isDir && files.size === 1) {
-            const fid = [...files][0];
-            fileToDisplay[fid] = fid;
-            nodes.push({ data: {
-                id: fid, color: _pdColor(_pdDir(fid)),
-                size: sizeIndex.get(fid) || 80,
-                isDir: false, fileCount: 0, pdExpanded: false,
-            }});
-            return;
+        const parentDir = _cParentDir(dirId);
+        const fileCount = dirMap.has(dirId) ? dirMap.get(dirId).size : 0;
+        // Count total files in this dir and all subdirs
+        let totalFiles = fileCount;
+        _compound.allDirs.forEach(d => {
+            if (d !== dirId && d.startsWith(dirId + '/')) {
+                totalFiles += (dirMap.has(d) ? dirMap.get(d).size : 0);
+            }
+        });
+
+        const isCollapsed = _compound.collapsed.has(dirId);
+        const dirLabel = dirId === '.' ? '(root)' : dirId.split('/').pop();
+
+        const nodeData = {
+            id: 'dir:' + dirId,
+            label: dirLabel,
+            color: _cColor(dirId),
+            isDir: true,
+            isFile: false,
+            isCollapsed: isCollapsed,
+            dirId: dirId,
+            fileCount: totalFiles,
+            collapsedSize: Math.min(200, 60 + totalFiles * 6),
+        };
+
+        // Set parent for nested directories (skip root when it's the only dir)
+        if (parentDir !== null && allDirIds.has(parentDir) && !(skipRoot && parentDir === '.')) {
+            nodeData.parent = 'dir:' + parentDir;
         }
 
-        nodes.push({ data: {
-            id: displayId,
-            color: _pdColor(isDir ? displayId : _pdDir(displayId)),
-            size: isDir ? 100 + files.size * 8 : (sizeIndex.get(displayId) || 80),
-            isDir, fileCount: isDir ? files.size : 0,
-            pdExpanded: _pd.expanded.has(displayId),
-        }});
+        elements.push({ group: 'nodes', data: nodeData });
     });
 
-    // Aggregate edges
+    // 2. Create file (child) nodes
+    data.nodes.forEach(n => {
+        const fileId = n.data.id;
+        const dir = _cDir(fileId);
+
+        // Check if any ancestor is collapsed — if so, hide this file
+        const ancestors = _cAncestors(dir);
+        const hiddenByCollapse = ancestors.some(d => _compound.collapsed.has(d));
+        if (hiddenByCollapse) return;
+
+        const fileName = fileId.split('/').pop();
+        const nodeData = {
+            ...n.data,
+            id: fileId,
+            label: fileName,
+            isDir: false,
+            isFile: true,
+            isCollapsed: false,
+        };
+        // Only set parent if the dir node exists (skip for root-only flat projects)
+        if (!(skipRoot && dir === '.')) {
+            nodeData.parent = 'dir:' + dir;
+        }
+        elements.push({ group: 'nodes', data: nodeData });
+    });
+
+    // 3. Build edges — aggregate when endpoints are inside collapsed dirs
+    const fileToVisible = {};
+    data.nodes.forEach(n => {
+        const dir = _cDir(n.data.id);
+        const ancestors = _cAncestors(dir);
+        // Find the topmost collapsed ancestor
+        let collapsedAt = null;
+        for (const a of ancestors) {
+            if (_compound.collapsed.has(a)) { collapsedAt = a; break; }
+        }
+        fileToVisible[n.data.id] = collapsedAt ? 'dir:' + collapsedAt : n.data.id;
+    });
+
     const edgeCounts = new Map();
     data.edges.forEach(e => {
-        const s = fileToDisplay[e.data.source] || e.data.source;
-        const t = fileToDisplay[e.data.target] || e.data.target;
+        const s = fileToVisible[e.data.source] || e.data.source;
+        const t = fileToVisible[e.data.target] || e.data.target;
         if (s === t) return;
         const key = s + '\t' + t;
         edgeCounts.set(key, (edgeCounts.get(key) || 0) + 1);
     });
 
-    const edges = [];
     edgeCounts.forEach((count, key) => {
         const [s, t] = key.split('\t');
-        edges.push({ data: {
-            source: s, target: t,
-            color: count > 5 ? '#f97316' : '#94a3b8',
+        const isAgg = s.startsWith('dir:') || t.startsWith('dir:');
+        elements.push({ group: 'edges', data: {
+            id: 'e:' + s + '->' + t,
+            source: s,
+            target: t,
+            color: isAgg ? (count > 5 ? '#f97316' : '#94a3b8') : (data.edges.find(e => e.data.source === s && e.data.target === t) || { data: { color: '#94a3b8' } }).data.color,
+            isAggregated: isAgg,
             edgeCount: count,
-            width: Math.min(12, 2 + Math.log2(count) * 2),
+            aggWidth: isAgg ? Math.min(12, 2 + Math.log2(count) * 2) : 4,
         }});
     });
 
-    return { nodes, edges };
+    return elements;
 }
 
-// --- Cytoscape init helpers ---
+// --- Cytoscape init ---
 
-function _pdInitCy(elements, styles) {
+function _cInitCy(elements, styles) {
     if (cy) cy.destroy();
     cy = cytoscape({
         container: document.getElementById('cy'),
-        elements, style: styles, layout: getLayoutConfig(),
+        elements: elements,
+        style: styles,
+        layout: getLayoutConfig(),
     });
     attachMinimapListeners();
 }
 
-function _pdBindNormalHandlers() {
+function _cBindHandlers() {
+    const container = cy.container();
+    // Click directory to toggle expand/collapse
+    cy.on('tap', 'node[?isDir]', evt => {
+        const dirId = evt.target.data('dirId');
+        if (dirId) compoundToggle(dirId);
+    });
+    // Click file node for path highlight + blast radius
+    cy.on('tap', 'node[?isFile]', evt => {
+        clearPathHighlight();
+        highlightPaths(evt.target.id());
+        showBlastRadius(evt.target.id());
+    });
+    // Double-click file to preview
+    cy.on('dbltap', 'node[?isFile]', evt => openPreview(evt.target.id()));
+    // Click background to clear
+    cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
+    // Hover cursor for directories
+    cy.on('mouseover', 'node[?isDir]', evt => {
+        evt.target.addClass('dir-hover');
+        if (container) container.style.cursor = 'pointer';
+    });
+    cy.on('mouseout', 'node[?isDir]', evt => {
+        evt.target.removeClass('dir-hover');
+        if (container) container.style.cursor = '';
+    });
+}
+
+function _cBindNormalHandlers() {
     cy.on('tap', 'node', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); showBlastRadius(evt.target.id()); });
     cy.on('dbltap', 'node', evt => openPreview(evt.target.id()));
     cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
 }
 
-function _pdBindDirHandlers() {
-    const container = cy.container();
-    cy.on('tap', 'node[?isDir]', evt => pdToggle(evt.target.id()));
-    cy.on('tap', 'node[!isDir]', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); showBlastRadius(evt.target.id()); });
-    cy.on('dbltap', 'node[!isDir]', evt => openPreview(evt.target.id()));
-    cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
-    cy.on('mouseover', 'node[?isDir]', evt => { evt.target.addClass('pd-hover'); if (container) container.style.cursor = 'pointer'; });
-    cy.on('mouseout', 'node[?isDir]', evt => { evt.target.removeClass('pd-hover'); if (container) container.style.cursor = ''; });
-}
-
 // --- Public API ---
 
-function pdShouldActivate(data) {
-    return data.nodes && data.nodes.length > PD_THRESHOLD;
+function compoundShouldActivate(data) {
+    return data.nodes && data.nodes.length > COMPOUND_THRESHOLD;
 }
 
-/** Full (re)build of the PD directory view. Used on first load and view toggle. */
-function pdFullRender(data) {
-    _pd = { active: true, raw: data, expanded: new Set() };
-    const view = _pdBuildView();
-    _pdInitCy([...view.nodes, ...view.edges], _pdStyles());
-    _pdBindDirHandlers();
-    _pdUpdateColorKey();
-}
+// Aliases for backward compat (renderGraph and other callers reference these)
+function pdShouldActivate(data) { return compoundShouldActivate(data); }
 
-/** Expand or collapse a directory, then incrementally update the live graph. */
-function pdToggle(dirId) {
-    if (_pd.expanded.has(dirId)) {
-        // Collapse this dir and all children
-        [..._pd.expanded].filter(d => d === dirId || d.startsWith(dirId + '/')).forEach(d => _pd.expanded.delete(d));
-    } else {
-        _pd.expanded.add(dirId);
-    }
-
-    if (!_pd.raw || !cy) return;
-
-    // Cancel any in-flight animations
-    cy.nodes().stop(true, true);
-    cy.edges().stop(true, true);
-
-    // Snapshot the clicked node's position before we modify anything
-    const dirEle = cy.getElementById(dirId);
-    const origin = dirEle.length ? { ...dirEle.position() } : null;
-    const oldIds = new Set();
-    cy.nodes().forEach(n => oldIds.add(n.id()));
-
-    const view = _pdBuildView();
-    const wantNodes = new Map(view.nodes.map(n => [n.data.id, n]));
-    const wantEdgeKey = e => e.data.source + '\t' + e.data.target;
-    const wantEdges = new Map(view.edges.map(e => [wantEdgeKey(e), e]));
-
-    // 1. Remove stale elements
-    const staleEdges = cy.edges().filter(e => !wantEdges.has(e.data('source') + '\t' + e.data('target')));
-    const staleNodes = cy.nodes().filter(n => !wantNodes.has(n.id()));
-    cy.batch(() => { staleEdges.remove(); staleNodes.remove(); });
-
-    // 2. Update surviving elements
-    cy.batch(() => {
-        wantNodes.forEach((n, id) => { const el = cy.getElementById(id); if (el.length) el.data(n.data); });
-        wantEdges.forEach((e, key) => {
-            cy.edges().forEach(el => { if (el.data('source') + '\t' + el.data('target') === key) el.data(e.data); });
-        });
+/** Full render in compound mode — all dirs start collapsed */
+function compoundFullRender(data) {
+    const dirMap = _cBuildDirMap(data);
+    // Start with all top-level dirs collapsed
+    const collapsed = new Set();
+    dirMap.forEach((files, dir) => {
+        const ancestors = _cAncestors(dir);
+        // Collapse only top-level directories (depth 1 or root)
+        const topLevel = ancestors[0] || dir;
+        collapsed.add(topLevel);
     });
 
-    // 3. Add new nodes + edges
-    const newNodes = view.nodes.filter(n => !oldIds.has(n.data.id));
-    const existingEdgeKeys = new Set();
-    cy.edges().forEach(e => existingEdgeKeys.add(e.data('source') + '\t' + e.data('target')));
-    const newEdges = view.edges.filter(e => !existingEdgeKeys.has(wantEdgeKey(e)));
-
-    let added = cy.collection();
-    if (newNodes.length) {
-        added = cy.add(newNodes.map(n => ({
-            group: 'nodes', data: n.data,
-            position: origin
-                ? { x: origin.x + (Math.random() - 0.5) * 20, y: origin.y + (Math.random() - 0.5) * 20 }
-                : { x: Math.random() * 800, y: Math.random() * 800 },
-        })));
-        added.style('opacity', 0);
-    }
-
-    if (newEdges.length) {
-        const ae = cy.add(newEdges.map(e => ({ group: 'edges', data: e.data })));
-        ae.style('opacity', 0);
-        setTimeout(() => ae.animate({ style: { opacity: 0.7 } }, { duration: 250 }), 200);
-    }
-
-    // 4. Animate new nodes into a ring around the origin
-    if (added.length && origin && added.length < 40) {
-        const step = (2 * Math.PI) / added.length;
-        const radius = 120 + added.length * 10;
-        let angle = 0;
-        added.forEach(n => {
-            n.animate({
-                position: { x: origin.x + Math.cos(angle) * radius, y: origin.y + Math.sin(angle) * radius },
-                style: { opacity: 1 },
-            }, { duration: 450, easing: 'ease-out-cubic' });
-            angle += step;
-        });
-    } else if (added.length) {
-        added.style('opacity', 1);
-        cy.layout({ ...getLayoutConfig(), eles: added.union(added.neighborhood()), fit: false, animate: true, animationDuration: 500 }).run();
-    }
-
-    _pdUpdateColorKey();
+    _compound = { active: true, raw: data, collapsed, dirMap, allDirs: [] };
+    const elements = _cBuildElements(data);
+    _cInitCy(elements, _compoundStyles());
+    _cBindHandlers();
+    _cUpdateColorKey();
 }
 
-/** Switch between directory / all-files view via toolbar toggle. */
+// Alias for backward compat
+function pdFullRender(data) { compoundFullRender(data); }
+
+/** Toggle expand/collapse of a directory */
+function compoundToggle(dirId) {
+    if (!_compound.raw || !cy) return;
+
+    if (_compound.collapsed.has(dirId)) {
+        // Expand: remove from collapsed set
+        _compound.collapsed.delete(dirId);
+    } else {
+        // Collapse: add to collapsed set, also collapse children
+        _compound.collapsed.add(dirId);
+        _compound.allDirs.forEach(d => {
+            if (d.startsWith(dirId + '/')) _compound.collapsed.add(d);
+        });
+    }
+
+    // Rebuild the graph with new collapse state
+    const elements = _cBuildElements(_compound.raw);
+
+    // Snapshot positions of surviving nodes
+    const positions = {};
+    cy.nodes().forEach(n => { positions[n.id()] = { ...n.position() }; });
+
+    cy.batch(() => {
+        cy.elements().remove();
+        cy.add(elements);
+    });
+
+    // Restore known positions
+    cy.nodes().forEach(n => {
+        if (positions[n.id()]) {
+            n.position(positions[n.id()]);
+        } else {
+            // New nodes (just expanded): place near their parent directory
+            const parentPos = positions['dir:' + dirId];
+            if (parentPos) {
+                n.position({
+                    x: parentPos.x + (Math.random() - 0.5) * 80,
+                    y: parentPos.y + (Math.random() - 0.5) * 80,
+                });
+            }
+        }
+    });
+
+    // Run layout only on affected elements for smooth animation
+    const layout = cy.layout({
+        ...getLayoutConfig(),
+        animate: true,
+        animationDuration: 500,
+        animationEasing: 'ease-in-out-cubic',
+        fit: false,
+    });
+    layout.run();
+
+    _cUpdateColorKey();
+}
+
+// Alias for backward compat
+function pdToggle(dirId) { compoundToggle(dirId); }
+
+/** Collapse all directories */
+function compoundCollapseAll() {
+    if (!_compound.raw || !_compound.active) return;
+    _compound.allDirs.forEach(d => _compound.collapsed.add(d));
+    const elements = _cBuildElements(_compound.raw);
+    cy.batch(() => { cy.elements().remove(); cy.add(elements); });
+    cy.layout({ ...getLayoutConfig(), animate: true, animationDuration: 500 }).run();
+    _cUpdateColorKey();
+}
+
+/** Expand all directories */
+function compoundExpandAll() {
+    if (!_compound.raw || !_compound.active) return;
+    _compound.collapsed.clear();
+    const elements = _cBuildElements(_compound.raw);
+    cy.batch(() => { cy.elements().remove(); cy.add(elements); });
+    cy.layout({ ...getLayoutConfig(), animate: true, animationDuration: 500 }).run();
+    _cUpdateColorKey();
+}
+
+/** Switch between compound (directory) / flat (all files) view */
 function pdSetView(mode) {
     if (!currentGraphData) return;
     if (mode === 'files') {
-        _pd = { active: false, raw: null, expanded: new Set() };
-        _pdInitCy([...currentGraphData.nodes, ...currentGraphData.edges], _normalStyles());
-        _pdBindNormalHandlers();
+        _compound.active = false;
+        _compound.raw = null;
+        _compound.collapsed = new Set();
+        const elements = [...currentGraphData.nodes.map(n => ({
+            group: 'nodes', data: { ...n.data, label: n.data.id },
+        })), ...currentGraphData.edges];
+        _cInitCy(elements, _normalStyles());
+        _cBindNormalHandlers();
         buildFolderColorKey(currentGraphData.nodes);
     } else {
-        pdFullRender(currentGraphData);
+        compoundFullRender(currentGraphData);
     }
 }
 
 function pdUpdateToggle() {
     const el = document.getElementById('pdViewToggle');
-    // Always show the view toggle when a graph is loaded so users can
-    // switch to directory view on any graph, not just large ones.
     if (el) el.style.display = currentGraphData ? '' : 'none';
+    // Show collapse/expand buttons only in compound (directory) mode
+    const colBtn = document.getElementById('compoundCollapseAllBtn');
+    const expBtn = document.getElementById('compoundExpandAllBtn');
+    if (colBtn) colBtn.style.display = _compound.active ? '' : 'none';
+    if (expBtn) expBtn.style.display = _compound.active ? '' : 'none';
 }
 
-function _pdUpdateColorKey() {
+function _cUpdateColorKey() {
     if (!cy) return;
     const nodes = [];
-    cy.nodes().forEach(n => nodes.push({ data: { id: n.id(), color: n.data('color') } }));
+    cy.nodes('[?isFile]').forEach(n => nodes.push({ data: { id: n.id(), color: n.data('color') } }));
+    // Also include collapsed dir colors
+    cy.nodes('[?isCollapsed]').forEach(n => nodes.push({ data: { id: n.data('dirId') || n.id(), color: n.data('color') } }));
     buildFolderColorKey(nodes);
 }
 
@@ -1307,33 +1474,37 @@ function renderGraph(data) {
 
     if (cy) cy.destroy();
 
-    // --- Progressive disclosure: auto-collapse large graphs ---
-    if (pdShouldActivate(data)) {
-        pdFullRender(data);
-        showToast('Large graph — showing directories. Click a folder to expand.', 5000);
+    // --- Compound nodes: auto-collapse large graphs into directory containers ---
+    if (compoundShouldActivate(data)) {
+        compoundFullRender(data);
+        showToast('Large graph — directories collapsed. Click a folder to expand.', 5000);
     } else {
-        _pd.active = false;
-        _pd.raw = null;
-        _pd.expanded = new Set();
-        const elements = [...data.nodes, ...data.edges];
-        _pdInitCy(elements, _normalStyles());
-        _pdBindNormalHandlers();
+        _compound.active = false;
+        _compound.raw = null;
+        _compound.collapsed = new Set();
+        // For small graphs, add label field matching id for consistency
+        const elements = [
+            ...data.nodes.map(n => ({ group: 'nodes', data: { ...n.data, label: n.data.id } })),
+            ...data.edges,
+        ];
+        _cInitCy(elements, _normalStyles());
+        _cBindNormalHandlers();
     }
     // Escape handled by global shortcut system below
 
     // Attach minimap listeners
     attachMinimapListeners();
 
-    // Show/hide the progressive disclosure toggle and sync radio state
+    // Show/hide the scope toggle and sync radio state
     pdUpdateToggle();
-    const pdRadio = document.getElementById(_pd.active ? 'pdViewDirs' : 'pdViewFiles');
+    const pdRadio = document.getElementById(_compound.active ? 'pdViewDirs' : 'pdViewFiles');
     if (pdRadio) pdRadio.checked = true;
 
     // Show graph status bar, path hint, and folder color key
     if (data.nodes && data.nodes.length) {
         document.getElementById('graphStatusBar').style.display = 'flex';
         document.getElementById('pathHint').style.display = 'block';
-        if (!_pd.active) buildFolderColorKey(data.nodes);
+        if (!_compound.active) buildFolderColorKey(data.nodes);
         updatePathDatalist();
     }
 
