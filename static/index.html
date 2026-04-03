@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive C/C++ Dependency Graph Viewer. Visualize file dependencies, reference counts, and detect circular dependencies.">
+    <title>C/C++ Dependency Graph Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.23.0/cytoscape.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --panel-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --danger: #ef4444;
+            --warning-bg: #fef2f2;
+            --warning-border: #fca5a5;
+            --loading-bg: rgba(255, 255, 255, 0.8);
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --primary: #3b82f6;
+            --primary-hover: #60a5fa;
+            --danger: #ef4444;
+            --warning-bg: #450a0a;
+            --warning-border: #991b1b;
+            --loading-bg: rgba(15, 23, 42, 0.8);
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 1.5rem;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 10;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        #controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-right: 1px solid var(--border-color);
+            padding-right: 1rem;
+        }
+
+        .control-group:last-child {
+            border-right: none;
+            padding-right: 0;
+        }
+
+        details.dropdown {
+            position: relative;
+        }
+
+        details.dropdown summary {
+            list-style: none;
+            padding: 0.5rem 1rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: border-color 0.2s;
+        }
+
+        details.dropdown summary:hover {
+            border-color: var(--primary);
+        }
+
+        details.dropdown summary::-webkit-details-marker {
+            display: none;
+        }
+
+        details.dropdown .dropdown-content {
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            left: 0;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 1rem;
+            box-shadow: var(--shadow-md);
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            z-index: 100;
+            min-width: 220px;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+
+        .input-group:focus-within {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        input[type="text"] {
+            border: none;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            outline: none;
+            background: transparent;
+            width: 250px;
+            font-family: inherit;
+            color: var(--text-main);
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-family: inherit;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        #cycleWarning {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--danger);
+            font-size: 0.875rem;
+            font-weight: 500;
+            background-color: var(--warning-bg);
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--warning-border);
+        }
+
+        #main-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+        }
+
+        #cy {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #sidebar {
+            width: 300px;
+            background-color: var(--panel-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            z-index: 5;
+        }
+
+        .sidebar-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            background: var(--bg-color);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        .ref-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.875rem;
+        }
+
+        .ref-item:hover {
+            background-color: var(--bg-color);
+        }
+
+        .ref-name {
+            word-break: break-all;
+            margin-right: 0.5rem;
+            position: relative;
+        }
+
+        .ref-name[data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--text-main);
+            color: var(--bg-color);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            pointer-events: none;
+            margin-bottom: 4px;
+            font-weight: normal;
+        }
+
+        .ref-count {
+            background-color: var(--primary);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            min-width: 1.5rem;
+            text-align: center;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--loading-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            backdrop-filter: blur(2px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        
+        .loading-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e2e8f0;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Dependency Graph</h1>
+        <div id="controls">
+            <button id="themeToggle" onclick="toggleTheme()" title="Toggle Dark Mode">
+                <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            </button>
+            <div class="control-group">
+                <div class="input-group">
+                    <input type="text" id="dirInput" placeholder="Enter directory path..." value="test_files" onkeypress="if(event.key === 'Enter') loadGraph()">
+                </div>
+                <div class="input-group">
+                    <input type="text" id="searchInput" placeholder="Search file..." onkeypress="if(event.key === 'Enter') searchNode()">
+                </div>
+                <button onclick="loadGraph()">Generate Graph</button>
+            </div>
+            
+            <div class="control-group">
+                <details class="dropdown">
+                    <summary>
+                        Filters & Settings
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </summary>
+                    <div class="dropdown-content">
+                        <div class="input-group" style="width: 100%;">
+                            <input type="text" id="filterDirInput" placeholder="Filter by subdirectory..." value="" onkeypress="if(event.key === 'Enter') updateGraph()" style="width: 100%;">
+                        </div>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="hideSystemHeaders" checked onchange="updateGraph()">
+                            Hide System Headers
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showCFiles" checked onchange="updateGraph()">
+                            Show .c files
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showHFiles" checked onchange="updateGraph()">
+                            Show .h files
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showCppFiles" checked onchange="updateGraph()">
+                            Show C++ files
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="hideIsolated" checked onchange="updateGraph()">
+                            Hide Isolated Files
+                        </label>
+                    </div>
+                </details>
+            </div>
+
+            <div class="control-group">
+                <button onclick="document.getElementById('zipUpload').click()" style="background-color: var(--warning-border); color: var(--text-main);">Upload File/ZIP</button>
+                <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx" style="display: none;" onchange="handleZipSelect(event)">
+                <details class="dropdown">
+                    <summary style="background-color: var(--primary); color: white; border: none;">
+                        Export
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </summary>
+                    <div class="dropdown-content" style="min-width: 120px; display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem;">
+                        <button onclick="exportJSON()" style="width: 100%; background-color: var(--primary); color: white;">Export JSON</button>
+                        <button onclick="exportPNG()" style="width: 100%; background-color: var(--primary); color: white;">Export PNG</button>
+                        <button onclick="exportDOT()" style="width: 100%; background-color: var(--primary); color: white;">Export DOT</button>
+                    </div>
+                </details>
+            </div>
+            
+            <div id="cycleWarning">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+                Circular Dependency
+            </div>
+        </div>
+    </header>
+    
+    <div id="main-container">
+        <div id="loading" class="loading-overlay">
+            <div class="spinner"></div>
+        </div>
+        <div id="cy"></div>
+        <div id="sidebar">
+            <div class="sidebar-header" id="cycles-header" style="display: none;">Circular Dependencies</div>
+            <div id="cycles-list"></div>
+            <div class="sidebar-header">Reference Counts</div>
+            <div id="ref-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            
+            const icon = document.getElementById('themeIcon');
+            if (newTheme === 'dark') {
+                icon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
+            } else {
+                icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+            }
+        }
+
+        // Initialize icon correctly on load
+        window.addEventListener('DOMContentLoaded', () => {
+            if (document.documentElement.getAttribute('data-theme') === 'dark') {
+                document.getElementById('themeIcon').innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
+            }
+        });
+
+        let cy;
+        let currentGraphData = null;
+
+        function exportJSON() {
+            if (!currentGraphData) return;
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentGraphData, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "dependency_graph.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function exportPNG() {
+            if (!cy) return;
+            const b64 = cy.png({
+                output: 'base64uri',
+                bg: getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim(),
+                full: true
+            });
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", b64);
+            downloadAnchorNode.setAttribute("download", "dependency_graph.png");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function exportDOT() {
+            if (!currentGraphData) return;
+            let dotStr = 'digraph DependencyGraph {\n';
+            dotStr += '  node [shape=box, style=filled, fontname="Inter"];\n';
+            dotStr += '  rankdir=LR;\n';
+            
+            // Add nodes
+            if (currentGraphData.nodes) {
+                currentGraphData.nodes.forEach(node => {
+                    const id = node.data.id;
+                    const color = node.data.color || "#cccccc";
+                    dotStr += `  "${id}" [fillcolor="${color}"];\n`;
+                });
+            }
+            
+            // Add edges
+            if (currentGraphData.edges) {
+                currentGraphData.edges.forEach(edge => {
+                    const source = edge.data.source;
+                    const target = edge.data.target;
+                    const color = edge.data.color || "#94a3b8";
+                    const isCycle = edge.classes && edge.classes.includes("cycle");
+                    const cycleAttr = isCycle ? ', color="red", penwidth=2' : `color="${color}"`;
+                    dotStr += `  "${source}" -> "${target}" [${cycleAttr}];\n`;
+                });
+            }
+            
+            dotStr += '}\n';
+
+            const dataStr = "data:text/vnd.graphviz;charset=utf-8," + encodeURIComponent(dotStr);
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "dependency_graph.dot");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function searchNode() {
+            if (!cy) return;
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            if (!query) {
+                cy.nodes().style({
+                    'border-width': 0,
+                    'border-color': 'transparent'
+                });
+                return;
+            }
+            
+            const nodes = cy.nodes().filter(n => n.id().toLowerCase().includes(query));
+            cy.nodes().style({
+                'border-width': 0,
+                'border-color': 'transparent'
+            });
+            
+            if (nodes.length > 0) {
+                nodes.style({
+                    'border-width': 4,
+                    'border-color': '#ffeb3b',
+                    'border-style': 'solid'
+                });
+                cy.animate({
+                    center: { eles: nodes[0] },
+                    zoom: 1.5
+                }, { duration: 500 });
+            } else {
+                alert('No matching files found');
+            }
+        }
+
+        function renderGraph(data) {
+            currentGraphData = data;
+            const warning = document.getElementById('cycleWarning');
+            const cyclesHeader = document.getElementById('cycles-header');
+            const cyclesList = document.getElementById('cycles-list');
+            
+            if (data.has_cycles) {
+                warning.style.display = 'flex';
+                if (data.cycles && data.cycles.length > 0) {
+                    cyclesHeader.style.display = 'block';
+                    cyclesList.innerHTML = '';
+                    
+                    data.cycles.forEach((cycle, index) => {
+                        const div = document.createElement('div');
+                        div.className = 'ref-item';
+                        div.style.flexDirection = 'column';
+                        div.style.alignItems = 'flex-start';
+                        div.style.gap = '8px';
+                        div.style.backgroundColor = 'var(--warning-bg)';
+                        
+                        const title = document.createElement('div');
+                        title.style.fontWeight = '600';
+                        title.style.color = 'var(--danger)';
+                        title.innerText = `Cycle ${index + 1} (${cycle.length} files)`;
+                        div.appendChild(title);
+                        
+                        cycle.forEach(nodeId => {
+                            const nodeDiv = document.createElement('div');
+                            nodeDiv.style.display = 'flex';
+                            nodeDiv.style.alignItems = 'center';
+                            nodeDiv.style.gap = '8px';
+                            nodeDiv.style.marginLeft = '8px';
+                            
+                            nodeDiv.innerHTML = `<span class="ref-name" style="cursor: pointer;" data-tooltip="Center node">${nodeId}</span>`;
+                            nodeDiv.querySelector('.ref-name').onclick = () => {
+                                const node = cy.getElementById(nodeId);
+                                if (node.length > 0) {
+                                    cy.animate({
+                                        center: { eles: node },
+                                        zoom: 1.5
+                                    }, { duration: 500 });
+                                }
+                            };
+                            div.appendChild(nodeDiv);
+                        });
+                        
+                        cyclesList.appendChild(div);
+                    });
+                }
+            } else {
+                warning.style.display = 'none';
+                cyclesHeader.style.display = 'none';
+                cyclesList.innerHTML = '';
+            }
+            if (cy) { cy.destroy(); }
+            cy = cytoscape({
+                container: document.getElementById('cy'),
+                elements: [
+                    ...data.nodes,
+                    ...data.edges
+                ],
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'width': 'data(size)',
+                            'height': 'data(size)',
+                            'background-color': 'data(color)',
+                            'label': 'data(id)',
+                            'color': '#fff',
+                            'text-outline-color': 'data(color)',
+                            'text-outline-width': 2,
+                            'font-size': function(ele) { return Math.max(14, Math.min(36, ele.data('size') / 8)) + 'px'; },
+                            'text-valign': 'center',
+                            'text-halign': 'center'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 5,
+                            'line-color': 'data(color)',
+                            'target-arrow-color': 'data(color)',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier'
+                        }
+                    },
+                    {
+                        selector: 'edge.cycle',
+                        style: {
+                            'line-color': '#FF4136',
+                            'target-arrow-color': '#FF4136',
+                            'width': 3
+                        }
+                    }
+                ],
+                layout: {
+                    name: 'cose',
+                    padding: 200,
+                    nodeRepulsion: function( node ){ return 80000000; },
+                    idealEdgeLength: function( edge ){ return 800; },
+                    edgeElasticity: function( edge ){ return 100; },
+                    gravity: 50,
+                    numIter: 2000
+                }
+            });
+
+            const refList = document.getElementById('ref-list');
+            refList.innerHTML = '';
+            
+            const inDegrees = {};
+            data.nodes.forEach(n => {
+                inDegrees[n.data.id] = 0;
+            });
+            data.edges.forEach(e => {
+                if (inDegrees[e.data.target] !== undefined) {
+                    inDegrees[e.data.target]++;
+                }
+            });
+            
+            const sortedNodes = data.nodes.map(n => ({
+                id: n.data.id,
+                count: inDegrees[n.data.id]
+            })).sort((a, b) => b.count - a.count);
+            
+            const maxCount = sortedNodes.length > 0 ? sortedNodes[0].count : 0;
+            const godThreshold = Math.max(10, maxCount * 0.5);
+            
+            sortedNodes.forEach(item => {
+                const isGod = item.count >= godThreshold && item.count > 0;
+                const isOrphan = item.count === 0;
+                const highlightStyle = (isGod || isOrphan) ? 'font-weight: bold; color: var(--danger);' : '';
+                
+                let titleText = "Center node";
+                if (isGod) titleText = "god";
+                else if (isOrphan) titleText = "orphan";
+
+                const div = document.createElement('div');
+                div.className = 'ref-item';
+                div.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+                        <input type="checkbox" checked class="node-toggle" title="Toggle visibility" style="flex-shrink: 0;">
+                        <span class="ref-name" style="cursor: pointer; ${highlightStyle}" data-tooltip="${titleText}">${item.id}</span>
+                    </div>
+                    <span class="ref-count">${item.count}</span>
+                `;
+
+                const checkbox = div.querySelector('.node-toggle');
+                checkbox.onchange = (e) => {
+                    const node = cy.getElementById(item.id);
+                    if (node.length > 0) {
+                        if (e.target.checked) {
+                            node.style('display', 'element');
+                        } else {
+                            node.style('display', 'none');
+                        }
+                    }
+                };
+
+                const nameSpan = div.querySelector('.ref-name');
+                nameSpan.onclick = () => {
+                    const node = cy.getElementById(item.id);
+                    if (node.length > 0) {
+                        cy.animate({
+                            center: { eles: node },
+                            zoom: 1.5
+                        }, { duration: 500 });
+                    }
+                };
+                
+                refList.appendChild(div);
+            });
+        }
+
+        let currentMode = 'local';
+        let currentUploadedFile = null;
+
+        function handleZipSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            currentUploadedFile = file;
+            uploadZip();
+            event.target.value = ''; // Clear to allow re-selecting the same file
+        }
+
+        function updateGraph() {
+            if (currentMode === 'upload' && currentUploadedFile) {
+                uploadZip();
+            } else {
+                loadGraph();
+            }
+        }
+
+        function uploadZip() {
+            if (!currentUploadedFile) return;
+            
+            currentMode = 'upload';
+            
+            const hideSystem = document.getElementById('hideSystemHeaders').checked;
+            const showC = document.getElementById('showCFiles').checked;
+            const showH = document.getElementById('showHFiles').checked;
+            const showCpp = document.getElementById('showCppFiles').checked;
+            const hideIsolated = document.getElementById('hideIsolated').checked;
+            const filterDir = document.getElementById('filterDirInput').value;
+            
+            const formData = new FormData();
+            formData.append('file', currentUploadedFile);
+            formData.append('hide_system', hideSystem);
+            formData.append('show_c', showC);
+            formData.append('show_h', showH);
+            formData.append('show_cpp', showCpp);
+            formData.append('hide_isolated', hideIsolated);
+            formData.append('filter_dir', filterDir);
+            
+            const loading = document.getElementById('loading');
+            loading.classList.add('active');
+            
+            fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                } else {
+                    renderGraph(data);
+                }
+                loading.classList.remove('active');
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Upload failed.');
+                loading.classList.remove('active');
+            });
+        }
+
+        function loadGraph() {
+            currentMode = 'local';
+            const dir = document.getElementById('dirInput').value;
+            const hideSystem = document.getElementById('hideSystemHeaders').checked;
+            const showC = document.getElementById('showCFiles').checked;
+            const showH = document.getElementById('showHFiles').checked;
+            const showCpp = document.getElementById('showCppFiles').checked;
+            const hideIsolated = document.getElementById('hideIsolated').checked;
+            const filterDir = document.getElementById('filterDirInput').value;
+            
+            const loading = document.getElementById('loading');
+            loading.classList.add('active');
+            
+            fetch('/api/graph?dir=' + encodeURIComponent(dir) + '&hide_system=' + hideSystem + '&show_c=' + showC + '&show_h=' + showH + '&show_cpp=' + showCpp + '&hide_isolated=' + hideIsolated + '&filter_dir=' + encodeURIComponent(filterDir))
+                .then(res => res.json())
+                .then(data => {
+                    renderGraph(data);
+                    loading.classList.remove('active');
+                })
+                .catch(err => {
+                    console.error(err);
+                    loading.classList.remove('active');
+                });
+        }
+        
+        // Load initial graph
+        loadGraph();
+    </script>
+</body>
+</html>
