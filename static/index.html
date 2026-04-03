@@ -456,6 +456,20 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+    <!-- Quick Jump modal (Cmd+K) -->
+    <div class="quickjump-backdrop" id="quickjumpModal" onclick="if(event.target===this)closeQuickJump()">
+        <div class="quickjump-modal">
+            <div class="quickjump-input-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="quickjumpInput" placeholder="Jump to file..." autocomplete="off" spellcheck="false" />
+                <kbd class="quickjump-esc">Esc</kbd>
+            </div>
+            <div class="quickjump-results" id="quickjumpResults"></div>
+            <div class="quickjump-empty" id="quickjumpEmpty" style="display:none;">No matching files</div>
+            <div class="quickjump-hint" id="quickjumpHint">Start typing to search nodes in the graph</div>
+        </div>
+    </div>
+
     <!-- Keyboard shortcuts help modal -->
     <div class="shortcut-modal-backdrop" id="shortcutModal" onclick="if(event.target===this)toggleShortcutHelp()">
         <div class="shortcut-modal">

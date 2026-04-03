@@ -1579,6 +1579,148 @@ details.dropdown .dropdown-body {
     color: var(--primary);
 }
 
+/* ================================================================
+   QUICK JUMP (Cmd+K)
+   ================================================================ */
+.quickjump-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: min(20vh, 160px);
+}
+
+.quickjump-backdrop.open {
+    display: flex;
+}
+
+.quickjump-modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: min(520px, 90vw);
+    max-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: quickjump-in 0.12s ease;
+}
+
+@keyframes quickjump-in {
+    from { opacity: 0; transform: scale(0.97) translateY(-8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.quickjump-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.quickjump-input-row input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--text);
+}
+
+.quickjump-input-row input::placeholder {
+    color: var(--text-muted);
+}
+
+.quickjump-esc {
+    font-size: 0.6rem;
+    font-family: inherit;
+    padding: 0.15rem 0.4rem;
+    border-radius: var(--radius-sm);
+    background: var(--bg-sunken);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.quickjump-results {
+    overflow-y: auto;
+    max-height: calc(60vh - 52px);
+}
+
+.quickjump-result-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+    transition: background var(--transition);
+    border-bottom: 1px solid var(--border);
+}
+
+.quickjump-result-item:last-child {
+    border-bottom: none;
+}
+
+.quickjump-result-item:hover,
+.quickjump-result-item.active {
+    background: var(--primary-soft);
+}
+
+.quickjump-result-item.active {
+    box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.quickjump-result-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.quickjump-result-label {
+    flex: 1;
+    font-size: 0.82rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.quickjump-result-label mark {
+    background: rgba(250, 204, 21, 0.3);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+.quickjump-result-meta {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.quickjump-empty {
+    padding: 1.5rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.quickjump-hint {
+    padding: 0.8rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
 .shortcut-modal-backdrop {
     display: none;
     position: fixed;
