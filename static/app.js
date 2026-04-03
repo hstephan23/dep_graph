@@ -922,15 +922,13 @@ function scheduleMinimapUpdate() {
             const modelX = (mx - ox) / sc + gx;
             const modelY = (my - oy) / sc + gy;
 
-            cy.animate({ center: { eles: { position: () => ({ x: modelX, y: modelY }) } } }, { duration: 0 });
-            // Direct pan to center on the model point
+            // Pan so the clicked model point is centered in the viewport
             const cyContainer = cy.container();
-            const containerW = cyContainer.clientWidth;
-            const containerH = cyContainer.clientHeight;
             const zoom = cy.zoom();
-            const panX = containerW / 2 - modelX * zoom;
-            const panY = containerH / 2 - modelY * zoom;
-            cy.pan({ x: panX, y: panY });
+            cy.pan({
+                x: cyContainer.clientWidth / 2 - modelX * zoom,
+                y: cyContainer.clientHeight / 2 - modelY * zoom
+            });
         }
 
         body.addEventListener('mousedown', e => {
