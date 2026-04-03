@@ -4,212 +4,363 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Interactive Dependency Graph Viewer. Visualize file dependencies, reference counts, and detect circular dependencies for C, C++, JavaScript, TypeScript, Python, Java, Go, and Rust projects.">
-    <title>Dependency Graph Viewer</title>
+    <title>DepGraph</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.23.0/cytoscape.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* ================================================================
+           DESIGN TOKENS
+           ================================================================ */
         :root {
-            --bg-color: #f8fafc;
-            --panel-bg: #ffffff;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --border-color: #e2e8f0;
-            --primary: #3b82f6;
-            --primary-hover: #2563eb;
+            --bg: #f1f5f9;
+            --bg-elevated: #ffffff;
+            --bg-sunken: #e2e8f0;
+            --text: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --border: #e2e8f0;
+            --border-hover: #cbd5e1;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-soft: rgba(99, 102, 241, 0.08);
+            --primary-glow: rgba(99, 102, 241, 0.25);
             --danger: #ef4444;
-            --warning-bg: #fef2f2;
-            --warning-border: #fca5a5;
-            --loading-bg: rgba(255, 255, 255, 0.8);
-            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --danger-soft: #fef2f2;
+            --danger-border: #fecaca;
+            --success: #10b981;
+            --success-soft: #ecfdf5;
+            --warning: #f59e0b;
+            --warning-soft: #fffbeb;
+            --loading-bg: rgba(241, 245, 249, 0.85);
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.04);
+            --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
+            --shadow-md: 0 4px 12px rgb(0 0 0 / 0.08);
+            --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.12);
+            --transition: 0.15s ease;
         }
 
         [data-theme="dark"] {
-            --bg-color: #0f172a;
-            --panel-bg: #1e293b;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --border-color: #334155;
-            --primary: #3b82f6;
-            --primary-hover: #60a5fa;
-            --danger: #ef4444;
-            --warning-bg: #450a0a;
-            --warning-border: #991b1b;
-            --loading-bg: rgba(15, 23, 42, 0.8);
-            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5);
-            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+            --bg: #0c0f1a;
+            --bg-elevated: #161b2e;
+            --bg-sunken: #0f1322;
+            --text: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #1e293b;
+            --border-hover: #334155;
+            --primary: #818cf8;
+            --primary-hover: #a5b4fc;
+            --primary-soft: rgba(129, 140, 248, 0.1);
+            --primary-glow: rgba(129, 140, 248, 0.2);
+            --danger: #f87171;
+            --danger-soft: rgba(248, 113, 113, 0.1);
+            --danger-border: rgba(248, 113, 113, 0.25);
+            --success: #34d399;
+            --success-soft: rgba(52, 211, 153, 0.1);
+            --warning: #fbbf24;
+            --warning-soft: rgba(251, 191, 36, 0.1);
+            --loading-bg: rgba(12, 15, 26, 0.85);
+            --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
+            --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.4);
+            --shadow-md: 0 4px 12px rgb(0 0 0 / 0.5);
+            --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.6);
         }
 
+        /* ================================================================
+           BASE
+           ================================================================ */
+        *, *::before, *::after { box-sizing: border-box; }
+
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
             margin: 0;
-            padding: 0;
-            background-color: var(--bg-color);
-            color: var(--text-main);
+            background: var(--bg);
+            color: var(--text);
             height: 100vh;
             display: flex;
             flex-direction: column;
+            -webkit-font-smoothing: antialiased;
         }
 
-        header {
-            background-color: var(--panel-bg);
-            border-bottom: 1px solid var(--border-color);
-            padding: 1rem 1.5rem;
-            box-shadow: var(--shadow-sm);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+        /* ================================================================
+           TOOLBAR
+           ================================================================ */
+        .toolbar {
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
             z-index: 10;
+            flex-shrink: 0;
         }
 
-        h1 {
-            margin: 0;
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--text-main);
-        }
-
-        #controls {
+        .toolbar-top {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 0.75rem;
+            padding: 0.625rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .toolbar-bottom {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
             flex-wrap: wrap;
         }
 
-        .control-group {
+        .brand {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            border-right: 1px solid var(--border-color);
-            padding-right: 1rem;
+            margin-right: 0.5rem;
+            flex-shrink: 0;
         }
 
-        .control-group:last-child {
-            border-right: none;
-            padding-right: 0;
+        .brand-icon {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, var(--primary), #a78bfa);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        details.dropdown {
-            position: relative;
+        .brand-icon svg { color: white; }
+
+        .brand-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
+
+        .toolbar-separator {
+            width: 1px;
+            height: 24px;
+            background: var(--border);
+            flex-shrink: 0;
+        }
+
+        /* ================================================================
+           INPUTS & BUTTONS
+           ================================================================ */
+        .input-wrap {
+            display: flex;
+            align-items: center;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            transition: border-color var(--transition), box-shadow var(--transition);
+            overflow: hidden;
+        }
+
+        .input-wrap:focus-within {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        .input-wrap svg {
+            margin-left: 0.5rem;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .input-wrap input {
+            border: none;
+            background: transparent;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.8rem;
+            outline: none;
+            color: var(--text);
+            font-family: inherit;
+            min-width: 0;
+        }
+
+        .input-dir { width: 220px; }
+        .input-search { width: 150px; }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            font-family: inherit;
+            border: 1px solid transparent;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all var(--transition);
+            white-space: nowrap;
+            line-height: 1.3;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-primary:hover { background: var(--primary-hover); }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            border-color: var(--border);
+        }
+        .btn-ghost:hover {
+            background: var(--primary-soft);
+            color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .btn-icon {
+            padding: 0.4rem;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+        .btn-icon:hover {
+            background: var(--primary-soft);
+            color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .btn-upload {
+            background: var(--bg);
+            color: var(--text-secondary);
+            border: 1px dashed var(--border);
+        }
+        .btn-upload:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: var(--primary-soft);
+        }
+
+        /* ================================================================
+           PILL SELECTORS
+           ================================================================ */
+        .pill-group {
+            display: flex;
+            gap: 2px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 2px;
+        }
+
+        .pill-group input[type="radio"] { display: none; }
+
+        .pill-group label {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            color: var(--text-muted);
+            border-radius: 4px;
+            user-select: none;
+            transition: all var(--transition);
+            white-space: nowrap;
+        }
+
+        .pill-group label:hover {
+            color: var(--text);
+            background: var(--bg-elevated);
+        }
+
+        .pill-group input:checked + label {
+            background: var(--primary);
+            color: white;
+            box-shadow: var(--shadow-xs);
+        }
+
+        /* ================================================================
+           DROPDOWN MENUS
+           ================================================================ */
+        details.dropdown { position: relative; }
 
         details.dropdown summary {
             list-style: none;
-            padding: 0.5rem 1rem;
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-            border-radius: 6px;
             cursor: pointer;
-            font-size: 0.875rem;
-            font-weight: 500;
             user-select: none;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: border-color 0.2s;
         }
 
-        details.dropdown summary:hover {
-            border-color: var(--primary);
-        }
+        details.dropdown summary::-webkit-details-marker { display: none; }
 
-        details.dropdown summary::-webkit-details-marker {
-            display: none;
-        }
-
-        details.dropdown .dropdown-content {
+        details.dropdown .dropdown-body {
             position: absolute;
-            top: calc(100% + 0.5rem);
+            top: calc(100% + 6px);
             left: 0;
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 1rem;
-            box-shadow: var(--shadow-md);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 0.75rem;
+            box-shadow: var(--shadow-lg);
+            z-index: 100;
+            min-width: 260px;
             display: flex;
             flex-direction: column;
-            gap: 0.75rem;
-            z-index: 100;
-            min-width: 220px;
+            gap: 0.6rem;
         }
 
-        .input-group {
-            display: flex;
-            align-items: center;
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            overflow: hidden;
-            transition: border-color 0.2s;
+        .dropdown-section-label {
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
         }
 
-        .input-group:focus-within {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-        }
-
-        input[type="text"] {
-            border: none;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.875rem;
-            outline: none;
-            background: transparent;
-            width: 250px;
-            font-family: inherit;
-            color: var(--text-main);
-        }
-
-        .checkbox-label {
+        .check-label {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            font-size: 0.875rem;
-            color: var(--text-muted);
+            font-size: 0.8rem;
+            color: var(--text-secondary);
             cursor: pointer;
             user-select: none;
         }
 
-        input[type="checkbox"] {
-            width: 1rem;
-            height: 1rem;
+        .check-label input[type="checkbox"] {
+            width: 0.9rem;
+            height: 0.9rem;
             cursor: pointer;
             accent-color: var(--primary);
         }
 
-        button {
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 0.5rem 1rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            font-family: inherit;
+        .detected-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            padding: 0.25rem 0.5rem;
+            background: var(--bg);
+            border-radius: 4px;
         }
 
-        button:hover {
-            background-color: var(--primary-hover);
-        }
-
-        #cycleWarning {
+        /* ================================================================
+           CYCLE WARNING
+           ================================================================ */
+        .cycle-badge {
             display: none;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.4rem;
             color: var(--danger);
-            font-size: 0.875rem;
-            font-weight: 500;
-            background-color: var(--warning-bg);
-            padding: 0.5rem 0.75rem;
-            border-radius: 6px;
-            border: 1px solid var(--warning-border);
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: var(--danger-soft);
+            padding: 0.3rem 0.65rem;
+            border-radius: 9999px;
+            border: 1px solid var(--danger-border);
         }
 
-        #main-container {
+        /* ================================================================
+           MAIN LAYOUT
+           ================================================================ */
+        .main {
             flex: 1;
             position: relative;
             overflow: hidden;
@@ -219,231 +370,31 @@
         #cy {
             flex: 1;
             position: relative;
-            width: 100%;
-            height: 100%;
-            display: block;
         }
 
-        #sidebar {
-            width: 300px;
-            background-color: var(--panel-bg);
-            border-left: 1px solid var(--border-color);
+        /* ================================================================
+           SIDEBAR
+           ================================================================ */
+        .sidebar {
+            width: 320px;
+            background: var(--bg-elevated);
+            border-left: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            overflow-y: auto;
+            overflow: hidden;
             z-index: 5;
         }
 
-        .sidebar-header {
-            padding: 1rem;
-            border-bottom: 1px solid var(--border-color);
-            font-weight: 600;
-            background: var(--bg-color);
-            position: sticky;
-            top: 0;
-            z-index: 2;
-        }
-
-        .ref-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--border-color);
-            font-size: 0.875rem;
-        }
-
-        .ref-item:hover {
-            background-color: var(--bg-color);
-        }
-
-        .ref-name {
-            word-break: break-all;
-            margin-right: 0.5rem;
-            position: relative;
-        }
-
-        .sidebar-legend {
-            display: flex;
-            gap: 1rem;
-            padding: 0.5rem 1rem;
-            border-bottom: 1px solid var(--border-color);
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 0.35rem;
-        }
-
-        .legend-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-
-        .legend-dot--god {
-            background-color: #f97316;
-        }
-
-        .legend-dot--orphan {
-            background-color: #ef4444;
-        }
-
-        .custom-tooltip {
-            position: fixed;
-            background-color: var(--text-main);
-            color: var(--bg-color);
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            white-space: nowrap;
-            z-index: 9999;
-            pointer-events: none;
-            font-weight: normal;
-            box-shadow: var(--shadow-md);
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-
-        .custom-tooltip.visible {
-            opacity: 1;
-        }
-
-
-        .ref-count {
-            background-color: var(--primary);
-            color: white;
-            padding: 0.25rem 0.5rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            min-width: 1.5rem;
-            text-align: center;
-        }
-
-        .loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: var(--loading-bg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 20;
-            backdrop-filter: blur(2px);
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s;
-        }
-        
-        .loading-overlay.active {
-            opacity: 1;
-            pointer-events: all;
-        }
-
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #e2e8f0;
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .toast {
-            position: fixed;
-            bottom: 1.5rem;
-            left: 50%;
-            transform: translateX(-50%) translateY(0);
-            background: var(--text-main);
-            color: var(--bg-color);
-            padding: 0.75rem 1.25rem;
-            border-radius: 8px;
-            font-size: 0.875rem;
-            font-weight: 500;
-            box-shadow: var(--shadow-md);
-            z-index: 9999;
-            opacity: 0;
-            transition: opacity 0.3s;
-            pointer-events: none;
-        }
-
-        .toast.visible {
-            opacity: 1;
-        }
-
-        .mode-selector {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.375rem;
-        }
-
-        .mode-selector input[type="radio"] {
-            display: none;
-        }
-
-        .mode-selector label {
-            padding: 0.35rem 0.75rem;
-            font-size: 0.8rem;
-            font-weight: 500;
-            cursor: pointer;
-            color: var(--text-muted);
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            user-select: none;
-            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
-        }
-
-        .mode-selector label:hover {
-            border-color: var(--primary);
-            color: var(--text-main);
-        }
-
-        .mode-selector input[type="radio"]:checked + label {
-            background-color: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        /* --- Minimap --- */
-        #minimap {
-            position: absolute;
-            bottom: 12px;
-            left: 12px;
-            width: 180px;
-            height: 130px;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            background: var(--panel-bg);
-            box-shadow: var(--shadow-md);
-            z-index: 15;
-            overflow: hidden;
-        }
-
-        /* --- Sidebar tabs --- */
         .sidebar-tabs {
             display: flex;
-            border-bottom: 1px solid var(--border-color);
-            background: var(--bg-color);
-            position: sticky;
-            top: 0;
-            z-index: 3;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+            flex-shrink: 0;
         }
 
         .sidebar-tab {
             flex: 1;
-            padding: 0.6rem 0.4rem;
+            padding: 0.55rem 0;
             text-align: center;
             font-size: 0.7rem;
             font-weight: 600;
@@ -451,237 +402,605 @@
             color: var(--text-muted);
             border-bottom: 2px solid transparent;
             user-select: none;
-            transition: color 0.15s, border-color 0.15s;
+            transition: all var(--transition);
+            letter-spacing: 0.01em;
         }
 
-        .sidebar-tab:hover { color: var(--text-main); }
+        .sidebar-tab:hover { color: var(--text-secondary); }
+
         .sidebar-tab.active {
             color: var(--primary);
             border-bottom-color: var(--primary);
         }
 
+        .sidebar-scroll {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
         .sidebar-panel { display: none; }
         .sidebar-panel.active { display: block; }
 
-        /* --- Analysis metric row --- */
+        .panel-header {
+            padding: 0.65rem 0.85rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-header .count-badge {
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 0.1rem 0.4rem;
+            border-radius: 9999px;
+            background: var(--primary-soft);
+            color: var(--primary);
+        }
+
+        .panel-hint {
+            padding: 0.6rem 0.85rem;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+            line-height: 1.5;
+        }
+
+        .legend-bar {
+            display: flex;
+            gap: 0.85rem;
+            padding: 0.4rem 0.85rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.65rem;
+            color: var(--text-muted);
+        }
+
+        .legend-item { display: flex; align-items: center; gap: 0.3rem; }
+
+        .legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        /* ================================================================
+           LIST ITEMS
+           ================================================================ */
+        .list-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.55rem 0.85rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+            transition: background var(--transition);
+        }
+
+        .list-row:hover { background: var(--primary-soft); }
+
+        .list-row-left {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .list-row-left input[type="checkbox"] {
+            flex-shrink: 0;
+            width: 0.85rem;
+            height: 0.85rem;
+            accent-color: var(--primary);
+        }
+
+        .file-name {
+            word-break: break-all;
+            cursor: pointer;
+            transition: color var(--transition);
+            line-height: 1.3;
+        }
+
+        .file-name:hover { color: var(--primary); }
+        .file-name.god { color: #f97316; font-weight: 600; }
+        .file-name.orphan { color: var(--danger); font-weight: 500; }
+
+        .count-pill {
+            flex-shrink: 0;
+            background: var(--primary);
+            color: white;
+            padding: 0.15rem 0.45rem;
+            border-radius: 9999px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            min-width: 1.3rem;
+            text-align: center;
+        }
+
+        /* ================================================================
+           METRIC ROWS
+           ================================================================ */
         .metric-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0.5rem 1rem;
-            border-bottom: 1px solid var(--border-color);
-            font-size: 0.8rem;
+            padding: 0.5rem 0.85rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.78rem;
+            gap: 0.5rem;
         }
-        .metric-row:hover { background-color: var(--bg-color); }
-        .metric-label { color: var(--text-muted); }
-        .metric-value { font-weight: 600; }
-        .metric-badge {
+
+        .metric-row:hover { background: var(--primary-soft); }
+        .metric-row.clickable { cursor: pointer; }
+
+        .metric-label {
+            color: var(--text-secondary);
+            min-width: 0;
+            word-break: break-all;
+            line-height: 1.3;
+        }
+
+        .metric-value { font-weight: 600; flex-shrink: 0; }
+
+        .badge {
             padding: 0.15rem 0.5rem;
             border-radius: 9999px;
-            font-size: 0.7rem;
-            font-weight: 600;
-        }
-        .badge-green { background: #dcfce7; color: #166534; }
-        .badge-yellow { background: #fef9c3; color: #854d0e; }
-        .badge-red { background: #fee2e2; color: #991b1b; }
-        [data-theme="dark"] .badge-green { background: #14532d; color: #86efac; }
-        [data-theme="dark"] .badge-yellow { background: #713f12; color: #fde047; }
-        [data-theme="dark"] .badge-red { background: #7f1d1d; color: #fca5a5; }
-
-        /* --- Layers config --- */
-        .layer-input-row {
-            display: flex;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            align-items: center;
-        }
-        .layer-input-row input {
-            flex: 1;
-            padding: 0.35rem 0.5rem;
-            font-size: 0.8rem;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            background: var(--bg-color);
-            color: var(--text-main);
-            font-family: inherit;
+            font-size: 0.65rem;
+            font-weight: 700;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
-        .violation-item {
-            padding: 0.5rem 1rem;
-            border-bottom: 1px solid var(--border-color);
-            font-size: 0.8rem;
+        .badge-green { background: var(--success-soft); color: var(--success); }
+        .badge-yellow { background: var(--warning-soft); color: var(--warning); }
+        .badge-red { background: var(--danger-soft); color: var(--danger); }
+
+        /* ================================================================
+           VIOLATION ROWS
+           ================================================================ */
+        .violation-row {
+            padding: 0.5rem 0.85rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.75rem;
             color: var(--danger);
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: background var(--transition);
         }
-        .violation-item:hover { background: var(--warning-bg); }
 
-        /* --- Path highlight styles --- */
-        .path-hint {
+        .violation-row:hover { background: var(--danger-soft); }
+
+        .violation-row svg { flex-shrink: 0; }
+
+        /* ================================================================
+           LAYER / DIFF INPUT
+           ================================================================ */
+        .action-row {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.6rem 0.85rem;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .action-row input {
+            flex: 1;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.78rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg);
+            color: var(--text);
+            font-family: inherit;
+            transition: border-color var(--transition), box-shadow var(--transition);
+            outline: none;
+        }
+
+        .action-row input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        /* ================================================================
+           CYCLE LIST
+           ================================================================ */
+        .cycle-card {
+            margin: 0.5rem 0.85rem;
+            padding: 0.6rem 0.75rem;
+            background: var(--danger-soft);
+            border: 1px solid var(--danger-border);
+            border-radius: var(--radius-md);
+            font-size: 0.78rem;
+        }
+
+        .cycle-card-title {
+            font-weight: 600;
+            color: var(--danger);
+            margin-bottom: 0.35rem;
+            font-size: 0.72rem;
+        }
+
+        .cycle-card-node {
+            padding: 0.15rem 0;
+            padding-left: 0.5rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: color var(--transition);
+        }
+
+        .cycle-card-node:hover { color: var(--primary); }
+
+        /* ================================================================
+           MINIMAP
+           ================================================================ */
+        #minimap {
             position: absolute;
-            bottom: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--text-main);
-            color: var(--bg-color);
-            padding: 0.4rem 1rem;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            z-index: 16;
+            bottom: 14px;
+            left: 14px;
+            width: 170px;
+            height: 120px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-elevated);
+            box-shadow: var(--shadow-md);
+            z-index: 15;
+            overflow: hidden;
+            opacity: 0.9;
+            transition: opacity var(--transition);
+        }
+
+        #minimap:hover { opacity: 1; }
+
+        /* ================================================================
+           OVERLAYS
+           ================================================================ */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: var(--loading-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            backdrop-filter: blur(4px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .loading-overlay.active { opacity: 1; pointer-events: all; }
+
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty-state {
             display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            max-width: 340px;
+            z-index: 15;
             pointer-events: none;
         }
 
-        /* Layout selector (reuses mode-selector styling) */
-        .layout-selector {
+        .empty-state-icon {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 1rem;
+            background: var(--bg-sunken);
+            border-radius: 50%;
             display: flex;
-            gap: 0.375rem;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
         }
-        .layout-selector input[type="radio"] { display: none; }
-        .layout-selector label {
-            padding: 0.35rem 0.75rem;
+
+        .empty-state-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+
+        .empty-state-desc {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .path-hint {
+            position: absolute;
+            bottom: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--text);
+            color: var(--bg);
+            padding: 0.4rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            z-index: 16;
+            display: none;
+            pointer-events: none;
+            box-shadow: var(--shadow-md);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--text);
+            color: var(--bg);
+            padding: 0.55rem 1.1rem;
+            border-radius: 9999px;
             font-size: 0.8rem;
             font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .toast.visible { opacity: 1; }
+
+        .custom-tooltip {
+            position: fixed;
+            background: var(--text);
+            color: var(--bg);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            z-index: 9999;
+            pointer-events: none;
+            box-shadow: var(--shadow-sm);
+            opacity: 0;
+            transition: opacity 0.12s;
+        }
+
+        .custom-tooltip.visible { opacity: 1; }
+
+        /* ================================================================
+           EXPORT DROPDOWN
+           ================================================================ */
+        .export-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 130px;
+        }
+
+        .export-menu button {
+            width: 100%;
+            text-align: left;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.78rem;
+            border-radius: 4px;
             cursor: pointer;
-            color: var(--text-muted);
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            user-select: none;
-            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+            transition: all var(--transition);
+            font-family: inherit;
+            font-weight: 500;
         }
-        .layout-selector label:hover {
-            border-color: var(--primary);
-            color: var(--text-main);
+
+        .export-menu button:hover {
+            background: var(--primary-soft);
+            color: var(--primary);
         }
-        .layout-selector input[type="radio"]:checked + label {
-            background-color: var(--primary);
-            color: white;
-            border-color: var(--primary);
+
+        /* ================================================================
+           NODE ANALYSIS CARD
+           ================================================================ */
+        .node-card {
+            margin: 0.5rem 0.85rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
         }
+
+        .node-card-header {
+            padding: 0.5rem 0.65rem;
+            font-size: 0.72rem;
+            font-weight: 600;
+            background: var(--bg);
+            color: var(--text-secondary);
+            word-break: break-all;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .node-card .metric-row {
+            padding: 0.4rem 0.65rem;
+            font-size: 0.75rem;
+        }
+
+        .node-card .metric-row:last-child { border-bottom: none; }
+
+        /* ================================================================
+           DIFF SUMMARY
+           ================================================================ */
+        .diff-summary {
+            display: flex;
+            gap: 0.75rem;
+            padding: 0.6rem 0.85rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        .diff-added { color: var(--success); }
+        .diff-removed { color: var(--danger); }
     </style>
 </head>
 <body>
     <noscript>
-        <div style="padding: 2rem; text-align: center; font-family: sans-serif; color: #333;">
+        <div style="padding:3rem;text-align:center;">
             <h2>JavaScript Required</h2>
-            <p>This application requires JavaScript to render the dependency graph. Please enable JavaScript in your browser settings.</p>
+            <p>Please enable JavaScript to use DepGraph.</p>
         </div>
     </noscript>
-    <header>
-        <h1>Dependency Viewer</h1>
-        <div id="controls">
-            <button id="themeToggle" onclick="toggleTheme()" title="Toggle Dark Mode" aria-label="Toggle Dark Mode">
-                <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+
+    <!-- ============================================================
+         TOOLBAR — TOP ROW (branding, path, search, actions)
+         ============================================================ -->
+    <div class="toolbar">
+        <div class="toolbar-top">
+            <div class="brand">
+                <div class="brand-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3m-6.36-2.64 2.12-2.12m8.48-8.48 2.12-2.12M3 12h3m12 0h3M5.64 5.64l2.12 2.12m8.48 8.48 2.12 2.12"/></svg>
+                </div>
+                <span class="brand-name">DepGraph</span>
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <div class="input-wrap input-dir">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <input type="text" id="dirInput" placeholder="Directory path..." value="test_files" onkeydown="if(event.key==='Enter')loadGraph()">
+            </div>
+
+            <button class="btn btn-primary" onclick="loadGraph()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Generate
             </button>
-            <div class="control-group">
-                <div class="input-group">
-                    <input type="text" id="dirInput" placeholder="Enter directory path..." value="test_files" onkeydown="if(event.key === 'Enter') loadGraph()">
-                </div>
-                <div class="input-group">
-                    <input type="text" id="searchInput" placeholder="Search file..." onkeydown="if(event.key === 'Enter') searchNode()">
-                </div>
-                <button onclick="loadGraph()">Generate Graph</button>
-            </div>
-            
-            <div class="control-group">
-                <details class="dropdown">
-                    <summary>
-                        Filters & Settings
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </summary>
-                    <div class="dropdown-content">
-                        <div class="input-group" style="width: 100%;">
-                            <input type="text" id="filterDirInput" placeholder="Filter by subdirectory..." value="" onkeydown="if(event.key === 'Enter') updateGraph()" style="width: 100%;">
-                        </div>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="hideSystemHeaders" checked onchange="updateGraph()">
-                            Hide System Headers
-                        </label>
-                        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Language Mode</div>
-                        <div class="mode-selector">
-                            <input type="radio" name="langMode" id="modeAuto" value="auto" checked onchange="updateGraph()">
-                            <label for="modeAuto">Auto</label>
-                            <input type="radio" name="langMode" id="modeC" value="c" onchange="updateGraph()">
-                            <label for="modeC">C</label>
-                            <input type="radio" name="langMode" id="modeCpp" value="cpp" onchange="updateGraph()">
-                            <label for="modeCpp">C++</label>
-                            <input type="radio" name="langMode" id="modeJs" value="js" onchange="updateGraph()">
-                            <label for="modeJs">TS/JS</label>
-                            <input type="radio" name="langMode" id="modePy" value="py" onchange="updateGraph()">
-                            <label for="modePy">Python</label>
-                            <input type="radio" name="langMode" id="modeJava" value="java" onchange="updateGraph()">
-                            <label for="modeJava">Java</label>
-                            <input type="radio" name="langMode" id="modeGo" value="go" onchange="updateGraph()">
-                            <label for="modeGo">Go</label>
-                            <input type="radio" name="langMode" id="modeRust" value="rust" onchange="updateGraph()">
-                            <label for="modeRust">Rust</label>
-                        </div>
-                        <div id="detectedLangs" style="font-size: 0.75rem; color: var(--text-muted); display: none;"></div>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="hideIsolated" checked onchange="updateGraph()">
-                            Hide Isolated Files
-                        </label>
-                    </div>
-                </details>
+
+            <div class="input-wrap input-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="searchInput" placeholder="Search..." onkeydown="if(event.key==='Enter')searchNode()">
             </div>
 
-            <div class="control-group">
-                <div class="layout-selector">
-                    <input type="radio" name="layoutMode" id="layoutCose" value="cose" checked onchange="changeLayout(this.value)">
-                    <label for="layoutCose">Force</label>
-                    <input type="radio" name="layoutMode" id="layoutDagre" value="dagre" onchange="changeLayout(this.value)">
-                    <label for="layoutDagre">Hierarchy</label>
-                    <input type="radio" name="layoutMode" id="layoutConcentric" value="concentric" onchange="changeLayout(this.value)">
-                    <label for="layoutConcentric">Concentric</label>
+            <div style="flex:1;"></div>
+
+            <div id="cycleWarning" class="cycle-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                Cycle Detected
+            </div>
+
+            <label for="zipUpload" class="btn btn-upload" tabindex="0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload
+            </label>
+            <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs" style="display:none;" onchange="handleZipSelect(event)">
+
+            <details class="dropdown">
+                <summary class="btn btn-ghost">
+                    Export
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="dropdown-body export-menu" style="right:0;left:auto;">
+                    <button onclick="exportJSON()">JSON</button>
+                    <button onclick="exportPNG()">PNG</button>
+                    <button onclick="exportDOT()">DOT / Graphviz</button>
                 </div>
-            </div>
+            </details>
 
-            <div class="control-group">
-                <label class="checkbox-label" style="font-size:0.8rem;">
-                    <input type="checkbox" id="clusterDirs" onchange="toggleClustering()">
-                    Cluster Dirs
-                </label>
-                <label class="checkbox-label" style="font-size:0.8rem;">
-                    <input type="checkbox" id="bundleEdges" onchange="toggleEdgeBundling()">
-                    Bundle Edges
-                </label>
-            </div>
-
-            <div class="control-group">
-                <label for="zipUpload" role="button" tabindex="0" style="background-color: var(--warning-border); color: var(--text-main); border: none; border-radius: 6px; padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; font-family: inherit; display: inline-block;">Upload File/ZIP</label>
-                <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs" style="display: none;" onchange="handleZipSelect(event)">
-                <details class="dropdown">
-                    <summary style="background-color: var(--primary); color: white; border: none;">
-                        Export
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </summary>
-                    <div class="dropdown-content" style="min-width: 120px; display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem;">
-                        <button onclick="exportJSON()" style="width: 100%; background-color: var(--primary); color: white;">Export JSON</button>
-                        <button onclick="exportPNG()" style="width: 100%; background-color: var(--primary); color: white;">Export PNG</button>
-                        <button onclick="exportDOT()" style="width: 100%; background-color: var(--primary); color: white;">Export DOT</button>
-                    </div>
-                </details>
-            </div>
-            
-            <div id="cycleWarning">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
-                Circular Dependency
-            </div>
+            <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+                <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
         </div>
-    </header>
-    
-    <div id="main-container">
-        <div id="loading" class="loading-overlay">
-            <div class="spinner"></div>
+
+        <!-- ============================================================
+             TOOLBAR — BOTTOM ROW (filters, layout, view toggles)
+             ============================================================ -->
+        <div class="toolbar-bottom">
+            <details class="dropdown">
+                <summary class="btn btn-ghost" style="font-size:0.75rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    Filters
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="dropdown-body">
+                    <div class="input-wrap" style="width:100%;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        <input type="text" id="filterDirInput" placeholder="Filter by subdirectory..." value="" onkeydown="if(event.key==='Enter')updateGraph()" style="width:100%;">
+                    </div>
+                    <label class="check-label">
+                        <input type="checkbox" id="hideSystemHeaders" checked onchange="updateGraph()">
+                        Hide system / external imports
+                    </label>
+                    <label class="check-label">
+                        <input type="checkbox" id="hideIsolated" checked onchange="updateGraph()">
+                        Hide isolated files
+                    </label>
+                    <div class="dropdown-section-label">Language</div>
+                    <div class="pill-group">
+                        <input type="radio" name="langMode" id="modeAuto" value="auto" checked onchange="updateGraph()"><label for="modeAuto">Auto</label>
+                        <input type="radio" name="langMode" id="modeC" value="c" onchange="updateGraph()"><label for="modeC">C</label>
+                        <input type="radio" name="langMode" id="modeCpp" value="cpp" onchange="updateGraph()"><label for="modeCpp">C++</label>
+                        <input type="radio" name="langMode" id="modeJs" value="js" onchange="updateGraph()"><label for="modeJs">JS/TS</label>
+                        <input type="radio" name="langMode" id="modePy" value="py" onchange="updateGraph()"><label for="modePy">Python</label>
+                        <input type="radio" name="langMode" id="modeJava" value="java" onchange="updateGraph()"><label for="modeJava">Java</label>
+                        <input type="radio" name="langMode" id="modeGo" value="go" onchange="updateGraph()"><label for="modeGo">Go</label>
+                        <input type="radio" name="langMode" id="modeRust" value="rust" onchange="updateGraph()"><label for="modeRust">Rust</label>
+                    </div>
+                    <div id="detectedLangs" class="detected-label" style="display:none;"></div>
+                </div>
+            </details>
+
+            <div class="toolbar-separator"></div>
+
+            <span style="font-size:0.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">Layout</span>
+            <div class="pill-group">
+                <input type="radio" name="layoutMode" id="layoutCose" value="cose" checked onchange="changeLayout(this.value)"><label for="layoutCose">Force</label>
+                <input type="radio" name="layoutMode" id="layoutDagre" value="dagre" onchange="changeLayout(this.value)"><label for="layoutDagre">Hierarchy</label>
+                <input type="radio" name="layoutMode" id="layoutConcentric" value="concentric" onchange="changeLayout(this.value)"><label for="layoutConcentric">Concentric</label>
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <label class="check-label" style="font-size:0.75rem;">
+                <input type="checkbox" id="clusterDirs" onchange="toggleClustering()">
+                Cluster dirs
+            </label>
+            <label class="check-label" style="font-size:0.75rem;">
+                <input type="checkbox" id="bundleEdges" onchange="toggleEdgeBundling()">
+                Bundle edges
+            </label>
         </div>
+    </div>
+
+    <!-- ============================================================
+         MAIN AREA
+         ============================================================ -->
+    <div class="main">
+        <div id="loading" class="loading-overlay"><div class="spinner"></div></div>
         <div id="cy"></div>
-        <div id="emptyState" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; color:var(--text-muted); font-size:0.95rem; max-width:360px; z-index:15; pointer-events:none;">
-            <div style="font-size:2rem; margin-bottom:0.75rem;">No files found</div>
-            <div>Make sure the directory path is correct and that at least one file type toggle is enabled in Filters &amp; Settings.</div>
+
+        <div id="emptyState" class="empty-state">
+            <div class="empty-state-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <div class="empty-state-title">No files found</div>
+            <div class="empty-state-desc">Check the directory path and make sure a language is enabled in Filters.</div>
         </div>
+
         <div id="minimap"></div>
-        <div class="path-hint" id="pathHint">Click a node to highlight dependencies. Press Esc to clear.</div>
-        <div id="sidebar">
+        <div class="path-hint" id="pathHint">Click a node to trace dependencies &middot; Esc to clear</div>
+
+        <!-- ============================================================
+             SIDEBAR
+             ============================================================ -->
+        <div class="sidebar">
             <div class="sidebar-tabs">
                 <div class="sidebar-tab active" data-panel="panel-refs" onclick="switchTab(this)">Refs</div>
                 <div class="sidebar-tab" data-panel="panel-analysis" onclick="switchTab(this)">Analysis</div>
@@ -690,76 +1009,73 @@
                 <div class="sidebar-tab" data-panel="panel-diff" onclick="switchTab(this)">Diff</div>
             </div>
 
-            <!-- Refs panel (original) -->
-            <div id="panel-refs" class="sidebar-panel active">
-                <div class="sidebar-header" id="cycles-header" style="display: none;">Circular Dependencies</div>
-                <div id="cycles-list"></div>
-                <div class="sidebar-header">Reference Counts</div>
-                <div class="sidebar-legend">
-                    <span class="legend-item"><span class="legend-dot legend-dot--god"></span> God (high refs)</span>
-                    <span class="legend-item"><span class="legend-dot legend-dot--orphan"></span> Orphan (0 refs)</span>
+            <div class="sidebar-scroll">
+                <!-- Refs panel -->
+                <div id="panel-refs" class="sidebar-panel active">
+                    <div class="panel-header" id="cycles-header" style="display:none;">Circular Dependencies</div>
+                    <div id="cycles-list"></div>
+                    <div class="panel-header">Reference Counts <span id="nodeCountBadge" class="count-badge"></span></div>
+                    <div class="legend-bar">
+                        <span class="legend-item"><span class="legend-dot" style="background:#f97316;"></span> God file</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:var(--danger);"></span> Orphan</span>
+                    </div>
+                    <div id="ref-list"></div>
                 </div>
-                <div id="ref-list"></div>
-            </div>
 
-            <!-- Analysis panel -->
-            <div id="panel-analysis" class="sidebar-panel">
-                <div class="sidebar-header">Coupling (Top Pairs)</div>
-                <div id="coupling-list"></div>
-                <div class="sidebar-header">Node Analysis <span style="font-weight:400;font-size:0.75rem;color:var(--text-muted);">(click a node)</span></div>
-                <div id="node-analysis">
-                    <div class="metric-row"><span class="metric-label">Select a node to see metrics</span></div>
+                <!-- Analysis panel -->
+                <div id="panel-analysis" class="sidebar-panel">
+                    <div class="panel-header">Directory Coupling</div>
+                    <div id="coupling-list"></div>
+                    <div class="panel-header">Node Analysis</div>
+                    <div id="node-analysis">
+                        <div class="panel-hint">Click a node on the graph to inspect its metrics.</div>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Unused files panel -->
-            <div id="panel-unused" class="sidebar-panel">
-                <div class="sidebar-header">Potentially Unused Files</div>
-                <div style="padding:0.5rem 1rem;font-size:0.75rem;color:var(--text-muted);border-bottom:1px solid var(--border-color);">
-                    Files with zero inbound edges. Entry points (main, index) may appear here.
+                <!-- Unused files panel -->
+                <div id="panel-unused" class="sidebar-panel">
+                    <div class="panel-header">Potentially Unused <span id="unusedCountBadge" class="count-badge"></span></div>
+                    <div class="panel-hint">Files with zero inbound edges. Entry points (main, index) naturally appear here.</div>
+                    <div id="unused-list"></div>
                 </div>
-                <div id="unused-list"></div>
-            </div>
 
-            <!-- Layers panel -->
-            <div id="panel-layers" class="sidebar-panel">
-                <div class="sidebar-header">Layering Violations</div>
-                <div style="padding:0.5rem 1rem;font-size:0.75rem;color:var(--text-muted);border-bottom:1px solid var(--border-color);">
-                    Define layers top→bottom (e.g. ui, service, data, util). Imports going "up" are violations.
+                <!-- Layers panel -->
+                <div id="panel-layers" class="sidebar-panel">
+                    <div class="panel-header">Layering Violations</div>
+                    <div class="panel-hint">Define layers top-to-bottom (e.g. ui, service, data, util). Imports going "upward" are flagged.</div>
+                    <div class="action-row">
+                        <input type="text" id="layerInput" placeholder="ui, service, data, util" onkeydown="if(event.key==='Enter')checkLayers()">
+                        <button class="btn btn-primary" onclick="checkLayers()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Check</button>
+                    </div>
+                    <div id="violations-list"></div>
                 </div>
-                <div class="layer-input-row">
-                    <input type="text" id="layerInput" placeholder="ui, service, data, util" onkeydown="if(event.key==='Enter')checkLayers()">
-                    <button onclick="checkLayers()" style="padding:0.35rem 0.75rem;font-size:0.8rem;">Check</button>
-                </div>
-                <div id="violations-list"></div>
-            </div>
 
-            <!-- Diff panel -->
-            <div id="panel-diff" class="sidebar-panel">
-                <div class="sidebar-header">Diff Mode</div>
-                <div style="padding:0.5rem 1rem;font-size:0.75rem;color:var(--text-muted);border-bottom:1px solid var(--border-color);">
-                    Load a second graph to compare. Paste JSON or load from a second directory.
+                <!-- Diff panel -->
+                <div id="panel-diff" class="sidebar-panel">
+                    <div class="panel-header">Diff Mode</div>
+                    <div class="panel-hint">Compare against a second directory to see added/removed nodes and edges.</div>
+                    <div class="action-row">
+                        <input type="text" id="diffDirInput" placeholder="Second directory path...">
+                        <button class="btn btn-primary" onclick="loadDiff()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Diff</button>
+                    </div>
+                    <div id="diff-summary"></div>
                 </div>
-                <div class="layer-input-row">
-                    <input type="text" id="diffDirInput" placeholder="Second directory path...">
-                    <button onclick="loadDiff()" style="padding:0.35rem 0.75rem;font-size:0.8rem;">Diff</button>
-                </div>
-                <div id="diff-summary" style="padding:0.5rem 1rem;font-size:0.8rem;"></div>
             </div>
         </div>
     </div>
 
+    <!-- ============================================================
+         SCRIPTS
+         ============================================================ -->
     <script>
-        function showToast(message, duration = 3000) {
-            const toast = document.createElement('div');
-            toast.className = 'toast';
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            requestAnimationFrame(() => toast.classList.add('visible'));
-            setTimeout(() => {
-                toast.classList.remove('visible');
-                setTimeout(() => toast.remove(), 300);
-            }, duration);
+        // --- Utilities ---
+        function showToast(msg, ms = 3000) {
+            const t = document.createElement('div');
+            t.className = 'toast';
+            t.textContent = msg;
+            document.body.appendChild(t);
+            requestAnimationFrame(() => t.classList.add('visible'));
+            setTimeout(() => { t.classList.remove('visible'); setTimeout(() => t.remove(), 300); }, ms);
         }
 
         const tooltip = document.createElement('div');
@@ -767,49 +1083,38 @@
         document.body.appendChild(tooltip);
 
         function attachTooltip(el, text) {
-            el.addEventListener('mouseenter', (e) => {
+            el.addEventListener('mouseenter', () => {
                 tooltip.textContent = text;
-                const rect = el.getBoundingClientRect();
-                tooltip.style.left = rect.left + rect.width / 2 + 'px';
-                tooltip.style.top = rect.top - 8 + 'px';
+                const r = el.getBoundingClientRect();
+                tooltip.style.left = r.left + r.width / 2 + 'px';
+                tooltip.style.top = r.top - 8 + 'px';
                 tooltip.style.transform = 'translate(-50%, -100%)';
                 tooltip.classList.add('visible');
             });
-            el.addEventListener('mouseleave', () => {
-                tooltip.classList.remove('visible');
-            });
+            el.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
         }
 
-        // SVG paths for the theme toggle icon
-        const ICON_MOON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
-        const ICON_SUN = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
+        // --- Theme ---
+        const ICON_MOON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+        const ICON_SUN = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
 
-        const savedTheme = localStorage.getItem('theme') || 'light';
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
 
-        function applyThemeIcon(theme) {
-            document.getElementById('themeIcon').innerHTML = theme === 'dark' ? ICON_SUN : ICON_MOON;
-        }
+        function applyThemeIcon(t) { document.getElementById('themeIcon').innerHTML = t === 'dark' ? ICON_SUN : ICON_MOON; }
 
         function toggleTheme() {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            applyThemeIcon(newTheme);
+            const n = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', n);
+            localStorage.setItem('theme', n);
+            applyThemeIcon(n);
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            applyThemeIcon(document.documentElement.getAttribute('data-theme'));
-        });
+        window.addEventListener('DOMContentLoaded', () => applyThemeIcon(document.documentElement.getAttribute('data-theme')));
 
-        let cy;
-        let currentGraphData = null;
-        let currentLayout = 'cose';
-        let clusteringEnabled = false;
-        let bundlingEnabled = false;
-        let minimapCy = null;
-        let pathHighlightActive = false;
+        // --- State ---
+        let cy, currentGraphData = null, minimapCy = null, pathHighlightActive = false;
+        let currentLayout = 'cose', clusteringEnabled = false, bundlingEnabled = false;
+        let currentMode = 'local', currentUploadedFile = null;
 
         // --- Sidebar tab switching ---
         function switchTab(tab) {
@@ -819,49 +1124,24 @@
             document.getElementById(tab.dataset.panel).classList.add('active');
         }
 
-        // --- Layout switching ---
+        // --- Layout ---
         function getLayoutConfig(name) {
-            const saved = name || currentLayout;
-            if (saved === 'dagre') {
-                return { name: 'dagre', rankDir: 'TB', nodeSep: 80, rankSep: 200, padding: 60 };
-            }
-            if (saved === 'concentric') {
-                return {
-                    name: 'concentric',
-                    concentric: function(node) { return node.indegree(); },
-                    levelWidth: function() { return 2; },
-                    padding: 60,
-                    minNodeSpacing: 80,
-                };
-            }
-            // Default: cose
-            return {
-                name: 'cose',
-                padding: 200,
-                nodeRepulsion: function() { return 80000000; },
-                idealEdgeLength: function() { return 800; },
-                edgeElasticity: function() { return 100; },
-                gravity: 50,
-                numIter: 2000,
-            };
+            const l = name || currentLayout;
+            if (l === 'dagre') return { name: 'dagre', rankDir: 'TB', nodeSep: 80, rankSep: 200, padding: 60 };
+            if (l === 'concentric') return { name: 'concentric', concentric: n => n.indegree(), levelWidth: () => 2, padding: 60, minNodeSpacing: 80 };
+            return { name: 'cose', padding: 200, nodeRepulsion: () => 80000000, idealEdgeLength: () => 800, edgeElasticity: () => 100, gravity: 50, numIter: 2000 };
         }
 
         function changeLayout(name) {
             currentLayout = name;
             localStorage.setItem('layout', name);
-            if (cy) {
-                cy.layout(getLayoutConfig(name)).run();
-                updateMinimap();
-            }
+            if (cy) { cy.layout(getLayoutConfig(name)).run(); updateMinimap(); }
         }
 
-        // Restore last layout
-        const savedLayout = localStorage.getItem('layout');
-        if (savedLayout && document.getElementById('layout' + savedLayout.charAt(0).toUpperCase() + savedLayout.slice(1))) {
-            currentLayout = savedLayout;
-            const radio = document.querySelector(`input[name="layoutMode"][value="${savedLayout}"]`);
-            if (radio) radio.checked = true;
-        }
+        (function restoreLayout() {
+            const s = localStorage.getItem('layout');
+            if (s) { currentLayout = s; const r = document.querySelector(`input[name="layoutMode"][value="${s}"]`); if (r) r.checked = true; }
+        })();
 
         // --- Minimap ---
         function updateMinimap() {
@@ -871,89 +1151,53 @@
                 container: document.getElementById('minimap'),
                 elements: cy.elements().jsons(),
                 style: [
-                    { selector: 'node', style: { 'width': 6, 'height': 6, 'background-color': 'data(color)', 'label': '' } },
-                    { selector: 'edge', style: { 'width': 1, 'line-color': '#94a3b8', 'target-arrow-shape': 'none' } },
+                    { selector: 'node', style: { width: 5, height: 5, 'background-color': 'data(color)', label: '' } },
+                    { selector: 'edge', style: { width: 0.5, 'line-color': '#94a3b8', 'target-arrow-shape': 'none' } },
                     { selector: 'edge.cycle', style: { 'line-color': '#FF4136' } },
                 ],
                 layout: { name: 'preset' },
-                userZoomingEnabled: false,
-                userPanningEnabled: false,
-                boxSelectionEnabled: false,
-                autoungrabify: true,
+                userZoomingEnabled: false, userPanningEnabled: false, boxSelectionEnabled: false, autoungrabify: true,
             });
             minimapCy.fit();
-            minimapCy.on('tap', function(e) {
-                if (e.target === minimapCy) {
-                    const pos = e.position;
-                    cy.animate({ center: { eles: cy.nodes().closest(pos) } }, { duration: 300 });
-                }
-            });
         }
 
         // --- Path Highlighting ---
         function highlightPaths(nodeId) {
             if (!cy) return;
             const node = cy.getElementById(nodeId);
-            if (!node || node.length === 0) return;
+            if (!node || !node.length) return;
 
-            // BFS upstream (dependencies: follow outgoing edges)
-            const upstream = new Set();
-            const upQueue = [nodeId];
-            while (upQueue.length) {
-                const cur = upQueue.shift();
-                cy.getElementById(cur).outgoers('node').forEach(n => {
-                    if (!upstream.has(n.id()) && n.id() !== nodeId) {
-                        upstream.add(n.id());
-                        upQueue.push(n.id());
-                    }
-                });
-            }
-
-            // BFS downstream (dependents: follow incoming edges)
-            const downstream = new Set();
-            const downQueue = [nodeId];
-            while (downQueue.length) {
-                const cur = downQueue.shift();
-                cy.getElementById(cur).incomers('node').forEach(n => {
-                    if (!downstream.has(n.id()) && n.id() !== nodeId) {
-                        downstream.add(n.id());
-                        downQueue.push(n.id());
-                    }
-                });
-            }
-
-            // Dim everything first
-            cy.elements().style('opacity', 0.15);
-
-            // Highlight selected node
-            node.style({ 'opacity': 1, 'border-width': 4, 'border-color': '#facc15' });
-
-            // Upstream in blue
-            upstream.forEach(id => {
-                cy.getElementById(id).style({ 'opacity': 1, 'background-color': '#3b82f6' });
-            });
-            cy.edges().forEach(e => {
-                if ((upstream.has(e.source().id()) || e.source().id() === nodeId) &&
-                    (upstream.has(e.target().id()) || e.target().id() === nodeId)) {
-                    e.style({ 'opacity': 1, 'line-color': '#3b82f6', 'target-arrow-color': '#3b82f6' });
+            const bfs = (startId, getNeighbors) => {
+                const visited = new Set();
+                const queue = [startId];
+                while (queue.length) {
+                    const cur = queue.shift();
+                    getNeighbors(cur).forEach(n => {
+                        if (!visited.has(n.id()) && n.id() !== startId) { visited.add(n.id()); queue.push(n.id()); }
+                    });
                 }
-            });
+                return visited;
+            };
 
-            // Downstream in orange
-            downstream.forEach(id => {
-                cy.getElementById(id).style({ 'opacity': 1, 'background-color': '#f97316' });
-            });
+            const upstream = bfs(nodeId, id => cy.getElementById(id).outgoers('node'));
+            const downstream = bfs(nodeId, id => cy.getElementById(id).incomers('node'));
+
+            cy.elements().style('opacity', 0.12);
+            node.style({ opacity: 1, 'border-width': 4, 'border-color': '#facc15' });
+
+            upstream.forEach(id => cy.getElementById(id).style({ opacity: 1, 'background-color': '#6366f1' }));
+            downstream.forEach(id => cy.getElementById(id).style({ opacity: 1, 'background-color': '#f97316' }));
+
             cy.edges().forEach(e => {
-                if ((downstream.has(e.source().id()) || e.source().id() === nodeId) &&
-                    (downstream.has(e.target().id()) || e.target().id() === nodeId)) {
-                    e.style({ 'opacity': 1, 'line-color': '#f97316', 'target-arrow-color': '#f97316' });
-                }
+                const s = e.source().id(), t = e.target().id();
+                if ((upstream.has(s) || s === nodeId) && (upstream.has(t) || t === nodeId))
+                    e.style({ opacity: 1, 'line-color': '#6366f1', 'target-arrow-color': '#6366f1' });
+                if ((downstream.has(s) || s === nodeId) && (downstream.has(t) || t === nodeId))
+                    e.style({ opacity: 1, 'line-color': '#f97316', 'target-arrow-color': '#f97316' });
             });
 
             pathHighlightActive = true;
             document.getElementById('pathHint').style.display = 'block';
-
-            // Show node analysis
             showNodeAnalysis(nodeId, upstream.size, downstream.size);
         }
 
@@ -964,65 +1208,50 @@
             document.getElementById('pathHint').style.display = 'none';
         }
 
-        function showNodeAnalysis(nodeId, upstreamCount, downstreamCount) {
-            const node = currentGraphData.nodes.find(n => n.data.id === nodeId);
-            if (!node) return;
-            const d = node.data;
+        function showNodeAnalysis(nodeId, up, down) {
+            const n = currentGraphData.nodes.find(n => n.data.id === nodeId);
+            if (!n) return;
+            const d = n.data;
             const el = document.getElementById('node-analysis');
+            const bCls = (v, lo, hi) => v > hi ? 'badge-red' : v > lo ? 'badge-yellow' : 'badge-green';
             el.innerHTML = `
-                <div class="metric-row"><span class="metric-label">File</span><span class="metric-value" style="word-break:break-all;">${d.id}</span></div>
-                <div class="metric-row"><span class="metric-label">Dep Depth</span><span class="metric-badge ${d.depth > 5 ? 'badge-red' : d.depth > 2 ? 'badge-yellow' : 'badge-green'}">${d.depth}</span></div>
-                <div class="metric-row"><span class="metric-label">Impact (downstream)</span><span class="metric-badge ${d.impact > 10 ? 'badge-red' : d.impact > 3 ? 'badge-yellow' : 'badge-green'}">${d.impact} files</span></div>
-                <div class="metric-row"><span class="metric-label">Stability (I)</span><span class="metric-badge ${d.stability > 0.7 ? 'badge-red' : d.stability < 0.3 ? 'badge-green' : 'badge-yellow'}">${d.stability}</span></div>
-                <div class="metric-row"><span class="metric-label">Upstream deps</span><span class="metric-value">${upstreamCount}</span></div>
-                <div class="metric-row"><span class="metric-label">Downstream deps</span><span class="metric-value">${downstreamCount}</span></div>
-            `;
-            // Switch to analysis tab
-            const tab = document.querySelector('[data-panel="panel-analysis"]');
-            switchTab(tab);
+                <div class="node-card">
+                    <div class="node-card-header">${d.id}</div>
+                    <div class="metric-row"><span class="metric-label">Dep Depth</span><span class="badge ${bCls(d.depth, 2, 5)}">${d.depth}</span></div>
+                    <div class="metric-row"><span class="metric-label">Impact</span><span class="badge ${bCls(d.impact, 3, 10)}">${d.impact} file${d.impact !== 1 ? 's' : ''}</span></div>
+                    <div class="metric-row"><span class="metric-label">Stability (I)</span><span class="badge ${d.stability > 0.7 ? 'badge-red' : d.stability < 0.3 ? 'badge-green' : 'badge-yellow'}">${d.stability}</span></div>
+                    <div class="metric-row"><span class="metric-label">Upstream</span><span class="metric-value">${up}</span></div>
+                    <div class="metric-row"><span class="metric-label">Downstream</span><span class="metric-value">${down}</span></div>
+                </div>`;
+            switchTab(document.querySelector('[data-panel="panel-analysis"]'));
         }
 
-        // --- Directory Clustering ---
-        function toggleClustering() {
-            clusteringEnabled = document.getElementById('clusterDirs').checked;
-            if (currentGraphData) renderGraph(currentGraphData);
-        }
+        // --- Toggles ---
+        function toggleClustering() { clusteringEnabled = document.getElementById('clusterDirs').checked; if (currentGraphData) renderGraph(currentGraphData); }
+        function toggleEdgeBundling() { bundlingEnabled = document.getElementById('bundleEdges').checked; if (currentGraphData) renderGraph(currentGraphData); }
 
-        // --- Edge Bundling ---
-        function toggleEdgeBundling() {
-            bundlingEnabled = document.getElementById('bundleEdges').checked;
-            if (currentGraphData) renderGraph(currentGraphData);
-        }
-
-        // --- Layering Violation Check ---
+        // --- Layers ---
         function checkLayers() {
             const input = document.getElementById('layerInput').value.trim();
             if (!input || !currentGraphData) return;
-            const layers = input.split(',').map(s => s.trim()).filter(Boolean);
             fetch('/api/layers', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ layers, graph: currentGraphData }),
-            })
-            .then(r => r.json())
-            .then(data => {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ layers: input.split(',').map(s => s.trim()).filter(Boolean), graph: currentGraphData }),
+            }).then(r => r.json()).then(data => {
                 const list = document.getElementById('violations-list');
                 list.innerHTML = '';
-                if (!data.violations || data.violations.length === 0) {
-                    list.innerHTML = '<div class="metric-row"><span class="metric-label" style="color:#16a34a;">No violations found!</span></div>';
+                if (!data.violations || !data.violations.length) {
+                    list.innerHTML = '<div class="metric-row"><span class="metric-label" style="color:var(--success);">No violations found</span></div>';
                     return;
                 }
                 data.violations.forEach(v => {
                     const div = document.createElement('div');
-                    div.className = 'violation-item';
-                    div.textContent = `${v.source} (${v.source_layer}) → ${v.target} (${v.target_layer})`;
+                    div.className = 'violation-row';
+                    div.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/></svg> ${v.source} <span style="color:var(--text-muted);">(${v.source_layer})</span> → ${v.target} <span style="color:var(--text-muted);">(${v.target_layer})</span>`;
                     div.onclick = () => {
-                        // Highlight the offending edge
                         clearPathHighlight();
                         cy.edges().forEach(e => {
-                            if (e.source().id() === v.source && e.target().id() === v.target) {
-                                e.style({ 'line-color': '#ef4444', 'target-arrow-color': '#ef4444', 'width': 6 });
-                            }
+                            if (e.source().id() === v.source && e.target().id() === v.target) e.style({ 'line-color': '#ef4444', 'target-arrow-color': '#ef4444', width: 6 });
                         });
                         const src = cy.getElementById(v.source);
                         if (src.length) cy.animate({ center: { eles: src }, zoom: 1.5 }, { duration: 400 });
@@ -1032,613 +1261,281 @@
             });
         }
 
-        // --- Diff Mode ---
+        // --- Diff ---
         function loadDiff() {
             const dir2 = document.getElementById('diffDirInput').value.trim();
             if (!dir2 || !currentGraphData) return;
             const filters = getFilterValues();
-            const params = new URLSearchParams({ dir: dir2, ...filters });
-            fetch('/api/graph?' + params)
-                .then(r => r.json())
-                .then(newGraph => {
-                    if (newGraph.error) { showToast('Error: ' + newGraph.error); return; }
-                    fetch('/api/diff', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ old: currentGraphData, new: newGraph }),
-                    })
-                    .then(r => r.json())
-                    .then(diff => renderDiff(diff));
+            fetch('/api/graph?' + new URLSearchParams({ dir: dir2, ...filters }))
+                .then(r => r.json()).then(ng => {
+                    if (ng.error) { showToast('Error: ' + ng.error); return; }
+                    fetch('/api/diff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ old: currentGraphData, new: ng }) })
+                        .then(r => r.json()).then(renderDiff);
                 });
         }
 
         function renderDiff(diff) {
             if (cy) cy.destroy();
-            // Assign colors based on diff status
-            diff.nodes.forEach(n => {
-                if (n.data.diff === 'added') n.data.color = '#22c55e';
-                else if (n.data.diff === 'removed') n.data.color = '#ef4444';
-                else { n.data.color = '#94a3b8'; }
-                n.data.size = n.data.size || 80;
-            });
-            diff.edges.forEach(e => {
-                if (e.data.diff === 'added') e.data.color = '#22c55e';
-                else if (e.data.diff === 'removed') e.data.color = '#ef4444';
-                else e.data.color = '#cbd5e1';
-            });
+            diff.nodes.forEach(n => { n.data.color = n.data.diff === 'added' ? '#22c55e' : n.data.diff === 'removed' ? '#ef4444' : '#94a3b8'; n.data.size = n.data.size || 80; });
+            diff.edges.forEach(e => { e.data.color = e.data.diff === 'added' ? '#22c55e' : e.data.diff === 'removed' ? '#ef4444' : '#cbd5e1'; });
             cy = cytoscape({
                 container: document.getElementById('cy'),
                 elements: [...diff.nodes, ...diff.edges],
                 style: [
-                    { selector: 'node', style: {
-                        'width': 'data(size)', 'height': 'data(size)',
-                        'background-color': 'data(color)', 'label': 'data(id)',
-                        'color': '#fff', 'text-outline-color': 'data(color)',
-                        'text-outline-width': 2, 'font-size': '14px',
-                        'text-valign': 'center', 'text-halign': 'center',
-                    }},
-                    { selector: 'edge', style: {
-                        'width': 3, 'line-color': 'data(color)',
-                        'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle',
-                        'curve-style': 'bezier',
-                    }},
+                    { selector: 'node', style: { width: 'data(size)', height: 'data(size)', 'background-color': 'data(color)', label: 'data(id)', color: '#fff', 'text-outline-color': 'data(color)', 'text-outline-width': 2, 'font-size': '14px', 'text-valign': 'center', 'text-halign': 'center' } },
+                    { selector: 'edge', style: { width: 3, 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier' } },
                 ],
                 layout: getLayoutConfig(),
             });
-            // Summary
-            const added = diff.nodes.filter(n => n.data.diff === 'added').length;
-            const removed = diff.nodes.filter(n => n.data.diff === 'removed').length;
-            const addedE = diff.edges.filter(e => e.data.diff === 'added').length;
-            const removedE = diff.edges.filter(e => e.data.diff === 'removed').length;
-            document.getElementById('diff-summary').innerHTML =
-                `<span style="color:#22c55e;">+${added} nodes, +${addedE} edges</span> / <span style="color:#ef4444;">-${removed} nodes, -${removedE} edges</span>`;
+            const a = diff.nodes.filter(n => n.data.diff === 'added').length, r = diff.nodes.filter(n => n.data.diff === 'removed').length;
+            const ae = diff.edges.filter(e => e.data.diff === 'added').length, re = diff.edges.filter(e => e.data.diff === 'removed').length;
+            document.getElementById('diff-summary').innerHTML = `<div class="diff-summary"><span class="diff-added">+${a} nodes, +${ae} edges</span><span class="diff-removed">-${r} nodes, -${re} edges</span></div>`;
             showToast('Diff loaded');
         }
 
+        // --- Exports ---
         function exportJSON() {
             if (!currentGraphData) return;
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentGraphData, null, 2));
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "dependency_graph.json");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
+            const a = document.createElement('a');
+            a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentGraphData, null, 2));
+            a.download = "dependency_graph.json"; document.body.appendChild(a); a.click(); a.remove();
         }
 
         function exportPNG() {
             if (!cy) return;
-            const b64 = cy.png({
-                output: 'base64uri',
-                bg: getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim(),
-                full: true
-            });
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", b64);
-            downloadAnchorNode.setAttribute("download", "dependency_graph.png");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
+            const a = document.createElement('a');
+            a.href = cy.png({ output: 'base64uri', bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(), full: true });
+            a.download = "dependency_graph.png"; document.body.appendChild(a); a.click(); a.remove();
         }
 
         function exportDOT() {
             if (!currentGraphData) return;
-            let dotStr = 'digraph DependencyGraph {\n';
-            dotStr += '  node [shape=box, style=filled, fontname="Inter"];\n';
-            dotStr += '  rankdir=LR;\n';
-            
-            // Add nodes
-            if (currentGraphData.nodes) {
-                currentGraphData.nodes.forEach(node => {
-                    const id = node.data.id;
-                    const color = node.data.color || "#cccccc";
-                    dotStr += `  "${id}" [fillcolor="${color}"];\n`;
-                });
-            }
-            
-            // Add edges
-            if (currentGraphData.edges) {
-                currentGraphData.edges.forEach(edge => {
-                    const source = edge.data.source;
-                    const target = edge.data.target;
-                    const color = edge.data.color || "#94a3b8";
-                    const isCycle = edge.classes && edge.classes.includes("cycle");
-                    const cycleAttr = isCycle ? ', color="red", penwidth=2' : `color="${color}"`;
-                    dotStr += `  "${source}" -> "${target}" [${cycleAttr}];\n`;
-                });
-            }
-            
-            dotStr += '}\n';
-
-            const dataStr = "data:text/vnd.graphviz;charset=utf-8," + encodeURIComponent(dotStr);
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "dependency_graph.dot");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
+            let s = 'digraph DependencyGraph {\n  node [shape=box, style=filled, fontname="Inter"];\n  rankdir=LR;\n';
+            (currentGraphData.nodes || []).forEach(n => { s += `  "${n.data.id}" [fillcolor="${n.data.color || '#ccc'}"];\n`; });
+            (currentGraphData.edges || []).forEach(e => {
+                const cyc = e.classes && e.classes.includes('cycle');
+                s += `  "${e.data.source}" -> "${e.data.target}" [${cyc ? 'color="red", penwidth=2' : `color="${e.data.color || '#94a3b8'}"`}];\n`;
+            });
+            s += '}\n';
+            const a = document.createElement('a');
+            a.href = "data:text/vnd.graphviz;charset=utf-8," + encodeURIComponent(s);
+            a.download = "dependency_graph.dot"; document.body.appendChild(a); a.click(); a.remove();
         }
 
+        // --- Search ---
         function searchNode() {
             if (!cy) return;
-            const query = document.getElementById('searchInput').value.toLowerCase();
-            if (!query) {
-                cy.nodes().style({
-                    'border-width': 0,
-                    'border-color': 'transparent'
-                });
-                return;
-            }
-            
-            const nodes = cy.nodes().filter(n => n.id().toLowerCase().includes(query));
-            cy.nodes().style({
-                'border-width': 0,
-                'border-color': 'transparent'
-            });
-            
-            if (nodes.length > 0) {
-                nodes.style({
-                    'border-width': 4,
-                    'border-color': '#ffeb3b',
-                    'border-style': 'solid'
-                });
-                cy.animate({
-                    center: { eles: nodes[0] },
-                    zoom: 1.5
-                }, { duration: 500 });
-            } else {
-                showToast('No matching files found');
-            }
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            if (!q) { cy.nodes().style({ 'border-width': 0, 'border-color': 'transparent' }); return; }
+            const nodes = cy.nodes().filter(n => n.id().toLowerCase().includes(q));
+            cy.nodes().style({ 'border-width': 0, 'border-color': 'transparent' });
+            if (nodes.length) {
+                nodes.style({ 'border-width': 4, 'border-color': '#facc15', 'border-style': 'solid' });
+                cy.animate({ center: { eles: nodes[0] }, zoom: 1.5 }, { duration: 500 });
+            } else showToast('No matching files found');
         }
 
+        // --- Main Render ---
         function renderGraph(data) {
             currentGraphData = data;
-            const warning = document.getElementById('cycleWarning');
+            const emptyState = document.getElementById('emptyState');
+            emptyState.style.display = (!data.nodes || !data.nodes.length) ? 'block' : 'none';
+
+            // Cycles
             const cyclesHeader = document.getElementById('cycles-header');
             const cyclesList = document.getElementById('cycles-list');
-            const emptyState = document.getElementById('emptyState');
-
-            emptyState.style.display = (!data.nodes || data.nodes.length === 0) ? 'block' : 'none';
-            
+            const warning = document.getElementById('cycleWarning');
             if (data.has_cycles) {
                 warning.style.display = 'flex';
-                if (data.cycles && data.cycles.length > 0) {
-                    cyclesHeader.style.display = 'block';
-                    cyclesList.innerHTML = '';
-                    
-                    data.cycles.forEach((cycle, index) => {
-                        const div = document.createElement('div');
-                        div.className = 'ref-item';
-                        div.style.flexDirection = 'column';
-                        div.style.alignItems = 'flex-start';
-                        div.style.gap = '8px';
-                        div.style.backgroundColor = 'var(--warning-bg)';
-                        
-                        const title = document.createElement('div');
-                        title.style.fontWeight = '600';
-                        title.style.color = 'var(--danger)';
-                        title.innerText = `Cycle ${index + 1} (${cycle.length} files)`;
-                        div.appendChild(title);
-                        
-                        cycle.forEach(nodeId => {
-                            const nodeDiv = document.createElement('div');
-                            nodeDiv.style.display = 'flex';
-                            nodeDiv.style.alignItems = 'center';
-                            nodeDiv.style.gap = '8px';
-                            nodeDiv.style.marginLeft = '8px';
-                            
-                            const nameSpan = document.createElement('span');
-                            nameSpan.className = 'ref-name';
-                            nameSpan.style.cursor = 'pointer';
-                            attachTooltip(nameSpan, 'Center node');
-                            nameSpan.textContent = nodeId;
-                            nodeDiv.appendChild(nameSpan);
-                            nameSpan.onclick = () => {
-                                const node = cy.getElementById(nodeId);
-                                if (node.length > 0) {
-                                    cy.animate({
-                                        center: { eles: node },
-                                        zoom: 1.5
-                                    }, { duration: 500 });
-                                }
-                            };
-                            div.appendChild(nodeDiv);
-                        });
-                        
-                        cyclesList.appendChild(div);
-                    });
-                }
-            } else {
-                warning.style.display = 'none';
-                cyclesHeader.style.display = 'none';
+                cyclesHeader.style.display = '';
                 cyclesList.innerHTML = '';
-            }
-            if (cy) { cy.destroy(); }
+                (data.cycles || []).forEach((cycle, i) => {
+                    const card = document.createElement('div');
+                    card.className = 'cycle-card';
+                    card.innerHTML = `<div class="cycle-card-title">Cycle ${i + 1} &middot; ${cycle.length} files</div>`;
+                    cycle.forEach(nid => {
+                        const row = document.createElement('div');
+                        row.className = 'cycle-card-node';
+                        row.textContent = nid;
+                        row.onclick = () => { const n = cy.getElementById(nid); if (n.length) cy.animate({ center: { eles: n }, zoom: 1.5 }, { duration: 400 }); };
+                        card.appendChild(row);
+                    });
+                    cyclesList.appendChild(card);
+                });
+            } else { warning.style.display = 'none'; cyclesHeader.style.display = 'none'; cyclesList.innerHTML = ''; }
 
-            // --- Directory clustering: add parent compound nodes ---
+            if (cy) cy.destroy();
+
+            // Clustering
             let elements = [...data.nodes, ...data.edges];
             if (clusteringEnabled) {
                 const dirs = new Set();
                 data.nodes.forEach(n => {
-                    const dir = n.data.id.includes('/') ? n.data.id.substring(0, n.data.id.lastIndexOf('/')) : '.';
-                    dirs.add(dir);
-                    n.data.parent = 'dir_' + dir;
+                    const d = n.data.id.includes('/') ? n.data.id.substring(0, n.data.id.lastIndexOf('/')) : '.';
+                    dirs.add(d); n.data.parent = 'dir_' + d;
                 });
-                dirs.forEach(dir => {
-                    elements.unshift({
-                        data: {
-                            id: 'dir_' + dir,
-                            label: dir || '.',
-                        },
-                        classes: 'compound',
-                    });
-                });
+                dirs.forEach(d => elements.unshift({ data: { id: 'dir_' + d, label: d || '.' }, classes: 'compound' }));
             }
 
-            // --- Edge bundling: merge same-dir-to-same-dir edges ---
-            let finalEdges = data.edges;
+            // Edge bundling
             if (bundlingEnabled) {
-                const bundleMap = {};
-                const individualEdges = [];
+                const bundleMap = {}, individual = [];
                 data.edges.forEach(e => {
-                    const srcDir = e.data.source.includes('/') ? e.data.source.substring(0, e.data.source.lastIndexOf('/')) : '.';
-                    const tgtDir = e.data.target.includes('/') ? e.data.target.substring(0, e.data.target.lastIndexOf('/')) : '.';
-                    if (srcDir !== tgtDir) {
-                        const key = srcDir + '→' + tgtDir;
-                        if (!bundleMap[key]) bundleMap[key] = { srcDir, tgtDir, count: 0, color: e.data.color, edges: [] };
-                        bundleMap[key].count++;
-                        bundleMap[key].edges.push(e);
-                    } else {
-                        individualEdges.push(e);
-                    }
+                    const sd = e.data.source.includes('/') ? e.data.source.substring(0, e.data.source.lastIndexOf('/')) : '.';
+                    const td = e.data.target.includes('/') ? e.data.target.substring(0, e.data.target.lastIndexOf('/')) : '.';
+                    if (sd !== td) {
+                        const k = sd + '→' + td;
+                        if (!bundleMap[k]) bundleMap[k] = { sd, td, count: 0, color: e.data.color, edges: [] };
+                        bundleMap[k].count++; bundleMap[k].edges.push(e);
+                    } else individual.push(e);
                 });
-                // Replace multi-edges with bundled edges where count > 1
-                const bundledEdges = [];
+                const bundled = [];
                 Object.values(bundleMap).forEach(b => {
-                    if (b.count > 1 && clusteringEnabled) {
-                        bundledEdges.push({
-                            data: {
-                                source: 'dir_' + b.srcDir,
-                                target: 'dir_' + b.tgtDir,
-                                color: b.color,
-                                label: String(b.count),
-                                bundled: true,
-                            }
-                        });
-                    } else {
-                        bundledEdges.push(...b.edges);
-                    }
+                    if (b.count > 1 && clusteringEnabled) bundled.push({ data: { source: 'dir_' + b.sd, target: 'dir_' + b.td, color: b.color, label: String(b.count), bundled: true } });
+                    else bundled.push(...b.edges);
                 });
-                finalEdges = [...individualEdges, ...bundledEdges];
-                elements = elements.filter(e => !e.data || !e.data.source); // remove old edges
-                elements = [...elements, ...finalEdges];
+                elements = elements.filter(e => !e.data || !e.data.source);
+                elements = [...elements, ...individual, ...bundled];
             }
 
             cy = cytoscape({
                 container: document.getElementById('cy'),
-                elements: elements,
+                elements,
                 style: [
-                    {
-                        selector: 'node',
-                        style: {
-                            'width': 'data(size)',
-                            'height': 'data(size)',
-                            'background-color': 'data(color)',
-                            'label': 'data(id)',
-                            'color': '#fff',
-                            'text-outline-color': 'data(color)',
-                            'text-outline-width': 2,
-                            'font-size': function(ele) { return Math.max(14, Math.min(36, (ele.data('size') || 80) / 8)) + 'px'; },
-                            'text-valign': 'center',
-                            'text-halign': 'center'
-                        }
-                    },
-                    {
-                        selector: ':parent',
-                        style: {
-                            'background-color': 'rgba(100,100,100,0.08)',
-                            'border-width': 2,
-                            'border-color': 'var(--border-color)',
-                            'label': 'data(label)',
-                            'text-valign': 'top',
-                            'text-halign': 'center',
-                            'font-size': '16px',
-                            'color': 'var(--text-muted)',
-                            'text-margin-y': -10,
-                            'padding': 20,
-                        }
-                    },
-                    {
-                        selector: 'edge',
-                        style: {
-                            'width': 5,
-                            'line-color': 'data(color)',
-                            'target-arrow-color': 'data(color)',
-                            'target-arrow-shape': 'triangle',
-                            'curve-style': 'bezier'
-                        }
-                    },
-                    {
-                        selector: 'edge[label]',
-                        style: {
-                            'label': 'data(label)',
-                            'font-size': '12px',
-                            'text-background-color': 'var(--panel-bg)',
-                            'text-background-opacity': 0.8,
-                            'text-background-padding': '3px',
-                            'width': function(ele) { return Math.min(12, 3 + parseInt(ele.data('label') || '0')); },
-                        }
-                    },
-                    {
-                        selector: 'edge.cycle',
-                        style: {
-                            'line-color': '#FF4136',
-                            'target-arrow-color': '#FF4136',
-                            'width': 3
-                        }
-                    }
+                    { selector: 'node', style: {
+                        width: 'data(size)', height: 'data(size)', 'background-color': 'data(color)', label: 'data(id)',
+                        color: '#fff', 'text-outline-color': 'data(color)', 'text-outline-width': 2,
+                        'font-size': ele => Math.max(14, Math.min(36, (ele.data('size') || 80) / 8)) + 'px',
+                        'text-valign': 'center', 'text-halign': 'center',
+                    }},
+                    { selector: ':parent', style: {
+                        'background-color': 'rgba(99,102,241,0.04)', 'border-width': 1.5, 'border-color': 'rgba(99,102,241,0.2)',
+                        'border-style': 'dashed', label: 'data(label)', 'text-valign': 'top', 'text-halign': 'center',
+                        'font-size': '14px', color: 'var(--text-muted)', 'text-margin-y': -8, padding: 20,
+                    }},
+                    { selector: 'edge', style: { width: 4, 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', opacity: 0.7 } },
+                    { selector: 'edge[label]', style: { label: 'data(label)', 'font-size': '11px', 'text-background-color': 'var(--bg-elevated)', 'text-background-opacity': 0.9, 'text-background-padding': '3px', width: ele => Math.min(12, 3 + parseInt(ele.data('label') || '0')) } },
+                    { selector: 'edge.cycle', style: { 'line-color': '#FF4136', 'target-arrow-color': '#FF4136', width: 3, opacity: 1 } },
                 ],
                 layout: getLayoutConfig(),
             });
 
-            // --- Node click → path highlighting ---
-            cy.on('tap', 'node', function(evt) {
-                const nodeId = evt.target.id();
-                if (evt.target.isParent()) return; // skip compound nodes
-                clearPathHighlight();
-                highlightPaths(nodeId);
-            });
-            cy.on('tap', function(evt) {
-                if (evt.target === cy) clearPathHighlight();
-            });
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') clearPathHighlight();
-            });
-
-            // --- Update minimap ---
+            cy.on('tap', 'node', evt => { if (!evt.target.isParent()) { clearPathHighlight(); highlightPaths(evt.target.id()); } });
+            cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') clearPathHighlight(); });
             setTimeout(updateMinimap, 500);
 
+            // --- Ref list ---
             const refList = document.getElementById('ref-list');
             refList.innerHTML = '';
-            
-            const inDegrees = {};
-            data.nodes.forEach(n => {
-                inDegrees[n.data.id] = 0;
-            });
-            data.edges.forEach(e => {
-                if (inDegrees[e.data.target] !== undefined) {
-                    inDegrees[e.data.target]++;
-                }
-            });
-            
-            const sortedNodes = data.nodes.map(n => ({
-                id: n.data.id,
-                count: inDegrees[n.data.id]
-            })).sort((a, b) => b.count - a.count);
-            
-            const maxCount = sortedNodes.length > 0 ? sortedNodes[0].count : 0;
-            const godThreshold = Math.max(10, maxCount * 0.5);
-            
-            sortedNodes.forEach(item => {
-                const isGod = item.count >= godThreshold && item.count > 0;
+            const inDeg = {};
+            data.nodes.forEach(n => inDeg[n.data.id] = 0);
+            data.edges.forEach(e => { if (inDeg[e.data.target] !== undefined) inDeg[e.data.target]++; });
+            const sorted = data.nodes.map(n => ({ id: n.data.id, count: inDeg[n.data.id] })).sort((a, b) => b.count - a.count);
+            const maxC = sorted.length ? sorted[0].count : 0;
+            const godT = Math.max(10, maxC * 0.5);
+            document.getElementById('nodeCountBadge').textContent = sorted.length;
+
+            sorted.forEach(item => {
+                const isGod = item.count >= godT && item.count > 0;
                 const isOrphan = item.count === 0;
-
                 const div = document.createElement('div');
-                div.className = 'ref-item';
-                const leftDiv = document.createElement('div');
-                leftDiv.style.cssText = 'display: flex; align-items: center; gap: 8px; overflow: hidden;';
-
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.checked = true;
-                checkbox.className = 'node-toggle';
-                checkbox.title = 'Toggle visibility';
-                checkbox.style.flexShrink = '0';
-                leftDiv.appendChild(checkbox);
-
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'ref-name';
-                nameSpan.style.cursor = 'pointer';
-                if (isGod) {
-                    nameSpan.style.fontWeight = 'bold';
-                    nameSpan.style.color = '#f97316';
-                } else if (isOrphan) {
-                    nameSpan.style.fontWeight = 'bold';
-                    nameSpan.style.color = '#ef4444';
-                }
-                nameSpan.textContent = item.id;
-                leftDiv.appendChild(nameSpan);
-
-                const countSpan = document.createElement('span');
-                countSpan.className = 'ref-count';
-                countSpan.textContent = item.count;
-
-                div.appendChild(leftDiv);
-                div.appendChild(countSpan);
-
-                checkbox.onchange = (e) => {
-                    const node = cy.getElementById(item.id);
-                    if (node.length > 0) {
-                        if (e.target.checked) {
-                            node.style('display', 'element');
-                        } else {
-                            node.style('display', 'none');
-                        }
-                    }
-                };
-
-                nameSpan.onclick = () => {
-                    const node = cy.getElementById(item.id);
-                    if (node.length > 0) {
-                        cy.animate({
-                            center: { eles: node },
-                            zoom: 1.5
-                        }, { duration: 500 });
-                    }
-                };
-
+                div.className = 'list-row';
+                const left = document.createElement('div');
+                left.className = 'list-row-left';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox'; cb.checked = true; cb.title = 'Toggle visibility';
+                left.appendChild(cb);
+                const name = document.createElement('span');
+                name.className = 'file-name' + (isGod ? ' god' : isOrphan ? ' orphan' : '');
+                name.textContent = item.id;
+                left.appendChild(name);
+                const pill = document.createElement('span');
+                pill.className = 'count-pill';
+                pill.textContent = item.count;
+                div.appendChild(left);
+                div.appendChild(pill);
+                cb.onchange = (e) => { const n = cy.getElementById(item.id); if (n.length) n.style('display', e.target.checked ? 'element' : 'none'); };
+                name.onclick = () => { const n = cy.getElementById(item.id); if (n.length) cy.animate({ center: { eles: n }, zoom: 1.5 }, { duration: 400 }); };
                 refList.appendChild(div);
             });
 
-            // --- Populate unused files panel ---
-            const unusedList = document.getElementById('unused-list');
-            unusedList.innerHTML = '';
-            (data.unused_files || []).forEach(fid => {
-                const div = document.createElement('div');
-                div.className = 'metric-row';
-                div.style.cursor = 'pointer';
-                div.innerHTML = `<span class="metric-label" style="word-break:break-all;">${fid}</span><span class="metric-badge badge-red">0 refs</span>`;
-                div.onclick = () => {
-                    const node = cy.getElementById(fid);
-                    if (node.length) cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 400 });
-                };
-                unusedList.appendChild(div);
+            // --- Unused ---
+            const ul = document.getElementById('unused-list');
+            ul.innerHTML = '';
+            const unused = data.unused_files || [];
+            document.getElementById('unusedCountBadge').textContent = unused.length;
+            if (!unused.length) { ul.innerHTML = '<div class="metric-row"><span class="metric-label" style="color:var(--success);">All files are referenced</span></div>'; }
+            else unused.forEach(fid => {
+                const d = document.createElement('div');
+                d.className = 'metric-row clickable';
+                d.innerHTML = `<span class="metric-label">${fid}</span><span class="badge badge-red">0 refs</span>`;
+                d.onclick = () => { const n = cy.getElementById(fid); if (n.length) cy.animate({ center: { eles: n }, zoom: 1.5 }, { duration: 400 }); };
+                ul.appendChild(d);
             });
-            if (!(data.unused_files || []).length) {
-                unusedList.innerHTML = '<div class="metric-row"><span class="metric-label" style="color:#16a34a;">All files are referenced!</span></div>';
-            }
 
-            // --- Populate coupling panel ---
-            const couplingList = document.getElementById('coupling-list');
-            couplingList.innerHTML = '';
-            (data.coupling || []).forEach(c => {
-                const div = document.createElement('div');
-                div.className = 'metric-row';
-                div.innerHTML = `<span class="metric-label" style="word-break:break-all;">${c.dir1} ↔ ${c.dir2}</span><span class="metric-badge ${c.score > 0.3 ? 'badge-red' : c.score > 0.1 ? 'badge-yellow' : 'badge-green'}">${c.cross_edges} edges (${c.score})</span>`;
-                couplingList.appendChild(div);
+            // --- Coupling ---
+            const cl = document.getElementById('coupling-list');
+            cl.innerHTML = '';
+            const coupling = data.coupling || [];
+            if (!coupling.length) cl.innerHTML = '<div class="metric-row"><span class="metric-label">No cross-directory edges</span></div>';
+            else coupling.forEach(c => {
+                const d = document.createElement('div');
+                d.className = 'metric-row';
+                d.innerHTML = `<span class="metric-label">${c.dir1} ↔ ${c.dir2}</span><span class="badge ${c.score > 0.3 ? 'badge-red' : c.score > 0.1 ? 'badge-yellow' : 'badge-green'}">${c.cross_edges} (${c.score})</span>`;
+                cl.appendChild(d);
             });
-            if (!(data.coupling || []).length) {
-                couplingList.innerHTML = '<div class="metric-row"><span class="metric-label">No cross-directory edges</span></div>';
-            }
         }
 
-        let currentMode = 'local';
-        let currentUploadedFile = null;
+        // --- Upload ---
+        function handleZipSelect(e) { const f = e.target.files[0]; if (!f) return; currentUploadedFile = f; uploadZip(); e.target.value = ''; }
 
-        function handleZipSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            currentUploadedFile = file;
-            uploadZip();
-            event.target.value = ''; // Clear to allow re-selecting the same file
-        }
-
-        function updateGraph() {
-            if (currentMode === 'upload' && currentUploadedFile) {
-                uploadZip();
-            } else {
-                loadGraph();
-            }
-        }
+        function updateGraph() { if (currentMode === 'upload' && currentUploadedFile) uploadZip(); else loadGraph(); }
 
         function uploadZip() {
             if (!currentUploadedFile) return;
-
             currentMode = 'upload';
-            const filters = getFilterValues();
-
-            const formData = new FormData();
-            formData.append('file', currentUploadedFile);
-            for (const [key, value] of Object.entries(filters)) {
-                formData.append(key, value);
-            }
-            
-            const loading = document.getElementById('loading');
-            loading.classList.add('active');
-            
-            fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.error) {
-                    showToast('Error: ' + data.error, 5000);
-                } else {
-                    renderGraph(data);
-                    showDetectedLanguages(data.detected);
-                }
-                loading.classList.remove('active');
-            })
-            .catch(err => {
-                console.error(err);
-                showToast('Upload failed.', 5000);
-                loading.classList.remove('active');
-            });
+            const fd = new FormData(); fd.append('file', currentUploadedFile);
+            for (const [k, v] of Object.entries(getFilterValues())) fd.append(k, v);
+            document.getElementById('loading').classList.add('active');
+            fetch('/api/upload', { method: 'POST', body: fd })
+                .then(r => r.json()).then(d => {
+                    if (d.error) showToast('Error: ' + d.error, 5000);
+                    else { renderGraph(d); showDetectedLanguages(d.detected); }
+                    document.getElementById('loading').classList.remove('active');
+                }).catch(() => { showToast('Upload failed.', 5000); document.getElementById('loading').classList.remove('active'); });
         }
 
         function getFilterValues() {
-            const mode = document.querySelector('input[name="langMode"]:checked').value;
-            if (mode === 'auto') {
-                return {
-                    mode: 'auto',
-                    hide_system: document.getElementById('hideSystemHeaders').checked,
-                    hide_isolated: document.getElementById('hideIsolated').checked,
-                    filter_dir: document.getElementById('filterDirInput').value,
-                };
-            }
-            return {
-                hide_system: document.getElementById('hideSystemHeaders').checked,
-                show_c: mode === 'c' || mode === 'cpp',
-                show_h: mode === 'c' || mode === 'cpp',
-                show_cpp: mode === 'cpp',
-                show_js: mode === 'js',
-                show_py: mode === 'py',
-                show_java: mode === 'java',
-                show_go: mode === 'go',
-                show_rust: mode === 'rust',
-                hide_isolated: document.getElementById('hideIsolated').checked,
-                filter_dir: document.getElementById('filterDirInput').value,
-            };
+            const m = document.querySelector('input[name="langMode"]:checked').value;
+            const common = { hide_system: document.getElementById('hideSystemHeaders').checked, hide_isolated: document.getElementById('hideIsolated').checked, filter_dir: document.getElementById('filterDirInput').value };
+            if (m === 'auto') return { mode: 'auto', ...common };
+            return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust' };
         }
 
-        function showDetectedLanguages(detected) {
+        function showDetectedLanguages(det) {
             const el = document.getElementById('detectedLangs');
-            if (!detected) { el.style.display = 'none'; return; }
+            if (!det) { el.style.display = 'none'; return; }
             const langs = [];
-            if (detected.has_c) langs.push('C');
-            if (detected.has_h) langs.push('Headers');
-            if (detected.has_cpp) langs.push('C++');
-            if (detected.has_js) langs.push('TS/JS');
-            if (detected.has_py) langs.push('Python');
-            if (detected.has_java) langs.push('Java');
-            if (detected.has_go) langs.push('Go');
-            if (detected.has_rust) langs.push('Rust');
-            if (langs.length === 0) {
-                el.textContent = 'No supported files detected';
-            } else {
-                el.textContent = 'Detected: ' + langs.join(', ');
-            }
+            if (det.has_c) langs.push('C'); if (det.has_h) langs.push('Headers'); if (det.has_cpp) langs.push('C++');
+            if (det.has_js) langs.push('JS/TS'); if (det.has_py) langs.push('Python'); if (det.has_java) langs.push('Java');
+            if (det.has_go) langs.push('Go'); if (det.has_rust) langs.push('Rust');
+            el.textContent = langs.length ? 'Detected: ' + langs.join(', ') : 'No supported files detected';
             el.style.display = '';
         }
 
         function loadGraph() {
             currentMode = 'local';
-            const dir = document.getElementById('dirInput').value;
-            const filters = getFilterValues();
-
-            const params = new URLSearchParams({ dir, ...filters });
             const loading = document.getElementById('loading');
             loading.classList.add('active');
-
-            fetch('/api/graph?' + params)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.error) {
-                        alert('Error: ' + data.error);
-                    } else {
-                        renderGraph(data);
-                        showDetectedLanguages(data.detected);
-                    }
+            fetch('/api/graph?' + new URLSearchParams({ dir: document.getElementById('dirInput').value, ...getFilterValues() }))
+                .then(r => r.json()).then(d => {
+                    if (d.error) showToast('Error: ' + d.error, 4000);
+                    else { renderGraph(d); showDetectedLanguages(d.detected); }
                     loading.classList.remove('active');
-                })
-                .catch(err => {
-                    console.error(err);
-                    loading.classList.remove('active');
-                });
+                }).catch(() => loading.classList.remove('active'));
         }
-        
-        // Load initial graph
+
         loadGraph();
     </script>
 </body>
