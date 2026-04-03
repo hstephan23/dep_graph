@@ -237,6 +237,14 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
                     <span>Rules</span>
                 </div>
+                <div class="sidebar-tab" data-panel="panel-blast" onclick="switchTab(this)" title="Blast radius" role="tab">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                    <span>Blast</span>
+                </div>
+                <div class="sidebar-tab" data-panel="panel-path" onclick="switchTab(this)" title="Path finder" role="tab">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="3"/><circle cx="19" cy="12" r="3"/><path d="M8 12h8"/></svg>
+                    <span>Path</span>
+                </div>
                 <div class="sidebar-tab" data-panel="panel-diff" onclick="switchTab(this)" title="Diff mode" role="tab">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
                     <span>Diff</span>
@@ -314,7 +322,32 @@
                     <div id="rule-violations-list"></div>
                 </div>
 
-                <!-- Diff panel -->
+                <!-- Blast Radius panel -->
+                <div id="panel-blast" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Blast Radius</div>
+                    <div class="panel-hint">Click any node on the graph to see everything that depends on it — the full blast radius of a change.</div>
+                    <div id="blast-content">
+                        <div class="panel-hint">No file selected. Click a node to analyze.</div>
+                    </div>
+                </div>
+
+                <!-- Path Finder panel -->
+                <div id="panel-path" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Path Finder</div>
+                    <div class="panel-hint">Find the shortest dependency path between two files. Searches along import/include direction.</div>
+                    <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                        <input type="text" id="pathFromInput" placeholder="From file..." list="pathFromList" autocomplete="off" onkeydown="if(event.key==='Enter')findPath()">
+                        <datalist id="pathFromList"></datalist>
+                        <input type="text" id="pathToInput" placeholder="To file..." list="pathToList" autocomplete="off" onkeydown="if(event.key==='Enter')findPath()">
+                        <datalist id="pathToList"></datalist>
+                        <div style="display:flex;gap:0.5rem;">
+                            <button class="btn btn-primary" onclick="findPath()" style="flex:1;padding:0.4rem 0.65rem;font-size:0.75rem;">Find Path</button>
+                            <button class="btn btn-ghost" onclick="clearFoundPath()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Clear</button>
+                        </div>
+                    </div>
+                    <div id="path-result"></div>
+                </div>
+
                 <div id="panel-diff" class="sidebar-panel" role="tabpanel">
                     <div class="panel-header">Diff Mode</div>
                     <div class="panel-hint">Compare against a second directory to see added/removed nodes and edges.</div>

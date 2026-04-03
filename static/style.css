@@ -1764,3 +1764,43 @@ details.dropdown .dropdown-body {
         height: 120px;
     }
 }
+
+/* ============================================================
+   BLAST RADIUS PANEL
+   ============================================================ */
+
+.blast-row {
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+.blast-row:hover {
+    background: var(--hover);
+}
+.blast-depth-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #fff;
+    margin-right: 0.45rem;
+    flex-shrink: 0;
+}
+.blast-depth-group {
+    margin-top: 0.25rem;
+}
+.blast-depth-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.35rem 0.5rem 0.15rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
