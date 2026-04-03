@@ -1,6 +1,6 @@
 // --- Dev mode configuration ---
 // Fetches config from the server and hides dev-only UI elements in production.
-// In production mode, the graph auto-loads with the default "test_files" directory.
+// In production mode, the graph auto-loads with the default "tests/test_files" directory.
 let _devMode = false;
 let _currentView = 'graph';
 

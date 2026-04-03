@@ -760,16 +760,15 @@ details.dropdown .dropdown-body {
 .sidebar {
     width: var(--sidebar-width);
     background: var(--bg-elevated);
-    border: none;
-    border-radius: 0;
+    border: 1px solid var(--border);
+    border-radius: 16px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     z-index: 5;
     flex-shrink: 0;
-    margin: 0;
-    box-shadow: none;
-    border-left: 1px solid var(--border);
+    margin: 8px 8px 8px 0;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .sidebar.collapsed {
@@ -3804,8 +3803,8 @@ details.dropdown .dropdown-body {
 /* --- Sidebar: refined surface --- */
 [data-theme="dark"] .sidebar {
     background: var(--bg-elevated);
-    border-color: rgba(255, 255, 255, 0.06);
-    box-shadow: none;
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 [data-theme="dark"] .sidebar-tabs-wrap {
