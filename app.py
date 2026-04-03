@@ -98,6 +98,23 @@ _PY_FROM_IMPORT_RE = re.compile(
 _PY_IMPORT_RE = re.compile(
     r'^import\s+([\w.]+(?:\s*,\s*[\w.]+)*)\s*$', re.MULTILINE
 )
+# Collapse parenthesised Python imports onto a single line so the regex above
+# can match them.  e.g.  from foo import (\n  a,\n  b\n) → from foo import a, b
+_PY_MULTILINE_IMPORT_RE = re.compile(
+    r'^(from\s+\S+\s+import\s*)\(\s*([^)]*)\)', re.MULTILINE | re.DOTALL
+)
+
+
+def _collapse_py_multiline_imports(source: str) -> str:
+    """Replace parenthesised import lists with single-line equivalents."""
+    def _repl(m):
+        prefix = m.group(1)             # "from foo import "
+        body = m.group(2)               # "a,\n    b,\n    c\n"
+        names = ', '.join(
+            n.strip() for n in body.replace('\n', ' ').split(',') if n.strip()
+        )
+        return prefix + names
+    return _PY_MULTILINE_IMPORT_RE.sub(_repl, source)
 
 # Java: import com.example.Foo; or import static com.example.Foo.bar;
 _JAVA_IMPORT_RE = re.compile(
@@ -685,6 +702,8 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
 
         # --- Python imports ---
         if is_py_file:
+            # Collapse multiline parenthesised imports before matching
+            content = _collapse_py_multiline_imports(content)
             # "from X import a, b" style
             for m in _PY_FROM_IMPORT_RE.finditer(content):
                 from_path = m.group(1)  # e.g. "utils.helpers" or "." or ".models"
@@ -1262,7 +1281,7 @@ def upload_files():
 
     allowed_ext = (('.zip',) + _C_EXTENSIONS + _H_EXTENSIONS + _CPP_EXTENSIONS
                    + _JS_EXTENSIONS + _PY_EXTENSIONS + _JAVA_EXTENSIONS
-                   + _GO_EXTENSIONS + _RUST_EXTENSIONS)
+                   + _GO_EXTENSIONS + _RUST_EXTENSIONS + _CS_EXTENSIONS)
     if not file.filename.endswith(allowed_ext):
         return jsonify({"error": "Unsupported file type. Please upload a ZIP or supported source file."}), 400
 
@@ -1542,7 +1561,7 @@ def simulate_removal():
         if cur in reachable:
             continue
         reachable.add(cur)
-        for dep in new_rev.get(cur, []):
+        for dep in new_adj.get(cur, []):
             if dep not in reachable:
                 stack.append(dep)
 

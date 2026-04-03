@@ -159,6 +159,11 @@
                 <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             </button>
 
+            <button class="btn btn-ghost btn-tour" onclick="Tour.toggle()" title="Take a tour" aria-label="Take a tour">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+                <span>Tour</span>
+            </button>
+
             <button class="btn-icon btn-help" onclick="toggleShortcutHelp()" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
                 <span>?</span>
             </button>
@@ -584,6 +589,7 @@
         </div>
     </div>
 
+    <script src="/static/tour.js?v=1"></script>
     <script src="/static/app.js?v=6"></script>
 </body>
 </html>
