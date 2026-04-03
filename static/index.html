@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Interactive C/C++ Dependency Graph Viewer. Visualize file dependencies, reference counts, and detect circular dependencies.">
-    <title>C/C++ Dependency Graph Viewer</title>
+    <meta name="description" content="Interactive C/C++ Dependency Viewer. Visualize file dependencies, reference counts, and detect circular dependencies.">
+    <title>Dependency Viewer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.23.0/cytoscape.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -261,23 +261,56 @@
             position: relative;
         }
 
-        .ref-name[data-tooltip]:hover::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
+        .sidebar-legend {
+            display: flex;
+            gap: 1rem;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .legend-dot--god {
+            background-color: #f97316;
+        }
+
+        .legend-dot--orphan {
+            background-color: #ef4444;
+        }
+
+        .custom-tooltip {
+            position: fixed;
             background-color: var(--text-main);
             color: var(--bg-color);
             padding: 4px 8px;
             border-radius: 4px;
             font-size: 12px;
             white-space: nowrap;
-            z-index: 1000;
+            z-index: 9999;
             pointer-events: none;
-            margin-bottom: 4px;
             font-weight: normal;
+            box-shadow: var(--shadow-md);
+            opacity: 0;
+            transition: opacity 0.15s;
         }
+
+        .custom-tooltip.visible {
+            opacity: 1;
+        }
+
 
         .ref-count {
             background-color: var(--primary);
@@ -324,21 +357,49 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(0);
+            background: var(--text-main);
+            color: var(--bg-color);
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            box-shadow: var(--shadow-md);
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .toast.visible {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
+    <noscript>
+        <div style="padding: 2rem; text-align: center; font-family: sans-serif; color: #333;">
+            <h2>JavaScript Required</h2>
+            <p>This application requires JavaScript to render the dependency graph. Please enable JavaScript in your browser settings.</p>
+        </div>
+    </noscript>
     <header>
-        <h1>Dependency Graph</h1>
+        <h1>Dependency Viewer</h1>
         <div id="controls">
-            <button id="themeToggle" onclick="toggleTheme()" title="Toggle Dark Mode">
-                <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            <button id="themeToggle" onclick="toggleTheme()" title="Toggle Dark Mode" aria-label="Toggle Dark Mode">
+                <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
             </button>
             <div class="control-group">
                 <div class="input-group">
-                    <input type="text" id="dirInput" placeholder="Enter directory path..." value="test_files" onkeypress="if(event.key === 'Enter') loadGraph()">
+                    <input type="text" id="dirInput" placeholder="Enter directory path..." value="test_files" onkeydown="if(event.key === 'Enter') loadGraph()">
                 </div>
                 <div class="input-group">
-                    <input type="text" id="searchInput" placeholder="Search file..." onkeypress="if(event.key === 'Enter') searchNode()">
+                    <input type="text" id="searchInput" placeholder="Search file..." onkeydown="if(event.key === 'Enter') searchNode()">
                 </div>
                 <button onclick="loadGraph()">Generate Graph</button>
             </div>
@@ -351,7 +412,7 @@
                     </summary>
                     <div class="dropdown-content">
                         <div class="input-group" style="width: 100%;">
-                            <input type="text" id="filterDirInput" placeholder="Filter by subdirectory..." value="" onkeypress="if(event.key === 'Enter') updateGraph()" style="width: 100%;">
+                            <input type="text" id="filterDirInput" placeholder="Filter by subdirectory..." value="" onkeydown="if(event.key === 'Enter') updateGraph()" style="width: 100%;">
                         </div>
                         <label class="checkbox-label">
                             <input type="checkbox" id="hideSystemHeaders" checked onchange="updateGraph()">
@@ -378,7 +439,7 @@
             </div>
 
             <div class="control-group">
-                <button onclick="document.getElementById('zipUpload').click()" style="background-color: var(--warning-border); color: var(--text-main);">Upload File/ZIP</button>
+                <label for="zipUpload" role="button" tabindex="0" style="background-color: var(--warning-border); color: var(--text-main); border: none; border-radius: 6px; padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; font-family: inherit; display: inline-block;">Upload File/ZIP</label>
                 <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx" style="display: none;" onchange="handleZipSelect(event)">
                 <details class="dropdown">
                     <summary style="background-color: var(--primary); color: white; border: none;">
@@ -409,11 +470,45 @@
             <div class="sidebar-header" id="cycles-header" style="display: none;">Circular Dependencies</div>
             <div id="cycles-list"></div>
             <div class="sidebar-header">Reference Counts</div>
+            <div class="sidebar-legend">
+                <span class="legend-item"><span class="legend-dot legend-dot--god"></span> God (high refs)</span>
+                <span class="legend-item"><span class="legend-dot legend-dot--orphan"></span> Orphan (0 refs)</span>
+            </div>
             <div id="ref-list"></div>
         </div>
     </div>
 
     <script>
+        function showToast(message, duration = 3000) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.add('visible'));
+            setTimeout(() => {
+                toast.classList.remove('visible');
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
+        }
+
+        const tooltip = document.createElement('div');
+        tooltip.className = 'custom-tooltip';
+        document.body.appendChild(tooltip);
+
+        function attachTooltip(el, text) {
+            el.addEventListener('mouseenter', (e) => {
+                tooltip.textContent = text;
+                const rect = el.getBoundingClientRect();
+                tooltip.style.left = rect.left + rect.width / 2 + 'px';
+                tooltip.style.top = rect.top - 8 + 'px';
+                tooltip.style.transform = 'translate(-50%, -100%)';
+                tooltip.classList.add('visible');
+            });
+            el.addEventListener('mouseleave', () => {
+                tooltip.classList.remove('visible');
+            });
+        }
+
         const savedTheme = localStorage.getItem('theme') || 'light';
         document.documentElement.setAttribute('data-theme', savedTheme);
 
@@ -533,7 +628,7 @@
                     zoom: 1.5
                 }, { duration: 500 });
             } else {
-                alert('No matching files found');
+                showToast('No matching files found');
             }
         }
 
@@ -570,8 +665,13 @@
                             nodeDiv.style.gap = '8px';
                             nodeDiv.style.marginLeft = '8px';
                             
-                            nodeDiv.innerHTML = `<span class="ref-name" style="cursor: pointer;" data-tooltip="Center node">${nodeId}</span>`;
-                            nodeDiv.querySelector('.ref-name').onclick = () => {
+                            const nameSpan = document.createElement('span');
+                            nameSpan.className = 'ref-name';
+                            nameSpan.style.cursor = 'pointer';
+                            attachTooltip(nameSpan, 'Center node');
+                            nameSpan.textContent = nodeId;
+                            nodeDiv.appendChild(nameSpan);
+                            nameSpan.onclick = () => {
                                 const node = cy.getElementById(nodeId);
                                 if (node.length > 0) {
                                     cy.animate({
@@ -668,23 +768,40 @@
             sortedNodes.forEach(item => {
                 const isGod = item.count >= godThreshold && item.count > 0;
                 const isOrphan = item.count === 0;
-                const highlightStyle = (isGod || isOrphan) ? 'font-weight: bold; color: var(--danger);' : '';
-                
-                let titleText = "Center node";
-                if (isGod) titleText = "god";
-                else if (isOrphan) titleText = "orphan";
 
                 const div = document.createElement('div');
                 div.className = 'ref-item';
-                div.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
-                        <input type="checkbox" checked class="node-toggle" title="Toggle visibility" style="flex-shrink: 0;">
-                        <span class="ref-name" style="cursor: pointer; ${highlightStyle}" data-tooltip="${titleText}">${item.id}</span>
-                    </div>
-                    <span class="ref-count">${item.count}</span>
-                `;
+                const leftDiv = document.createElement('div');
+                leftDiv.style.cssText = 'display: flex; align-items: center; gap: 8px; overflow: hidden;';
 
-                const checkbox = div.querySelector('.node-toggle');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = true;
+                checkbox.className = 'node-toggle';
+                checkbox.title = 'Toggle visibility';
+                checkbox.style.flexShrink = '0';
+                leftDiv.appendChild(checkbox);
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'ref-name';
+                nameSpan.style.cursor = 'pointer';
+                if (isGod) {
+                    nameSpan.style.fontWeight = 'bold';
+                    nameSpan.style.color = '#f97316';
+                } else if (isOrphan) {
+                    nameSpan.style.fontWeight = 'bold';
+                    nameSpan.style.color = '#ef4444';
+                }
+                nameSpan.textContent = item.id;
+                leftDiv.appendChild(nameSpan);
+
+                const countSpan = document.createElement('span');
+                countSpan.className = 'ref-count';
+                countSpan.textContent = item.count;
+
+                div.appendChild(leftDiv);
+                div.appendChild(countSpan);
+
                 checkbox.onchange = (e) => {
                     const node = cy.getElementById(item.id);
                     if (node.length > 0) {
@@ -696,7 +813,6 @@
                     }
                 };
 
-                const nameSpan = div.querySelector('.ref-name');
                 nameSpan.onclick = () => {
                     const node = cy.getElementById(item.id);
                     if (node.length > 0) {
@@ -761,7 +877,7 @@
             .then(res => res.json())
             .then(data => {
                 if (data.error) {
-                    alert('Error: ' + data.error);
+                    showToast('Error: ' + data.error, 5000);
                 } else {
                     renderGraph(data);
                 }
@@ -769,7 +885,7 @@
             })
             .catch(err => {
                 console.error(err);
-                alert('Upload failed.');
+                showToast('Upload failed.', 5000);
                 loading.classList.remove('active');
             });
         }
