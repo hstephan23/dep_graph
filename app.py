@@ -6,11 +6,71 @@ import hashlib
 import tempfile
 import zipfile
 import shutil
+import threading
+import time
+import secrets
 
 from werkzeug.utils import secure_filename
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, abort
 
 app = Flask(__name__, static_folder='static')
+
+# --- Security configuration ---
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
+
+# CSRF token stored in-memory (regenerated each restart)
+_csrf_token = secrets.token_hex(32)
+
+# Base directory that the server is allowed to scan. Set DEPGRAPH_BASE_DIR
+# environment variable to restrict access; defaults to the parent of the
+# current working directory so that sibling project directories (e.g.
+# ../C/retro-gaming-project) remain accessible.
+_ALLOWED_BASE_DIR = os.path.abspath(
+    os.environ.get('DEPGRAPH_BASE_DIR', os.path.dirname(os.getcwd()))
+)
+
+# Simple rate-limiter: per-IP, max N requests in a sliding window
+_RATE_LIMIT = int(os.environ.get('DEPGRAPH_RATE_LIMIT', '30'))  # requests
+_RATE_WINDOW = int(os.environ.get('DEPGRAPH_RATE_WINDOW', '60'))  # seconds
+_rate_store = {}  # ip -> list of timestamps
+_rate_lock = threading.Lock()
+
+
+def _rate_limit_check():
+    """Return True if the request should be rate-limited (rejected)."""
+    ip = request.remote_addr or 'unknown'
+    now = time.time()
+    with _rate_lock:
+        timestamps = _rate_store.get(ip, [])
+        timestamps = [t for t in timestamps if now - t < _RATE_WINDOW]
+        if len(timestamps) >= _RATE_LIMIT:
+            _rate_store[ip] = timestamps
+            return True
+        timestamps.append(now)
+        _rate_store[ip] = timestamps
+    return False
+
+
+def _validate_directory(directory):
+    """Validate that a directory path is within the allowed base directory.
+
+    Returns the absolute path if valid, or None if invalid.
+    """
+    abs_dir = os.path.abspath(directory)
+    # Ensure the path is within the allowed base
+    if not (abs_dir == _ALLOWED_BASE_DIR
+            or abs_dir.startswith(_ALLOWED_BASE_DIR + os.sep)):
+        return None
+    if not os.path.isdir(abs_dir):
+        return None
+    return abs_dir
+
+
+@app.before_request
+def _before_request():
+    """Global rate limiting."""
+    if _rate_limit_check():
+        return jsonify({"error": "Rate limit exceeded. Try again later."}), 429
 
 # Cool-tone palette for directory-based node colors (no warm colors to avoid
 # confusion with red error/cycle highlights).
@@ -866,38 +926,50 @@ def get_file():
     """Return the contents of a source file for preview.
 
     Query params:
-    - dir: base directory the graph was built from
+    - dir: base directory the graph was built from (or upload_token for uploads)
     - path: relative file path within that directory
     """
     directory = request.args.get('dir', '.')
+    upload_token = request.args.get('upload_token', '')
     filepath = request.args.get('path', '')
 
     if not filepath:
         return jsonify({"error": "No file path provided"}), 400
 
-    # Resolve to absolute paths for reliable comparison
-    abs_dir = os.path.abspath(directory)
-    full_path = os.path.abspath(os.path.join(abs_dir, filepath))
+    # Determine the base directory: either from an upload token or a validated path
+    if upload_token:
+        with _upload_lock:
+            abs_dir = _upload_sessions.get(upload_token)
+        if not abs_dir or not os.path.isdir(abs_dir):
+            return jsonify({"error": "Upload session expired or invalid."}), 404
+    else:
+        abs_dir = _validate_directory(directory)
+        if abs_dir is None:
+            return jsonify({"error": "Directory not found or access denied."}), 403
 
-    # Security: ensure the resolved path stays within the base directory
+    # Resolve to absolute path and enforce containment
+    full_path = os.path.abspath(os.path.join(abs_dir, filepath))
     if not full_path.startswith(abs_dir + os.sep) and full_path != abs_dir:
         return jsonify({"error": "Invalid file path"}), 403
 
     # If the direct path doesn't exist, search for the filename within the
-    # directory tree. This handles unresolved includes like "game_state.h"
-    # that are stored as bare filenames in the graph.
+    # *validated* base directory only. This handles unresolved includes like
+    # "game_state.h" that are stored as bare filenames in the graph.
     if not os.path.isfile(full_path):
         basename = os.path.basename(filepath)
         found = None
         for root, _dirs, files in os.walk(abs_dir):
             if basename in files:
-                found = os.path.join(root, basename)
-                break
-        if found and found.startswith(abs_dir):
+                candidate = os.path.join(root, basename)
+                # Double-check containment
+                if candidate.startswith(abs_dir + os.sep):
+                    found = candidate
+                    break
+        if found:
             full_path = found
             filepath = os.path.relpath(found, abs_dir)
         else:
-            return jsonify({"error": f"File not found: {filepath}"}), 404
+            return jsonify({"error": "File not found."}), 404
 
     try:
         with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
@@ -916,8 +988,8 @@ def get_file():
             "language": lang_map.get(ext, 'plaintext'),
             "lines": content.count('\n') + 1,
         })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        return jsonify({"error": "Could not read file."}), 500
 
 
 @app.route('/api/detect', methods=['GET'])
@@ -925,35 +997,57 @@ def detect_languages():
     """Scan a directory and return which language groups are present."""
     directory = request.args.get('dir', '.')
 
-    if not os.path.isdir(directory):
-        return jsonify({"error": f"Directory not found: {directory}"}), 400
+    abs_dir = _validate_directory(directory)
+    if abs_dir is None:
+        return jsonify({"error": "Directory not found or access denied."}), 400
 
-    return jsonify(_detect_languages(directory))
+    return jsonify(_detect_languages(abs_dir))
 
 
 @app.route('/api/graph', methods=['GET'])
 def get_graph():
     directory = request.args.get('dir', '.')
 
-    if not os.path.isdir(directory):
-        return jsonify({"error": f"Directory not found: {directory}"}), 400
+    abs_dir = _validate_directory(directory)
+    if abs_dir is None:
+        return jsonify({"error": "Directory not found or access denied."}), 400
 
-    detected = _detect_languages(directory)
+    detected = _detect_languages(abs_dir)
     filters = _parse_filters(request.args, detected=detected)
-    result = _build_graph(directory, **filters)
+    result = _build_graph(abs_dir, **filters)
     result["detected"] = detected
     return jsonify(result)
 
 
-# Keep track of the current upload temp dir so file preview works.
-# A new upload replaces (and cleans up) the previous one.
-_current_upload_dir = None
+# Thread-safe tracking of upload temp dirs keyed by an opaque session token.
+# Each upload gets a unique token; the previous upload for the same token is
+# cleaned up automatically.
+_upload_sessions = {}  # token -> temp_dir path
+_upload_lock = threading.Lock()
+
+
+def _safe_extract_zip(zip_path, dest_dir):
+    """Extract a ZIP file while guarding against Zip Slip (path traversal).
+
+    Raises ValueError if any entry would escape *dest_dir*.
+    """
+    abs_dest = os.path.abspath(dest_dir)
+    with zipfile.ZipFile(zip_path, 'r') as zf:
+        for member in zf.infolist():
+            # Skip directory entries
+            if member.is_dir():
+                continue
+            target = os.path.abspath(os.path.join(abs_dest, member.filename))
+            if not target.startswith(abs_dest + os.sep):
+                raise ValueError(
+                    f"Zip entry escapes target directory: {member.filename}"
+                )
+        # All entries validated — extract
+        zf.extractall(dest_dir)
 
 
 @app.route('/api/upload', methods=['POST'])
 def upload_files():
-    global _current_upload_dir
-
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
 
@@ -967,9 +1061,8 @@ def upload_files():
     if not file.filename.endswith(allowed_ext):
         return jsonify({"error": "Unsupported file type. Please upload a ZIP or supported source file."}), 400
 
-    # Clean up previous upload
-    if _current_upload_dir and os.path.isdir(_current_upload_dir):
-        shutil.rmtree(_current_upload_dir, ignore_errors=True)
+    # Generate an opaque upload token for this session
+    upload_token = secrets.token_urlsafe(16)
 
     temp_dir = tempfile.mkdtemp()
 
@@ -978,20 +1071,31 @@ def upload_files():
         file.save(saved_path)
 
         if saved_path.endswith('.zip'):
-            with zipfile.ZipFile(saved_path, 'r') as zf:
-                zf.extractall(temp_dir)
+            _safe_extract_zip(saved_path, temp_dir)
 
         detected = _detect_languages(temp_dir)
         filters = _parse_filters(request.form, detected=detected)
         result = _build_graph(temp_dir, **filters)
         result["detected"] = detected
-        # Return the temp dir path so the frontend can request file previews
-        result["upload_dir"] = temp_dir
-        _current_upload_dir = temp_dir
+        # Return an opaque token — never expose the real filesystem path
+        result["upload_token"] = upload_token
+
+        with _upload_lock:
+            # Clean up any previous upload for robustness (simple FIFO)
+            if len(_upload_sessions) > 50:
+                oldest_key = next(iter(_upload_sessions))
+                old_dir = _upload_sessions.pop(oldest_key, None)
+                if old_dir and os.path.isdir(old_dir):
+                    shutil.rmtree(old_dir, ignore_errors=True)
+            _upload_sessions[upload_token] = temp_dir
+
         return jsonify(result)
-    except Exception as e:
+    except ValueError as e:
         shutil.rmtree(temp_dir, ignore_errors=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Invalid archive contents."}), 400
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return jsonify({"error": "Failed to process uploaded file."}), 500
 
 
 @app.route('/api/diff', methods=['POST'])
@@ -1144,8 +1248,188 @@ def check_rules():
     return jsonify({"violations": violations})
 
 
+@app.route('/api/simulate', methods=['POST'])
+def simulate_removal():
+    """Simulate removing a node or edge and report what would break.
+
+    Expects JSON: {
+        "graph": { ...graph payload... },
+        "remove_nodes": ["file_id", ...],   // optional
+        "remove_edges": [{"source": "a", "target": "b"}, ...]  // optional
+    }
+
+    Returns a report of broken imports, newly disconnected files,
+    new cycles introduced/resolved, and metric changes.
+    """
+    body = request.get_json(force=True)
+    graph = body.get('graph', {})
+    remove_nodes = set(body.get('remove_nodes', []))
+    remove_edges = {(e['source'], e['target'])
+                    for e in body.get('remove_edges', [])}
+
+    orig_nodes = graph.get('nodes', [])
+    orig_edges = graph.get('edges', [])
+
+    if not remove_nodes and not remove_edges:
+        return jsonify({"error": "Nothing to simulate — specify remove_nodes or remove_edges"}), 400
+
+    # Original node set & adjacency
+    orig_node_ids = {n['data']['id'] for n in orig_nodes}
+    orig_adj = {}
+    orig_rev = {}
+    for nid in orig_node_ids:
+        orig_adj[nid] = []
+        orig_rev[nid] = []
+    for e in orig_edges:
+        s, t = e['data']['source'], e['data']['target']
+        if s in orig_adj:
+            orig_adj[s].append(t)
+        if t in orig_rev:
+            orig_rev[t].append(s)
+
+    # --- Build new graph after removal ---
+    new_node_ids = orig_node_ids - remove_nodes
+    new_edges = []
+    for e in orig_edges:
+        s, t = e['data']['source'], e['data']['target']
+        if s in remove_nodes or t in remove_nodes:
+            continue
+        if (s, t) in remove_edges:
+            continue
+        new_edges.append(e)
+
+    new_adj = {nid: [] for nid in new_node_ids}
+    new_rev = {nid: [] for nid in new_node_ids}
+    for e in new_edges:
+        s, t = e['data']['source'], e['data']['target']
+        if s in new_adj:
+            new_adj[s].append(t)
+        if t in new_rev:
+            new_rev[t].append(s)
+
+    # --- Broken imports: edges that existed but no longer do ---
+    broken_imports = []
+    for e in orig_edges:
+        s, t = e['data']['source'], e['data']['target']
+        if s in remove_nodes:
+            continue  # source removed, not a "break" from remaining code's perspective
+        if t in remove_nodes:
+            # This file still exists but its import target is gone
+            broken_imports.append({"file": s, "missing_dep": t, "reason": "target_removed"})
+        elif (s, t) in remove_edges:
+            broken_imports.append({"file": s, "missing_dep": t, "reason": "edge_removed"})
+
+    # --- Orphaned files: files that had inbound edges but now have zero ---
+    newly_orphaned = []
+    for nid in new_node_ids:
+        had_inbound = len(orig_rev.get(nid, [])) > 0
+        now_inbound = len(new_rev.get(nid, []))
+        if had_inbound and now_inbound == 0:
+            newly_orphaned.append(nid)
+
+    # --- Disconnected subgraphs: files now unreachable from any root ---
+    # (roots = files with 0 inbound edges)
+    new_roots = [nid for nid in new_node_ids if len(new_rev.get(nid, [])) == 0]
+    reachable = set()
+    stack = list(new_roots)
+    while stack:
+        cur = stack.pop()
+        if cur in reachable:
+            continue
+        reachable.add(cur)
+        for dep in new_rev.get(cur, []):
+            if dep not in reachable:
+                stack.append(dep)
+
+    # --- Cycle changes ---
+    orig_sccs = _find_sccs(orig_adj)
+    orig_cycles = [scc for scc in orig_sccs if len(scc) > 1]
+
+    new_sccs = _find_sccs(new_adj)
+    new_cycles = [scc for scc in new_sccs if len(scc) > 1]
+
+    orig_cycle_sets = [frozenset(c) for c in orig_cycles]
+    new_cycle_sets = [frozenset(c) for c in new_cycles]
+
+    resolved_cycles = [sorted(list(c)) for c in orig_cycle_sets if c not in new_cycle_sets]
+    new_introduced_cycles = [sorted(list(c)) for c in new_cycle_sets if c not in orig_cycle_sets]
+
+    # --- Impact summary: compute new impact scores ---
+    impact_changes = []
+    for nid in new_node_ids:
+        # Original impact
+        orig_imp = 0
+        for n in orig_nodes:
+            if n['data']['id'] == nid:
+                orig_imp = n['data'].get('impact', 0)
+                break
+
+        # New impact via BFS on new reverse adjacency
+        visited = set()
+        q = [nid]
+        while q:
+            cur = q.pop(0)
+            for dep in new_rev.get(cur, []):
+                if dep not in visited and dep != nid:
+                    visited.add(dep)
+                    q.append(dep)
+        new_imp = len(visited)
+
+        if orig_imp != new_imp:
+            impact_changes.append({
+                "file": nid,
+                "old_impact": orig_imp,
+                "new_impact": new_imp,
+                "delta": new_imp - orig_imp,
+            })
+
+    impact_changes.sort(key=lambda x: abs(x['delta']), reverse=True)
+
+    return jsonify({
+        "broken_imports": broken_imports,
+        "newly_orphaned": sorted(newly_orphaned),
+        "resolved_cycles": resolved_cycles,
+        "new_cycles": new_introduced_cycles,
+        "impact_changes": impact_changes[:30],
+        "stats": {
+            "removed_nodes": sorted(list(remove_nodes)),
+            "removed_edges": [{"source": s, "target": t} for s, t in remove_edges],
+            "original_node_count": len(orig_node_ids),
+            "new_node_count": len(new_node_ids),
+            "original_edge_count": len(orig_edges),
+            "new_edge_count": len(new_edges),
+            "broken_import_count": len(broken_imports),
+            "orphaned_count": len(newly_orphaned),
+            "cycles_resolved": len(resolved_cycles),
+            "cycles_introduced": len(new_introduced_cycles),
+        },
+    })
+
+
+@app.route('/api/csrf-token', methods=['GET'])
+def get_csrf_token():
+    """Return a CSRF token for the frontend to include in POST requests."""
+    return jsonify({"token": _csrf_token})
+
+
+# Set DEPGRAPH_CSRF=false to disable CSRF checks during local development.
+_CSRF_ENABLED = os.environ.get('DEPGRAPH_CSRF', 'true').lower() != 'false'
+
+
+@app.before_request
+def _check_csrf():
+    """Validate CSRF token on state-changing requests (skipped when disabled)."""
+    if not _CSRF_ENABLED:
+        return
+    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        token = (request.headers.get('X-CSRF-Token')
+                 or request.form.get('_csrf_token'))
+        if token != _csrf_token:
+            return jsonify({"error": "Invalid or missing CSRF token."}), 403
+
+
 if __name__ == '__main__':
     import os
-    debug = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', debug=debug, port=port)
