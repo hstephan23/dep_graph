@@ -347,14 +347,61 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
 # Helper to pull filter params from a request
 # ---------------------------------------------------------------------------
 
-def _parse_filters(source):
-    """Extract filter flags from a request args or form dict."""
+def _detect_languages(directory):
+    """Scan *directory* for source files and return which language groups exist.
+
+    Returns a dict with boolean keys ``has_c``, ``has_h``, ``has_cpp``,
+    ``has_js`` indicating which file-extension groups were found.
+    """
+    has_c = has_h = has_cpp = has_js = False
+    for root, dirs, files in os.walk(directory):
+        dirs[:] = [d for d in dirs if not _should_skip_dir(d)]
+        dirs[:] = [d for d in dirs if d != 'node_modules']
+        for fname in files:
+            if _should_skip_file(fname):
+                continue
+            if fname.endswith(_C_EXTENSIONS):
+                has_c = True
+            if fname.endswith(_H_EXTENSIONS):
+                has_h = True
+            if fname.endswith(_CPP_EXTENSIONS):
+                has_cpp = True
+            if fname.endswith(_JS_EXTENSIONS):
+                has_js = True
+            if has_c and has_h and has_cpp and has_js:
+                return {"has_c": True, "has_h": True, "has_cpp": True, "has_js": True}
+    return {"has_c": has_c, "has_h": has_h, "has_cpp": has_cpp, "has_js": has_js}
+
+
+def _parse_filters(source, detected=None):
+    """Extract filter flags from a request args or form dict.
+
+    When *detected* is provided (a dict from ``_detect_languages``), the
+    ``mode=auto`` value will use the detected languages instead of enabling
+    everything blindly.
+    """
+    mode = source.get('mode', '')
+
+    if mode == 'auto' and detected:
+        show_c = detected["has_c"]
+        show_h = detected["has_h"]
+        show_cpp = detected["has_cpp"]
+        show_js = detected["has_js"]
+    elif mode == 'auto':
+        # Fallback: enable everything when no detection result provided
+        show_c = show_h = show_cpp = show_js = True
+    else:
+        show_c = source.get('show_c', 'true').lower() == 'true'
+        show_h = source.get('show_h', 'true').lower() == 'true'
+        show_cpp = source.get('show_cpp', 'true').lower() == 'true'
+        show_js = source.get('show_js', 'false').lower() == 'true'
+
     return {
         "hide_system": source.get('hide_system', 'false').lower() == 'true',
-        "show_c": source.get('show_c', 'true').lower() == 'true',
-        "show_h": source.get('show_h', 'true').lower() == 'true',
-        "show_cpp": source.get('show_cpp', 'true').lower() == 'true',
-        "show_js": source.get('show_js', 'false').lower() == 'true',
+        "show_c": show_c,
+        "show_h": show_h,
+        "show_cpp": show_cpp,
+        "show_js": show_js,
         "hide_isolated": source.get('hide_isolated', 'false').lower() == 'true',
         "filter_dir": source.get('filter_dir', ''),
     }
@@ -369,6 +416,17 @@ def index():
     return app.send_static_file('index.html')
 
 
+@app.route('/api/detect', methods=['GET'])
+def detect_languages():
+    """Scan a directory and return which language groups are present."""
+    directory = request.args.get('dir', '.')
+
+    if not os.path.isdir(directory):
+        return jsonify({"error": f"Directory not found: {directory}"}), 400
+
+    return jsonify(_detect_languages(directory))
+
+
 @app.route('/api/graph', methods=['GET'])
 def get_graph():
     directory = request.args.get('dir', '.')
@@ -376,8 +434,11 @@ def get_graph():
     if not os.path.isdir(directory):
         return jsonify({"error": f"Directory not found: {directory}"}), 400
 
-    filters = _parse_filters(request.args)
-    return jsonify(_build_graph(directory, **filters))
+    detected = _detect_languages(directory)
+    filters = _parse_filters(request.args, detected=detected)
+    result = _build_graph(directory, **filters)
+    result["detected"] = detected
+    return jsonify(result)
 
 
 @app.route('/api/upload', methods=['POST'])
@@ -393,7 +454,6 @@ def upload_files():
     if not file.filename.endswith(allowed_ext):
         return jsonify({"error": "Unsupported file type. Please upload a ZIP or supported source file."}), 400
 
-    filters = _parse_filters(request.form)
     temp_dir = tempfile.mkdtemp()
 
     try:
@@ -404,7 +464,11 @@ def upload_files():
             with zipfile.ZipFile(saved_path, 'r') as zf:
                 zf.extractall(temp_dir)
 
-        return jsonify(_build_graph(temp_dir, **filters))
+        detected = _detect_languages(temp_dir)
+        filters = _parse_filters(request.form, detected=detected)
+        result = _build_graph(temp_dir, **filters)
+        result["detected"] = detected
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
