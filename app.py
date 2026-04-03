@@ -18,8 +18,9 @@ app = Flask(__name__, static_folder='static')
 # --- Security configuration ---
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
 
-# CSRF token stored in-memory (regenerated each restart)
-_csrf_token = secrets.token_hex(32)
+# CSRF token: use a stable secret from the environment so all workers share
+# the same value.  Falls back to a random token (fine for single-worker).
+_csrf_token = os.environ.get('CSRF_SECRET') or secrets.token_hex(32)
 
 # Base directory that the server is allowed to scan. Set DEPGRAPH_BASE_DIR
 # environment variable to restrict access; defaults to the parent of the
@@ -1404,6 +1405,294 @@ def simulate_removal():
             "cycles_introduced": len(new_introduced_cycles),
         },
     })
+
+
+@app.route('/api/story', methods=['POST'])
+def generate_story():
+    """Generate a guided narrative walkthrough of the dependency graph.
+
+    Expects JSON: { "graph": { ...graph payload... } }
+
+    Returns an ordered list of "steps", each with:
+        - title, narrative, highlight_nodes, highlight_edges, zoom_target, step_type
+    """
+    try:
+        return _generate_story_impl()
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Story generation failed: {exc}"}), 500
+
+
+def _generate_story_impl():
+    body = request.get_json(force=True)
+    graph = body.get('graph', {})
+    nodes = graph.get('nodes', [])
+    edges = graph.get('edges', [])
+    cycles = graph.get('cycles', [])
+
+    if not nodes:
+        return jsonify({"steps": [], "error": "No graph data provided"}), 400
+
+    # Pre-compute lookups
+    node_map = {n['data']['id']: n['data'] for n in nodes}
+    in_deg = {nid: 0 for nid in node_map}
+    out_deg = {nid: 0 for nid in node_map}
+    for e in edges:
+        s, t = e['data']['source'], e['data']['target']
+        if t in in_deg:
+            in_deg[t] += 1
+        if s in out_deg:
+            out_deg[s] += 1
+
+    # Reverse adjacency for dependents
+    rev_adj = {nid: [] for nid in node_map}
+    for e in edges:
+        rev_adj.setdefault(e['data']['target'], []).append(e['data']['source'])
+
+    total = len(nodes)
+    total_edges = len(edges)
+    steps = []
+
+    # ── Step 1: Overview ──
+    dir_set = set()
+    for n in nodes:
+        nid = n['data']['id']
+        d = nid.rsplit('/', 1)[0] if '/' in nid else '.'
+        dir_set.add(d)
+
+    steps.append({
+        "step_type": "overview",
+        "title": "Project Overview",
+        "narrative": (
+            f"This project contains {total} source file{'s' if total != 1 else ''} "
+            f"connected by {total_edges} dependency edge{'s' if total_edges != 1 else ''}, "
+            f"spread across {len(dir_set)} director{'ies' if len(dir_set) != 1 else 'y'}. "
+            "Let\u2019s walk through the architecture."
+        ),
+        "highlight_nodes": [],
+        "highlight_edges": [],
+        "zoom_target": None,
+    })
+
+    # ── Step 2: Entry Points ──
+    entry_points = sorted(
+        [nid for nid, deg in in_deg.items() if deg == 0],
+        key=lambda x: out_deg.get(x, 0), reverse=True,
+    )
+    if entry_points:
+        top_entries = entry_points[:5]
+        if len(entry_points) == 1:
+            desc = (
+                f"There is one entry point: {entry_points[0]}. "
+                "This file is not imported by anything else \u2014 it\u2019s where execution begins."
+            )
+        else:
+            listed = ", ".join(top_entries[:3])
+            desc = (
+                f"There are {len(entry_points)} entry points (files with no inbound imports). "
+                f"The most connected are: {listed}. "
+                "These are the roots of the dependency tree \u2014 nothing imports them, "
+                "but they pull in other modules."
+            )
+        steps.append({
+            "step_type": "entry_points",
+            "title": "Entry Points",
+            "narrative": desc,
+            "highlight_nodes": top_entries,
+            "highlight_edges": [],
+            "zoom_target": top_entries[0] if top_entries else None,
+        })
+
+    # ── Step 3: Hub Files (highest in-degree) ──
+    by_in = sorted(node_map.keys(), key=lambda x: in_deg.get(x, 0), reverse=True)
+    hubs = [nid for nid in by_in if in_deg.get(nid, 0) >= 3][:5]
+    if hubs:
+        top_hub = hubs[0]
+        top_count = in_deg[top_hub]
+        hub_impact = node_map[top_hub].get('impact', 0)
+        pct = round(hub_impact / total * 100) if total > 0 else 0
+
+        desc = (
+            f"The most-imported file is {top_hub}, referenced by {top_count} other files. "
+            f"Changes here ripple out to {hub_impact} file{'s' if hub_impact != 1 else ''} "
+            f"({pct}% of the project). "
+        )
+        if len(hubs) > 1:
+            desc += f"Other key hubs include: {', '.join(hubs[1:3])}. "
+        desc += "These are the load-bearing walls of your codebase \u2014 tread carefully."
+
+        # Collect edges that touch the top hub
+        hub_edges = []
+        for e in edges:
+            if e['data']['target'] == top_hub:
+                hub_edges.append({"source": e['data']['source'], "target": e['data']['target']})
+
+        steps.append({
+            "step_type": "hubs",
+            "title": "Critical Hubs",
+            "narrative": desc,
+            "highlight_nodes": hubs,
+            "highlight_edges": hub_edges[:20],
+            "zoom_target": top_hub,
+        })
+
+    # ── Step 4: Deepest Dependency Chains ──
+    by_depth = sorted(node_map.keys(),
+                      key=lambda x: node_map[x].get('depth', 0), reverse=True)
+    deepest = [(nid, node_map[nid].get('depth', 0)) for nid in by_depth
+               if node_map[nid].get('depth', 0) >= 2][:5]
+    if deepest:
+        top_nid, top_depth = deepest[0]
+        desc = (
+            f"The longest dependency chain is {top_depth} levels deep, "
+            f"starting from {top_nid}. "
+            "Deep chains mean a change at the bottom can cascade through many layers. "
+        )
+        if len(deepest) > 1:
+            others = ", ".join(f"{nid} (depth {d})" for nid, d in deepest[1:3])
+            desc += f"Other deep files: {others}. "
+        desc += "Consider whether these chains are intentional or accidental complexity."
+
+        steps.append({
+            "step_type": "depth",
+            "title": "Deepest Chains",
+            "narrative": desc,
+            "highlight_nodes": [nid for nid, _ in deepest],
+            "highlight_edges": [],
+            "zoom_target": top_nid,
+        })
+
+    # ── Step 5: Circular Dependencies ──
+    if cycles:
+        cycle_nodes = set()
+        for c in cycles:
+            for nid in c:
+                cycle_nodes.add(nid)
+        cycle_edge_list = []
+        for e in edges:
+            if e.get('classes') and 'cycle' in e['classes']:
+                cycle_edge_list.append({
+                    "source": e['data']['source'], "target": e['data']['target']
+                })
+
+        desc = (
+            f"There {'is' if len(cycles) == 1 else 'are'} "
+            f"{len(cycles)} circular dependency loop{'s' if len(cycles) != 1 else ''} "
+            f"involving {len(cycle_nodes)} file{'s' if len(cycle_nodes) != 1 else ''}. "
+            "Cycles make code harder to test, refactor, and reason about. "
+        )
+        if len(cycles) == 1:
+            desc += f"The cycle includes: {', '.join(cycles[0][:4])}."
+        else:
+            desc += f"The largest cycle has {max(len(c) for c in cycles)} files."
+
+        steps.append({
+            "step_type": "cycles",
+            "title": "Circular Dependencies",
+            "narrative": desc,
+            "highlight_nodes": sorted(cycle_nodes),
+            "highlight_edges": cycle_edge_list[:30],
+            "zoom_target": list(cycle_nodes)[0] if cycle_nodes else None,
+        })
+    else:
+        steps.append({
+            "step_type": "cycles",
+            "title": "No Circular Dependencies",
+            "narrative": (
+                "Good news \u2014 there are no circular dependency loops in this project. "
+                "That\u2019s a sign of clean, well-layered architecture."
+            ),
+            "highlight_nodes": [],
+            "highlight_edges": [],
+            "zoom_target": None,
+        })
+
+    # ── Step 6: Stability Risks ──
+    # High-impact + unstable files are the riskiest
+    risky = []
+    for nid, data in node_map.items():
+        impact = data.get('impact', 0)
+        stability = data.get('stability', 0.5)
+        if impact >= 2 and stability > 0.6:
+            risky.append((nid, impact, stability))
+    risky.sort(key=lambda x: x[1] * x[2], reverse=True)
+    risky = risky[:5]
+
+    if risky:
+        top_r = risky[0]
+        desc = (
+            f"The riskiest file is {top_r[0]} \u2014 it affects {top_r[1]} files "
+            f"but has a high instability score of {top_r[2]}. "
+            "High-impact, unstable files are the most dangerous: they change often "
+            "and break a lot when they do. "
+        )
+        if len(risky) > 1:
+            others = ", ".join(r[0] for r in risky[1:3])
+            desc += f"Other risky files: {others}."
+        else:
+            desc += "Consider stabilizing this file by reducing its outbound dependencies."
+
+        steps.append({
+            "step_type": "risks",
+            "title": "Stability Risks",
+            "narrative": desc,
+            "highlight_nodes": [r[0] for r in risky],
+            "highlight_edges": [],
+            "zoom_target": top_r[0],
+        })
+
+    # ── Step 7: Directory Coupling ──
+    coupling = graph.get('coupling', [])
+    high_coupling = [c for c in coupling if c.get('score', 0) > 0.1]
+    if high_coupling:
+        top_c = high_coupling[0]
+        desc = (
+            f"The most coupled directories are {top_c['dir1']} and {top_c['dir2']}, "
+            f"sharing {top_c['cross_edges']} cross-boundary edges (score: {top_c['score']}). "
+            "High coupling between directories can indicate unclear boundaries. "
+        )
+        if len(high_coupling) > 1:
+            desc += (
+                f"There are {len(high_coupling)} directory pairs with notable coupling."
+            )
+
+        steps.append({
+            "step_type": "coupling",
+            "title": "Directory Coupling",
+            "narrative": desc,
+            "highlight_nodes": [],
+            "highlight_edges": [],
+            "zoom_target": None,
+        })
+
+    # ── Step 8: Summary & Recommendations ──
+    recs = []
+    if cycles:
+        recs.append(f"Break {len(cycles)} circular dependency loop{'s' if len(cycles) != 1 else ''}")
+    if risky:
+        recs.append(f"Stabilize {len(risky)} high-risk file{'s' if len(risky) != 1 else ''}")
+    if hubs and in_deg.get(hubs[0], 0) > total * 0.3:
+        recs.append(f"Consider splitting {hubs[0]} \u2014 it\u2019s a god file")
+    if high_coupling:
+        recs.append("Clarify directory boundaries to reduce coupling")
+    if not recs:
+        recs.append("Architecture looks healthy \u2014 keep it up!")
+
+    steps.append({
+        "step_type": "summary",
+        "title": "Summary",
+        "narrative": (
+            "That\u2019s the full picture. "
+            + ("Key recommendations: " + "; ".join(recs) + "."
+               if recs else "")
+        ),
+        "highlight_nodes": [],
+        "highlight_edges": [],
+        "zoom_target": None,
+    })
+
+    return jsonify({"steps": steps, "total_steps": len(steps)})
 
 
 @app.route('/api/csrf-token', methods=['GET'])
