@@ -379,6 +379,42 @@
         .toast.visible {
             opacity: 1;
         }
+
+        .mode-selector {
+            display: flex;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .mode-selector input[type="radio"] {
+            display: none;
+        }
+
+        .mode-selector label {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            color: var(--text-muted);
+            border-right: 1px solid var(--border-color);
+            user-select: none;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .mode-selector label:last-of-type {
+            border-right: none;
+        }
+
+        .mode-selector label:hover {
+            background-color: var(--border-color);
+        }
+
+        .mode-selector input[type="radio"]:checked + label {
+            background-color: var(--primary);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -418,22 +454,15 @@
                             <input type="checkbox" id="hideSystemHeaders" checked onchange="updateGraph()">
                             Hide System Headers
                         </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="showCFiles" checked onchange="updateGraph()">
-                            Show .c files
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="showHFiles" checked onchange="updateGraph()">
-                            Show .h files
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="showCppFiles" checked onchange="updateGraph()">
-                            Show C++ files
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="showJsFiles" onchange="updateGraph()">
-                            Show JS/TS files
-                        </label>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Language Mode</div>
+                        <div class="mode-selector">
+                            <input type="radio" name="langMode" id="modeC" value="c" checked onchange="updateGraph()">
+                            <label for="modeC">C</label>
+                            <input type="radio" name="langMode" id="modeCpp" value="cpp" onchange="updateGraph()">
+                            <label for="modeCpp">C++</label>
+                            <input type="radio" name="langMode" id="modeJs" value="js" onchange="updateGraph()">
+                            <label for="modeJs">TS/JS</label>
+                        </div>
                         <label class="checkbox-label">
                             <input type="checkbox" id="hideIsolated" checked onchange="updateGraph()">
                             Hide Isolated Files
@@ -892,12 +921,13 @@
         }
 
         function getFilterValues() {
+            const mode = document.querySelector('input[name="langMode"]:checked').value;
             return {
                 hide_system: document.getElementById('hideSystemHeaders').checked,
-                show_c: document.getElementById('showCFiles').checked,
-                show_h: document.getElementById('showHFiles').checked,
-                show_cpp: document.getElementById('showCppFiles').checked,
-                show_js: document.getElementById('showJsFiles').checked,
+                show_c: mode === 'c' || mode === 'cpp',
+                show_h: mode === 'c' || mode === 'cpp',
+                show_cpp: mode === 'cpp',
+                show_js: mode === 'js',
                 hide_isolated: document.getElementById('hideIsolated').checked,
                 filter_dir: document.getElementById('filterDirInput').value,
             };
