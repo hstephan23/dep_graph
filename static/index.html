@@ -456,13 +456,16 @@
                         </label>
                         <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Language Mode</div>
                         <div class="mode-selector">
-                            <input type="radio" name="langMode" id="modeC" value="c" checked onchange="updateGraph()">
+                            <input type="radio" name="langMode" id="modeAuto" value="auto" checked onchange="updateGraph()">
+                            <label for="modeAuto">Auto</label>
+                            <input type="radio" name="langMode" id="modeC" value="c" onchange="updateGraph()">
                             <label for="modeC">C</label>
                             <input type="radio" name="langMode" id="modeCpp" value="cpp" onchange="updateGraph()">
                             <label for="modeCpp">C++</label>
                             <input type="radio" name="langMode" id="modeJs" value="js" onchange="updateGraph()">
                             <label for="modeJs">TS/JS</label>
                         </div>
+                        <div id="detectedLangs" style="font-size: 0.75rem; color: var(--text-muted); display: none;"></div>
                         <label class="checkbox-label">
                             <input type="checkbox" id="hideIsolated" checked onchange="updateGraph()">
                             Hide Isolated Files
@@ -910,6 +913,7 @@
                     showToast('Error: ' + data.error, 5000);
                 } else {
                     renderGraph(data);
+                    showDetectedLanguages(data.detected);
                 }
                 loading.classList.remove('active');
             })
@@ -922,6 +926,14 @@
 
         function getFilterValues() {
             const mode = document.querySelector('input[name="langMode"]:checked').value;
+            if (mode === 'auto') {
+                return {
+                    mode: 'auto',
+                    hide_system: document.getElementById('hideSystemHeaders').checked,
+                    hide_isolated: document.getElementById('hideIsolated').checked,
+                    filter_dir: document.getElementById('filterDirInput').value,
+                };
+            }
             return {
                 hide_system: document.getElementById('hideSystemHeaders').checked,
                 show_c: mode === 'c' || mode === 'cpp',
@@ -931,6 +943,22 @@
                 hide_isolated: document.getElementById('hideIsolated').checked,
                 filter_dir: document.getElementById('filterDirInput').value,
             };
+        }
+
+        function showDetectedLanguages(detected) {
+            const el = document.getElementById('detectedLangs');
+            if (!detected) { el.style.display = 'none'; return; }
+            const langs = [];
+            if (detected.has_c) langs.push('C');
+            if (detected.has_h) langs.push('Headers');
+            if (detected.has_cpp) langs.push('C++');
+            if (detected.has_js) langs.push('TS/JS');
+            if (langs.length === 0) {
+                el.textContent = 'No supported files detected';
+            } else {
+                el.textContent = 'Detected: ' + langs.join(', ');
+            }
+            el.style.display = '';
         }
 
         function loadGraph() {
@@ -949,6 +977,7 @@
                         alert('Error: ' + data.error);
                     } else {
                         renderGraph(data);
+                        showDetectedLanguages(data.detected);
                     }
                     loading.classList.remove('active');
                 })
