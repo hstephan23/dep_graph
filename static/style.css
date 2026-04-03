@@ -1911,3 +1911,146 @@ details.dropdown .dropdown-body {
     margin: 6px 0;
     flex-shrink: 0;
 }
+
+/* ============================================================
+   STORY MODE
+   ============================================================ */
+.story-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+.story-play-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.85rem !important;
+    font-size: 0.75rem !important;
+    flex-shrink: 0;
+}
+.story-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    margin-left: auto;
+}
+.story-nav-btn {
+    padding: 0.3rem !important;
+    min-width: 0 !important;
+}
+.story-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+.story-step-counter {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    min-width: 3rem;
+    text-align: center;
+}
+.story-speed {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0 0.15rem;
+}
+.story-speed input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+}
+.story-speed input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--primary);
+    border-radius: 50%;
+    cursor: pointer;
+}
+.story-progress {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 0.6rem;
+    overflow: hidden;
+}
+.story-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--primary);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+/* Story cards */
+.story-card {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.6rem;
+    margin-top: 0.5rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s;
+    opacity: 0.55;
+}
+.story-card:hover {
+    opacity: 0.8;
+    border-color: var(--text-muted);
+}
+.story-card.active {
+    opacity: 1;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.story-card-marker {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.story-card-body {
+    flex: 1;
+    min-width: 0;
+}
+.story-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.25rem;
+}
+.story-card-title svg {
+    flex-shrink: 0;
+}
+.story-card-narrative {
+    font-size: 0.7rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+    padding-top: 0;
+}
+.story-card.active .story-card-narrative {
+    max-height: 500px;
+    padding-top: 0.15rem;
+}
