@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=5">
+    <link rel="stylesheet" href="/static/style.css?v=6">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet">
 </head>
@@ -70,6 +70,7 @@
                 </div>
             </details>
 
+            <!-- Graph layout: pills + focus lens tucked inside -->
             <div class="toolbar-group">
                 <span class="toolbar-group-label">Layout</span>
                 <div class="pill-group">
@@ -77,19 +78,53 @@
                     <input type="radio" name="layoutMode" id="layoutDagre" value="dagre" onchange="changeLayout(this.value)"><label for="layoutDagre">Hierarchy</label>
                     <input type="radio" name="layoutMode" id="layoutConcentric" value="concentric" onchange="changeLayout(this.value)"><label for="layoutConcentric">Concentric</label>
                 </div>
+                <div class="toolbar-group-divider"></div>
+                <button class="btn-icon" id="fisheyeToggle" onclick="fisheyeToggle()" title="Focus lens (L)" aria-label="Focus lens">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M11 7a4 4 0 0 1 4 4"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
             </div>
 
-            <button class="btn btn-ghost" onclick="toggleQueryTerminal()" title="Query terminal (Q)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                <span>Query</span>
-            </button>
+            <div class="toolbar-group" id="pdViewToggle" style="display:none;">
+                <span class="toolbar-group-label">Scope</span>
+                <div class="pill-group">
+                    <input type="radio" name="pdView" id="pdViewDirs" value="dirs" checked onchange="pdSetView('dirs')"><label for="pdViewDirs">Directories</label>
+                    <input type="radio" name="pdView" id="pdViewFiles" value="files" onchange="pdSetView('files')"><label for="pdViewFiles">All Files</label>
+                </div>
+            </div>
+
+            <!-- View mode: Graph/Treemap + metric selector inline -->
+            <div class="toolbar-group">
+                <span class="toolbar-group-label">View</span>
+                <div class="pill-group">
+                    <input type="radio" name="viewMode" id="viewGraph" value="graph" checked onchange="switchView('graph')"><label for="viewGraph">Graph</label>
+                    <input type="radio" name="viewMode" id="viewTreemap" value="treemap" onchange="switchView('treemap')"><label for="viewTreemap">Treemap</label>
+                </div>
+                <div class="treemap-metric-inline" id="treemapMetricGroup" style="display:none;">
+                    <div class="toolbar-group-divider"></div>
+                    <select id="treemapMetric" class="treemap-metric-select" onchange="renderTreemap()">
+                        <option value="total">Total deps</option>
+                        <option value="inbound">Inbound</option>
+                        <option value="outbound">Outbound</option>
+                        <option value="impact">Impact</option>
+                        <option value="depth">Depth</option>
+                        <option value="stability">Instability</option>
+                    </select>
+                </div>
+            </div>
 
             <div style="flex:1;"></div>
 
+            <!-- Status -->
             <div id="cycleWarning" class="cycle-badge">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
                 Cycle Detected
             </div>
+
+            <!-- Actions: Query, Upload, Export -->
+            <button class="btn btn-ghost" onclick="toggleQueryTerminal()" title="Query terminal (Q)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                <span>Query</span>
+            </button>
 
             <label for="zipUpload" class="btn btn-upload" tabindex="0">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -110,6 +145,9 @@
                 </div>
             </details>
 
+            <div class="toolbar-separator"></div>
+
+            <!-- Utility icons -->
             <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
                 <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             </button>
@@ -150,6 +188,7 @@
     <div class="main">
         <div id="loading" class="loading-overlay"><div class="spinner"></div></div>
         <div id="cy"></div>
+        <div id="treemapContainer" class="treemap-container" style="display:none;"></div>
 
         <div id="emptyState" class="empty-state">
             <div class="empty-state-icon">
@@ -538,6 +577,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=5"></script>
+    <script src="/static/app.js?v=6"></script>
 </body>
 </html>
