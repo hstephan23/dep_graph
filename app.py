@@ -922,6 +922,13 @@ def index():
     return app.send_static_file('index.html')
 
 
+@app.route('/api/config')
+def get_config():
+    """Expose non-sensitive configuration flags to the frontend."""
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    return jsonify({"dev_mode": debug})
+
+
 @app.route('/api/file', methods=['GET'])
 def get_file():
     """Return the contents of a source file for preview.

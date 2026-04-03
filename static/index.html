@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=4">
+    <link rel="stylesheet" href="/static/style.css?v=5">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet">
 </head>
@@ -35,64 +35,6 @@
 
             <div class="toolbar-separator"></div>
 
-            <div class="input-wrap input-dir">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                <input type="text" id="dirInput" placeholder="Directory path..." value="test_files" onkeydown="if(event.key==='Enter')loadGraph()" aria-label="Directory path">
-            </div>
-
-            <button class="btn btn-primary" onclick="loadGraph()">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                <span>Generate</span>
-            </button>
-
-            <div class="input-wrap input-search">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="searchInput" placeholder="Search..." onkeydown="if(event.key==='Enter')searchNode()" aria-label="Search files">
-            </div>
-
-            <div style="flex:1;"></div>
-
-            <div id="cycleWarning" class="cycle-badge">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                Cycle Detected
-            </div>
-
-            <label for="zipUpload" class="btn btn-upload" tabindex="0">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <span>Upload</span>
-            </label>
-            <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs" style="display:none;" onchange="handleZipSelect(event)">
-
-            <details class="dropdown">
-                <summary class="btn btn-ghost">
-                    <span>Export</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-                </summary>
-                <div class="dropdown-body export-menu" style="right:0;left:auto;">
-                    <button onclick="exportJSON()">JSON</button>
-                    <button onclick="exportPNG()">PNG</button>
-                    <button onclick="exportDOT()">DOT / Graphviz</button>
-                    <button onclick="exportMermaid()">Mermaid</button>
-                </div>
-            </details>
-
-            <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
-                <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-            </button>
-
-            <button class="btn-icon btn-help" onclick="toggleShortcutHelp()" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
-                <span>?</span>
-            </button>
-
-            <button class="btn-icon" id="sidebarDesktopToggle" onclick="toggleSidebar()" title="Toggle sidebar (S)" aria-label="Toggle sidebar">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
-            </button>
-        </div>
-
-        <!-- ============================================================
-             TOOLBAR — BOTTOM ROW (filters, layout, view toggles)
-             ============================================================ -->
-        <div class="toolbar-bottom">
             <details class="dropdown">
                 <summary class="btn btn-ghost" style="font-size:0.75rem;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
@@ -136,6 +78,68 @@
                 </div>
             </div>
 
+            <button class="btn btn-ghost" onclick="toggleQueryTerminal()" title="Query terminal (Q)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                <span>Query</span>
+            </button>
+
+            <div style="flex:1;"></div>
+
+            <div id="cycleWarning" class="cycle-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                Cycle Detected
+            </div>
+
+            <label for="zipUpload" class="btn btn-upload" tabindex="0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Upload</span>
+            </label>
+            <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs" style="display:none;" onchange="handleZipSelect(event)">
+
+            <details class="dropdown">
+                <summary class="btn btn-ghost">
+                    <span>Export</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="dropdown-body export-menu" style="right:0;left:auto;">
+                    <button onclick="exportJSON()">JSON</button>
+                    <button onclick="exportPNG()">PNG</button>
+                    <button onclick="exportDOT()">DOT / Graphviz</button>
+                    <button onclick="exportMermaid()">Mermaid</button>
+                </div>
+            </details>
+
+            <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+                <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+
+            <button class="btn-icon btn-help" onclick="toggleShortcutHelp()" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+                <span>?</span>
+            </button>
+
+            <button class="btn-icon" id="sidebarDesktopToggle" onclick="toggleSidebar()" title="Toggle sidebar (S)" aria-label="Toggle sidebar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+            </button>
+        </div>
+
+        <!-- ============================================================
+             TOOLBAR — BOTTOM ROW (directory path, search — dev only)
+             ============================================================ -->
+        <div class="toolbar-bottom dev-only">
+            <div class="input-wrap input-dir">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <input type="text" id="dirInput" placeholder="Directory path..." value="test_files" onkeydown="if(event.key==='Enter')loadGraph()" aria-label="Directory path">
+            </div>
+
+            <button class="btn btn-primary" onclick="loadGraph()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>Generate</span>
+            </button>
+
+            <div class="input-wrap input-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="searchInput" placeholder="Search..." onkeydown="if(event.key==='Enter')searchNode()" aria-label="Search files">
+            </div>
         </div>
     </div>
 
@@ -205,6 +209,56 @@
 
         <!-- Resize handle for preview drawer -->
         <div class="preview-resize-handle" id="previewResizeHandle"></div>
+
+        <!-- ============================================================
+             QUERY TERMINAL
+             ============================================================ -->
+        <div class="query-terminal" id="queryTerminal">
+            <div class="query-terminal-header">
+                <div class="query-terminal-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span>Query</span>
+                    <span class="query-result-count" id="queryResultCount"></span>
+                </div>
+                <div class="query-terminal-actions">
+                    <div class="query-mode-toggle" id="queryModeToggle">
+                        <button class="query-mode-btn active" data-mode="highlight" onclick="setQueryMode('highlight')" title="Highlight matches in graph">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                            <span>Highlight</span>
+                        </button>
+                        <button class="query-mode-btn" data-mode="isolate" onclick="setQueryMode('isolate')" title="Show only matching nodes">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                            <span>Isolate</span>
+                        </button>
+                    </div>
+                    <button class="btn-icon query-clear-btn" onclick="clearQuery()" title="Clear query">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6"/></svg>
+                    </button>
+                    <button class="btn-icon" onclick="toggleQueryTerminal()" title="Close (Q)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="query-terminal-body" id="queryTerminalBody">
+                <div class="query-input-row">
+                    <span class="query-prompt-char">&gt;</span>
+                    <input type="text" id="queryInput" placeholder="files where inbound > 3 and outbound > 2" autocomplete="off" spellcheck="false" onkeydown="handleQueryKeydown(event)">
+                </div>
+                <div class="query-hints" id="queryHints">
+                    <div class="query-hint-title">Examples</div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where inbound > 3 and outbound > 2</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files in cycles</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files with no downstream</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files with no upstream</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where stability > 0.7</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where impact > 5</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where depth > 3</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files matching utils/</code></div>
+                </div>
+                <div class="query-results-list" id="queryResultsList"></div>
+                <div class="query-error" id="queryError"></div>
+            </div>
+        </div>
 
         <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
 
@@ -483,6 +537,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=4"></script>
+    <script src="/static/app.js?v=5"></script>
 </body>
 </html>
