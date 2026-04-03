@@ -256,6 +256,12 @@
                         <span>Diff</span>
                     </div>
                 </div>
+                <div class="sidebar-tab-row">
+                    <div class="sidebar-tab" data-panel="panel-simulate" onclick="switchTab(this)" title="Refactor simulation" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64A9 9 0 0 1 20.77 15"/><path d="M6.16 6.16a9 9 0 1 0 12.68 12.68"/><path d="M12 2v4"/><path d="m2 2 20 20"/></svg>
+                        <span>Simulate Refactor</span>
+                    </div>
+                </div>
             </div>
 
             <div class="sidebar-scroll">
@@ -363,6 +369,45 @@
                         <button class="btn btn-primary" onclick="loadDiff()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Diff</button>
                     </div>
                     <div id="diff-summary"></div>
+                </div>
+
+                <!-- Simulate panel -->
+                <div id="panel-simulate" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Refactor Simulation</div>
+                    <div class="panel-hint">Simulate removing a file or dependency to see what would break. Click a node to add it, or click an edge to select a dependency.</div>
+
+                    <div class="sim-section">
+                        <div class="sim-section-label">Remove Nodes (files)</div>
+                        <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                            <input type="text" id="simNodeInput" placeholder="File to remove..." list="simNodeList" autocomplete="off">
+                            <datalist id="simNodeList"></datalist>
+                            <button class="btn btn-ghost" onclick="simAddNode()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">+ Add File</button>
+                        </div>
+                        <div id="sim-node-list" class="sim-items"></div>
+                    </div>
+
+                    <div class="sim-section">
+                        <div class="sim-section-label">Remove Edges (dependencies)</div>
+                        <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                            <input type="text" id="simEdgeFrom" placeholder="Source file..." list="simEdgeFromList" autocomplete="off">
+                            <datalist id="simEdgeFromList"></datalist>
+                            <span style="text-align:center;color:var(--text-muted);font-size:0.7rem;">depends on</span>
+                            <input type="text" id="simEdgeTo" placeholder="Target file..." list="simEdgeToList" autocomplete="off">
+                            <datalist id="simEdgeToList"></datalist>
+                            <button class="btn btn-ghost" onclick="simAddEdge()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">+ Add Edge</button>
+                        </div>
+                        <div id="sim-edge-list" class="sim-items"></div>
+                    </div>
+
+                    <div style="display:flex;gap:0.5rem;margin-top:0.75rem;">
+                        <button class="btn btn-primary sim-run-btn" onclick="runSimulation()" style="flex:1;padding:0.5rem 0.65rem;font-size:0.75rem;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Run Simulation
+                        </button>
+                        <button class="btn btn-ghost" onclick="simReset()" style="padding:0.5rem 0.65rem;font-size:0.75rem;">Reset</button>
+                    </div>
+
+                    <div id="sim-results"></div>
                 </div>
             </div>
         </div>
