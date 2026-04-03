@@ -166,8 +166,15 @@
 
         <div class="path-hint" id="pathHint">Click a node to trace dependencies &middot; Double-click to view source &middot; Esc to clear</div>
 
+        <div class="folder-color-key" id="folderColorKey">
+            <button class="folder-key-toggle" id="folderKeyToggle" onclick="toggleFolderKey()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                Folders
+                <svg class="folder-key-chevron" id="folderKeyChevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="folder-key-list" id="folderKeyList"></div>
+        </div>
         <div class="graph-status-bar" id="graphStatusBar">
-            <span class="status-item"><span class="legend-multi-dot"><span style="background:#6366f1;"></span><span style="background:#0ea5e9;"></span><span style="background:#14b8a6;"></span></span> Node (by folder)</span>
             <span class="status-item"><span class="legend-line" style="background:#94a3b8;"></span> Edge</span>
             <span class="status-item"><span class="legend-dot" style="background:#6366f1;"></span> Upstream</span>
             <span class="status-item"><span class="legend-dot" style="background:#f97316;"></span> Downstream</span>
