@@ -626,6 +626,90 @@ function exportDOT() {
     a.download = "dependency_graph.dot"; document.body.appendChild(a); a.click(); a.remove();
 }
 
+function exportMermaid() {
+    if (!currentGraphData) return;
+
+    // Sanitize node IDs for Mermaid — replace non-alphanumeric chars with underscores
+    // but keep the original name for display labels
+    const idMap = {};
+    let counter = 0;
+    function mermaidId(name) {
+        if (idMap[name]) return idMap[name];
+        const id = 'n' + (counter++);
+        idMap[name] = id;
+        return id;
+    }
+
+    // Group nodes by directory for subgraph support
+    const dirMap = {};
+    (currentGraphData.nodes || []).forEach(n => {
+        const id = n.data.id;
+        const dir = id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.';
+        if (!dirMap[dir]) dirMap[dir] = [];
+        dirMap[dir].push(id);
+    });
+
+    // Detect cycle edges for styling
+    const cycleEdges = new Set();
+    (currentGraphData.edges || []).forEach(e => {
+        if (e.classes && e.classes.includes('cycle')) {
+            cycleEdges.add(e.data.source + '|' + e.data.target);
+        }
+    });
+
+    let s = 'graph TD\n';
+
+    // Emit subgraphs for directories with more than one file
+    const dirs = Object.keys(dirMap).sort();
+    const emittedInSubgraph = new Set();
+
+    dirs.forEach(dir => {
+        const files = dirMap[dir];
+        if (files.length > 1 && dir !== '.') {
+            const subId = dir.replace(/[^a-zA-Z0-9]/g, '_');
+            s += `\n  subgraph ${subId}["${dir}"]\n`;
+            files.forEach(f => {
+                const label = f.includes('/') ? f.substring(f.lastIndexOf('/') + 1) : f;
+                s += `    ${mermaidId(f)}["${label}"]\n`;
+                emittedInSubgraph.add(f);
+            });
+            s += '  end\n';
+        }
+    });
+
+    // Emit remaining nodes not in a subgraph
+    (currentGraphData.nodes || []).forEach(n => {
+        if (!emittedInSubgraph.has(n.data.id)) {
+            s += `  ${mermaidId(n.data.id)}["${n.data.id}"]\n`;
+        }
+    });
+
+    s += '\n';
+
+    // Emit edges
+    (currentGraphData.edges || []).forEach(e => {
+        const src = mermaidId(e.data.source);
+        const tgt = mermaidId(e.data.target);
+        const isCycle = cycleEdges.has(e.data.source + '|' + e.data.target);
+        if (isCycle) {
+            s += `  ${src} -. cycle .-> ${tgt}\n`;
+        } else {
+            s += `  ${src} --> ${tgt}\n`;
+        }
+    });
+
+    // Add cycle edge styling
+    if (cycleEdges.size > 0) {
+        s += '\n  linkStyle default stroke:#94a3b8\n';
+    }
+
+    const a = document.createElement('a');
+    a.href = "data:text/plain;charset=utf-8," + encodeURIComponent(s);
+    a.download = "dependency_graph.mmd";
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast('Exported Mermaid diagram (.mmd)');
+}
+
 // --- Search ---
 function searchNode() {
     if (!cy) return;
@@ -1304,6 +1388,7 @@ const SHORTCUTS = [
         { keys: 'e j',         desc: 'Export JSON',                    action: () => exportJSON(),        combo: true },
         { keys: 'e p',         desc: 'Export PNG',                     action: () => exportPNG(),         combo: true },
         { keys: 'e d',         desc: 'Export DOT',                     action: () => exportDOT(),         combo: true },
+        { keys: 'e m',         desc: 'Export Mermaid',                 action: () => exportMermaid(),     combo: true },
     ]},
 ];
 
