@@ -12,12 +12,13 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__, static_folder='static')
 
-# Color palette for mapping directories to consistent node colors.
+# Cool-tone palette for directory-based node colors (no warm colors to avoid
+# confusion with red error/cycle highlights).
 _PALETTE = [
-    "#4E79A7", "#F28E2C", "#E15759", "#76B7B2", "#59A14F",
-    "#EDC949", "#AF7AA1", "#FF9DA7", "#9C755F", "#BAB0AB",
-    "#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
-    "#8C564B", "#E377C2", "#7F7F7F", "#BCBD22", "#17BECF",
+    "#6366f1", "#818cf8", "#8b5cf6", "#7c3aed", "#6d28d9",
+    "#3b82f6", "#60a5fa", "#0ea5e9", "#06b6d4", "#14b8a6",
+    "#0d9488", "#475569", "#64748b", "#7dd3fc", "#a78bfa",
+    "#38bdf8", "#2dd4bf", "#a5b4fc", "#94a3b8", "#5eead4",
 ]
 
 # --- Import / include patterns per language ---
@@ -438,7 +439,7 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
             "data": {
                 "source": source,
                 "target": target,
-                "color": _color_for_path(source),
+                "color": "#94a3b8",
             }
         })
         if target not in node_set:

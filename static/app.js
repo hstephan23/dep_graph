@@ -221,7 +221,7 @@ function checkLayers() {
             };
             list.appendChild(div);
         });
-    });
+    }).catch(() => showToast('Error: Failed to check layers', 4000));
 }
 
 // --- Diff ---
@@ -233,8 +233,9 @@ function loadDiff() {
         .then(r => r.json()).then(ng => {
             if (ng.error) { showToast('Error: ' + ng.error); return; }
             fetch('/api/diff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ old: currentGraphData, new: ng }) })
-                .then(r => r.json()).then(renderDiff);
-        });
+                .then(r => r.json()).then(renderDiff)
+                .catch(() => showToast('Error: Diff comparison failed', 4000));
+        }).catch(() => showToast('Error: Failed to load second directory', 4000));
 }
 
 function renderDiff(diff) {
@@ -683,7 +684,7 @@ function checkRules() {
         applyRuleBadges();
         if (!ruleViolations.length) showToast('No violations found!');
         else showToast(`Found ${ruleViolations.length} violation${ruleViolations.length > 1 ? 's' : ''}`);
-    });
+    }).catch(() => showToast('Error: Failed to check rules', 4000));
 }
 
 function renderRuleViolations() {
@@ -766,7 +767,7 @@ function clearRuleViolations() {
 // MINIMAP
 // ============================================================
 
-let minimapVisible = false;
+let minimapVisible = true;
 let minimapRAF = null;
 
 function toggleMinimap() {
