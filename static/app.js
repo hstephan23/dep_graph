@@ -215,7 +215,323 @@ function showNodeAnalysis(nodeId, up, down) {
     switchTab(document.querySelector('[data-panel="panel-analysis"]'));
 }
 
-// --- Toggles ---
+// --- Blast Radius (Reverse Dependency Lookup) ---
+function showBlastRadius(nodeId) {
+    if (!currentGraphData) return;
+
+    // Build reverse adjacency map: target → [sources that import it]
+    const revAdj = {};
+    currentGraphData.nodes.forEach(n => revAdj[n.data.id] = []);
+    currentGraphData.edges.forEach(e => {
+        if (!revAdj[e.data.target]) revAdj[e.data.target] = [];
+        revAdj[e.data.target].push(e.data.source);
+    });
+
+    // Direct dependents (files that directly import this file)
+    const directDeps = revAdj[nodeId] || [];
+
+    // Transitive dependents via BFS on reverse adjacency
+    const transitive = new Set();
+    const queue = [nodeId];
+    const depthMap = {}; // nodeId → distance from selected node
+    depthMap[nodeId] = 0;
+    while (queue.length) {
+        const cur = queue.shift();
+        for (const dep of (revAdj[cur] || [])) {
+            if (!transitive.has(dep) && dep !== nodeId) {
+                transitive.add(dep);
+                depthMap[dep] = (depthMap[cur] || 0) + 1;
+                queue.push(dep);
+            }
+        }
+    }
+
+    // Group by depth level
+    const byDepth = {};
+    transitive.forEach(id => {
+        const d = depthMap[id];
+        if (!byDepth[d]) byDepth[d] = [];
+        byDepth[d].push(id);
+    });
+
+    // Count total nodes in graph for percentage
+    const totalNodes = currentGraphData.nodes.length;
+    const pct = totalNodes > 0 ? Math.round((transitive.size / totalNodes) * 100) : 0;
+
+    // Severity coloring
+    const severityCls = pct > 40 ? 'badge-red' : pct > 15 ? 'badge-yellow' : 'badge-green';
+
+    const el = document.getElementById('blast-content');
+    let html = '';
+
+    // Summary card
+    html += `<div class="node-card">
+        <div class="node-card-header">${nodeId}</div>
+        <div class="metric-row"><span class="metric-label">Direct dependents</span><span class="badge badge-yellow">${directDeps.length}</span></div>
+        <div class="metric-row"><span class="metric-label">Total blast radius</span><span class="badge ${severityCls}">${transitive.size} file${transitive.size !== 1 ? 's' : ''} (${pct}%)</span></div>
+    </div>`;
+
+    if (transitive.size === 0) {
+        html += '<div class="panel-hint" style="margin-top:0.5rem;">No files depend on this file. Changes here have zero blast radius.</div>';
+        el.innerHTML = html;
+        return;
+    }
+
+    // Direct dependents section
+    if (directDeps.length > 0) {
+        html += `<div class="panel-header" style="margin-top:0.5rem;">Direct Dependents <span class="count-badge">${directDeps.length}</span></div>`;
+        directDeps.sort().forEach(dep => {
+            html += `<div class="metric-row clickable blast-row" onclick="blastZoomTo('${dep}')" style="cursor:pointer;">
+                <span class="metric-label"><span class="blast-depth-badge" style="background:#f97316;">1</span>${dep}</span>
+            </div>`;
+        });
+    }
+
+    // Transitive dependents by depth
+    const depths = Object.keys(byDepth).map(Number).sort((a, b) => a - b);
+    if (depths.length > 1 || (depths.length === 1 && depths[0] > 1)) {
+        html += `<div class="panel-header" style="margin-top:0.5rem;">Transitive Dependents</div>`;
+        depths.forEach(d => {
+            if (d === 1) return; // already shown above as direct
+            const files = byDepth[d].sort();
+            html += `<div class="blast-depth-group">`;
+            html += `<div class="blast-depth-label">Depth ${d} <span class="count-badge">${files.length}</span></div>`;
+            files.forEach(dep => {
+                html += `<div class="metric-row clickable blast-row" onclick="blastZoomTo('${dep}')" style="cursor:pointer;">
+                    <span class="metric-label"><span class="blast-depth-badge" style="background:${d <= 2 ? '#f97316' : d <= 4 ? '#eab308' : '#94a3b8'};">${d}</span>${dep}</span>
+                </div>`;
+            });
+            html += `</div>`;
+        });
+    }
+
+    // Highlight button
+    html += `<div style="margin-top:0.75rem;display:flex;gap:0.5rem;">
+        <button class="btn btn-primary" onclick="highlightBlastRadius('${nodeId}')" style="flex:1;padding:0.4rem 0.65rem;font-size:0.75rem;">Highlight on Graph</button>
+        <button class="btn btn-ghost" onclick="clearPathHighlight()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Clear</button>
+    </div>`;
+
+    el.innerHTML = html;
+}
+
+function blastZoomTo(nodeId) {
+    if (!cy) return;
+    const n = cy.getElementById(nodeId);
+    if (n.length) cy.animate({ center: { eles: n }, zoom: 1.5 }, { duration: 400 });
+}
+
+function highlightBlastRadius(nodeId) {
+    if (!cy || !currentGraphData) return;
+    clearPathHighlight();
+
+    // Build reverse adjacency
+    const revAdj = {};
+    currentGraphData.edges.forEach(e => {
+        if (!revAdj[e.data.target]) revAdj[e.data.target] = [];
+        revAdj[e.data.target].push(e.data.source);
+    });
+
+    // BFS to find all transitive dependents
+    const affected = new Set();
+    const queue = [nodeId];
+    while (queue.length) {
+        const cur = queue.shift();
+        for (const dep of (revAdj[cur] || [])) {
+            if (!affected.has(dep) && dep !== nodeId) {
+                affected.add(dep);
+                queue.push(dep);
+            }
+        }
+    }
+
+    // Dim everything, then highlight affected nodes
+    cy.elements().style('opacity', 0.12);
+
+    const node = cy.getElementById(nodeId);
+    if (node.length) node.style({ opacity: 1, 'border-width': 4, 'border-color': '#facc15' });
+
+    affected.forEach(id => {
+        const n = cy.getElementById(id);
+        if (n.length) n.style({ opacity: 1, 'background-color': '#f97316' });
+    });
+
+    // Highlight edges within the affected subgraph
+    cy.edges().forEach(e => {
+        const s = e.source().id(), t = e.target().id();
+        if ((affected.has(s) || s === nodeId) && (affected.has(t) || t === nodeId)) {
+            e.style({ opacity: 1, 'line-color': '#f97316', 'target-arrow-color': '#f97316' });
+        }
+    });
+
+    pathHighlightActive = true;
+    document.getElementById('pathHint').style.display = 'block';
+
+    // Fit to show all affected nodes
+    const affectedNodes = cy.collection();
+    affectedNodes.merge(node);
+    affected.forEach(id => { const n = cy.getElementById(id); if (n.length) affectedNodes.merge(n); });
+    if (affectedNodes.length > 1) cy.animate({ fit: { eles: affectedNodes, padding: 60 } }, { duration: 500 });
+}
+
+// --- Path Finder ---
+function updatePathDatalist() {
+    if (!currentGraphData) return;
+    const ids = currentGraphData.nodes.map(n => n.data.id).sort();
+    ['pathFromList', 'pathToList'].forEach(listId => {
+        const dl = document.getElementById(listId);
+        dl.innerHTML = '';
+        ids.forEach(id => { const o = document.createElement('option'); o.value = id; dl.appendChild(o); });
+    });
+}
+
+function findPath() {
+    if (!cy || !currentGraphData) { showToast('Load a graph first.'); return; }
+    const fromId = document.getElementById('pathFromInput').value.trim();
+    const toId = document.getElementById('pathToInput').value.trim();
+    const resultEl = document.getElementById('path-result');
+
+    if (!fromId || !toId) { showToast('Enter both file names.'); return; }
+    if (fromId === toId) { showToast('Source and target are the same file.'); return; }
+
+    const fromNode = cy.getElementById(fromId);
+    const toNode = cy.getElementById(toId);
+    if (!fromNode.length) { showToast('Source file not found in graph.'); return; }
+    if (!toNode.length) { showToast('Target file not found in graph.'); return; }
+
+    // BFS along edge direction (source → target) to find shortest path
+    const parent = {};
+    const visited = new Set([fromId]);
+    const queue = [fromId];
+    let found = false;
+
+    while (queue.length && !found) {
+        const cur = queue.shift();
+        const neighbors = cy.getElementById(cur).outgoers('node');
+        for (let i = 0; i < neighbors.length; i++) {
+            const nid = neighbors[i].id();
+            if (!visited.has(nid)) {
+                visited.add(nid);
+                parent[nid] = cur;
+                if (nid === toId) { found = true; break; }
+                queue.push(nid);
+            }
+        }
+    }
+
+    // If not found following edges forward, try reverse direction
+    if (!found) {
+        const parentRev = {};
+        const visitedRev = new Set([fromId]);
+        const queueRev = [fromId];
+        let foundRev = false;
+
+        while (queueRev.length && !foundRev) {
+            const cur = queueRev.shift();
+            const neighbors = cy.getElementById(cur).incomers('node');
+            for (let i = 0; i < neighbors.length; i++) {
+                const nid = neighbors[i].id();
+                if (!visitedRev.has(nid)) {
+                    visitedRev.add(nid);
+                    parentRev[nid] = cur;
+                    if (nid === toId) { foundRev = true; break; }
+                    queueRev.push(nid);
+                }
+            }
+        }
+
+        if (foundRev) {
+            // Reconstruct reverse path and display
+            const path = [toId];
+            let cur = toId;
+            while (cur !== fromId) { cur = parentRev[cur]; path.unshift(cur); }
+            highlightFoundPath(path, 'reverse');
+            renderPathResult(path, 'reverse');
+            return;
+        }
+
+        resultEl.innerHTML = '<div class="panel-hint" style="color:var(--danger);">No path found between these files.</div>';
+        showToast('No path found.');
+        return;
+    }
+
+    // Reconstruct forward path
+    const path = [toId];
+    let cur = toId;
+    while (cur !== fromId) { cur = parent[cur]; path.unshift(cur); }
+    highlightFoundPath(path, 'forward');
+    renderPathResult(path, 'forward');
+}
+
+function renderPathResult(path, direction) {
+    const resultEl = document.getElementById('path-result');
+    const arrow = direction === 'forward' ? '→' : '←';
+    const dirLabel = direction === 'forward' ? 'depends on' : 'is depended on by';
+    const color = direction === 'forward' ? '#10b981' : '#6366f1';
+
+    let html = `<div class="panel-header" style="margin-top:0;">Shortest Path <span class="count-badge">${path.length} files</span></div>`;
+    html += `<div class="panel-hint" style="padding-top:0;">Direction: <strong style="color:${color};">${dirLabel}</strong></div>`;
+
+    path.forEach((nodeId, i) => {
+        const isFirst = i === 0;
+        const isLast = i === path.length - 1;
+        const div = `<div class="metric-row clickable" onclick="const n=cy.getElementById('${nodeId}');if(n.length)cy.animate({center:{eles:n},zoom:1.5},{duration:400});" style="cursor:pointer;">
+            <span class="metric-label" style="font-weight:${isFirst || isLast ? '600' : '400'};">${isFirst ? '● ' : isLast ? '◎ ' : '→ '}${nodeId}</span>
+            ${isFirst ? '<span class="badge badge-green">start</span>' : isLast ? '<span class="badge badge-green">end</span>' : ''}
+        </div>`;
+        html += div;
+    });
+
+    resultEl.innerHTML = html;
+}
+
+function highlightFoundPath(path, direction) {
+    clearPathHighlight();
+    if (!cy) return;
+
+    const pathSet = new Set(path);
+    const color = direction === 'forward' ? '#10b981' : '#6366f1';
+
+    cy.elements().style('opacity', 0.12);
+
+    // Highlight path nodes
+    path.forEach((nodeId, i) => {
+        const n = cy.getElementById(nodeId);
+        if (!n.length) return;
+        const isEndpoint = i === 0 || i === path.length - 1;
+        n.style({
+            opacity: 1,
+            'background-color': color,
+            'border-width': isEndpoint ? 4 : 2,
+            'border-color': isEndpoint ? '#facc15' : color,
+        });
+    });
+
+    // Highlight edges along the path
+    for (let i = 0; i < path.length - 1; i++) {
+        const a = path[i], b = path[i + 1];
+        cy.edges().forEach(e => {
+            const src = e.source().id(), tgt = e.target().id();
+            const match = direction === 'forward'
+                ? (src === a && tgt === b)
+                : (src === b && tgt === a);
+            if (match) {
+                e.style({ opacity: 1, 'line-color': color, 'target-arrow-color': color, width: 6 });
+            }
+        });
+    }
+
+    pathHighlightActive = true;
+
+    // Fit view to path
+    const pathNodes = cy.collection();
+    path.forEach(id => { const n = cy.getElementById(id); if (n.length) pathNodes.merge(n); });
+    if (pathNodes.length) cy.animate({ fit: { eles: pathNodes, padding: 80 } }, { duration: 500 });
+}
+
+function clearFoundPath() {
+    clearPathHighlight();
+    document.getElementById('path-result').innerHTML = '';
+}
 
 // --- Layers ---
 function checkLayers() {
@@ -394,7 +710,7 @@ function renderGraph(data) {
         layout: getLayoutConfig(),
     });
 
-    cy.on('tap', 'node', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); });
+    cy.on('tap', 'node', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); showBlastRadius(evt.target.id()); });
     cy.on('dbltap', 'node', evt => openPreview(evt.target.id()));
     cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
     // Escape handled by global shortcut system below
@@ -407,6 +723,7 @@ function renderGraph(data) {
         document.getElementById('graphStatusBar').style.display = 'flex';
         document.getElementById('pathHint').style.display = 'block';
         buildFolderColorKey(data.nodes);
+        updatePathDatalist();
     }
 
     // --- Ref list ---
@@ -979,7 +1296,9 @@ const SHORTCUTS = [
         { keys: 'Shift+3',     desc: 'Unused panel',                   action: () => activatePanel(2) },
         { keys: 'Shift+4',     desc: 'Layers panel',                   action: () => activatePanel(3) },
         { keys: 'Shift+5',     desc: 'Rules panel',                    action: () => activatePanel(4) },
-        { keys: 'Shift+6',     desc: 'Diff panel',                     action: () => activatePanel(5) },
+        { keys: 'Shift+6',     desc: 'Blast radius panel',             action: () => activatePanel(5) },
+        { keys: 'Shift+7',     desc: 'Path finder panel',              action: () => activatePanel(6) },
+        { keys: 'Shift+8',     desc: 'Diff panel',                     action: () => activatePanel(7) },
     ]},
     { section: 'Export', items: [
         { keys: 'e j',         desc: 'Export JSON',                    action: () => exportJSON(),        combo: true },
@@ -1050,7 +1369,7 @@ document.addEventListener('keydown', e => {
 
     // Handle Shift+number — map the symbol to Shift+N
     if (e.shiftKey) {
-        const shiftMap = { '!': '1', '@': '2', '#': '3', '$': '4', '%': '5', '^': '6' };
+        const shiftMap = { '!': '1', '@': '2', '#': '3', '$': '4', '%': '5', '^': '6', '&': '7', '*': '8' };
         if (shiftMap[e.key]) keyStr = 'Shift+' + shiftMap[e.key];
     }
 
