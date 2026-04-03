@@ -120,15 +120,6 @@ body {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-.toolbar-zone-left {
-    flex-shrink: 1;
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-}
-.toolbar-zone-left::-webkit-scrollbar { display: none; }
-
 .toolbar-zone-right {
     flex-shrink: 0;
     gap: 0.35rem;

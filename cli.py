@@ -215,7 +215,8 @@ def main():
     # Language selection
     parser.add_argument("--lang", "-l", default="auto",
                         choices=["auto", "c", "cpp", "js", "py", "python",
-                                 "java", "go", "rust", "cs", "csharp"],
+                                 "java", "go", "rust", "cs", "csharp",
+                                 "swift", "ruby"],
                         help="language mode (default: auto-detect)")
 
     # Output format (mutually exclusive)
@@ -282,6 +283,8 @@ def main():
         show_go = detected["has_go"]
         show_rust = detected["has_rust"]
         show_cs = detected["has_cs"]
+        show_swift = detected.get("has_swift", False)
+        show_ruby = detected.get("has_ruby", False)
     else:
         show_c = lang == "c"
         show_h = lang in ("c", "cpp")
@@ -292,6 +295,8 @@ def main():
         show_go = lang == "go"
         show_rust = lang == "rust"
         show_cs = lang == "cs"
+        show_swift = lang == "swift"
+        show_ruby = lang == "ruby"
 
     # Build graph
     result = _build_graph(
@@ -300,6 +305,7 @@ def main():
         show_c=show_c, show_h=show_h, show_cpp=show_cpp,
         show_js=show_js, show_py=show_py, show_java=show_java,
         show_go=show_go, show_rust=show_rust, show_cs=show_cs,
+        show_swift=show_swift, show_ruby=show_ruby,
         hide_isolated=args.hide_isolated,
         filter_dir=args.filter_dir,
     )

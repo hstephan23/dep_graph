@@ -18,7 +18,7 @@ async function _applyDevMode() {
         document.querySelectorAll('.dev-only').forEach(el => {
             el.style.display = 'none';
         });
-        // Auto-load the default test_files graph in production
+        // Auto-load the default tests/test_files graph in production
         if (typeof loadGraph === 'function') {
             loadGraph();
         }
