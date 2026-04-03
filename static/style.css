@@ -1511,10 +1511,14 @@ details.dropdown .dropdown-body {
 /* --- Large tablets / narrow desktops (≤1100px) --- */
 @media (max-width: 1100px) {
     :root { --sidebar-width: 300px; }
+
+    .toolbar-top { gap: 0.5rem; padding: 0.5rem 0.75rem; }
+    .toolbar-bottom { padding: 0.4rem 0.75rem; }
 }
 
 /* --- Tablets (≤900px): sidebar becomes a drawer --- */
 @media (max-width: 900px) {
+    /* Sidebar → off-canvas drawer */
     .sidebar {
         position: fixed;
         top: 0;
@@ -1526,7 +1530,6 @@ details.dropdown .dropdown-body {
         box-shadow: var(--shadow-lg);
         z-index: 50;
     }
-
     .sidebar.open { transform: translateX(0); }
 
     .sidebar-backdrop {
@@ -1536,10 +1539,8 @@ details.dropdown .dropdown-body {
         background: rgba(0, 0, 0, 0.35);
         z-index: 49;
     }
-
     .sidebar-backdrop.open { display: block; }
 
-    /* Show the floating sidebar toggle on mobile */
     .sidebar-toggle-fab { display: flex; }
 
     /* Preview drawer spans full width when sidebar is off-canvas */
@@ -1548,48 +1549,57 @@ details.dropdown .dropdown-body {
 
     /* Sidebar tabs: icon-only on small screens */
     .sidebar-tab span { display: none; }
-    .sidebar-tab { padding: 0.55rem 0.45rem; }
+    .sidebar-tab { padding: 0.5rem 0.4rem; }
     .tab-row-label { display: none; }
 
-    /* Toolbar: let items wrap */
-    .toolbar-top { flex-wrap: wrap; gap: 0.5rem; }
-    .toolbar-bottom { gap: 0.4rem; padding: 0.4rem 0.75rem; }
-    .toolbar-group { padding: 0.25rem 0.5rem; }
+    /* Toolbar: let top row wrap */
+    .toolbar-top { flex-wrap: wrap; gap: 0.4rem; padding: 0.5rem 0.75rem; }
 
-    /* Shrink inputs */
-    .input-dir { width: 180px; }
-    .input-search { width: 120px; }
+    /* Bottom row (dir input) */
+    .toolbar-bottom { gap: 0.4rem; padding: 0.4rem 0.75rem; }
+    .input-dir { width: 200px; }
+    .input-search { width: 140px; }
+
+    /* Compact toolbar groups */
+    .toolbar-group { padding: 0.25rem 0.5rem; }
+    .toolbar-group-label { font-size: 0.6rem; }
 }
 
 /* --- Small tablets / large phones (≤700px) --- */
 @media (max-width: 700px) {
-    /* Collapse toolbar to a more compact layout */
     .toolbar-top {
-        padding: 0.45rem 0.65rem;
-        gap: 0.4rem;
+        padding: 0.45rem 0.6rem;
+        gap: 0.35rem;
+    }
+    .toolbar-bottom {
+        flex-wrap: wrap;
+        padding: 0.4rem 0.6rem;
+        gap: 0.35rem;
     }
 
-    .toolbar-bottom { flex-wrap: wrap; }
-
+    /* Hide separator */
     .toolbar-separator { display: none; }
 
-    /* Inputs become fluid */
+    /* Hide text labels on toolbar buttons, keep icons */
+    .toolbar-top > .btn-ghost > span,
+    .toolbar-top > .btn-upload > span,
+    .toolbar-top > details > summary > span,
+    #fisheyeToggle > span { display: none; }
+
+    /* Bottom row inputs become fluid */
     .input-dir { width: auto; flex: 1; min-width: 100px; }
     .input-search { width: auto; flex: 1; min-width: 80px; }
+    .btn-primary > span { display: none; }
 
-    /* Hide text labels on buttons, keep icons */
-    .btn-primary > span,
-    .btn-upload > span,
-    .btn-ghost > span { display: none; }
-
-    /* Toolbar groups stack better */
-    .toolbar-group { flex-wrap: wrap; }
+    /* Compact layout/filter controls */
     .toolbar-group-label { display: none; }
+    .toolbar-group { flex-wrap: wrap; padding: 0.2rem 0.4rem; }
+    .pill-group label { padding: 0.25rem 0.4rem; font-size: 0.68rem; }
 
-    /* Pill labels get smaller */
-    .pill-group label { padding: 0.25rem 0.45rem; font-size: 0.7rem; }
+    /* Filters dropdown text */
+    .dropdown > summary > span { display: none; }
 
-    /* Preview drawer gets more height on small screens */
+    /* Preview drawer full width */
     .preview-drawer { right: 0; }
 }
 
@@ -1597,45 +1607,56 @@ details.dropdown .dropdown-body {
 @media (max-width: 500px) {
     .brand-name { display: none; }
 
-    .toolbar-top { padding: 0.4rem 0.5rem; }
-    .toolbar-bottom { padding: 0.35rem 0.5rem; }
-
-    /* Full-width inputs */
-    .input-dir, .input-search { width: 100%; flex: unset; }
-
-    /* Make the top toolbar wrap into rows */
     .toolbar-top {
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        gap: 0.4rem;
+        padding: 0.4rem 0.5rem;
+        gap: 0.3rem;
     }
 
-    /* Brand + separator in first cell */
-    .brand { grid-column: 1; }
+    /* Top row: brand + controls wrap naturally */
+    .toolbar-top { flex-wrap: wrap; }
 
-    /* Dir input spans middle */
-    .input-wrap.input-dir { grid-column: 2; width: auto; }
+    /* Spacer shrinks away so items wrap tightly */
+    .toolbar-top > [style*="flex:1"] { flex: 0 0 0px !important; }
 
-    /* Generate button */
-    .btn-primary { grid-column: 3; }
+    /* Action buttons (theme, help, sidebar toggle) shrink */
+    .btn-icon { width: 28px; height: 28px; }
 
-    /* Search + actions wrap to next row */
-    .input-wrap.input-search { grid-column: 1 / -1; width: auto; }
+    /* Hide layout pills — just use keyboard shortcuts or dropdown */
+    .toolbar-group .pill-group { display: none; }
+    .toolbar-group { display: none; }
 
-    /* Cycle badge, upload, export, theme toggle flow naturally */
-    .cycle-badge { font-size: 0.68rem; padding: 0.2rem 0.5rem; }
+    /* Filters button stays visible as icon */
+    .toolbar-top > .dropdown { flex-shrink: 0; }
+
+    /* Bottom row (dev-only): stack vertically */
+    .toolbar-bottom {
+        flex-direction: column;
+        padding: 0.35rem 0.5rem;
+        gap: 0.3rem;
+    }
+    .toolbar-bottom .input-dir,
+    .toolbar-bottom .input-search { width: 100%; }
+    .toolbar-bottom .btn-primary { width: 100%; justify-content: center; }
+
+    .cycle-badge { font-size: 0.66rem; padding: 0.15rem 0.4rem; }
 
     /* Sidebar takes full width on phones */
-    .sidebar {
-        width: 100vw;
-    }
+    .sidebar { width: 100vw; }
 
     /* Bottom drawer fills full width */
-    .preview-drawer {
-        right: 0;
-        left: 0;
-    }
+    .preview-drawer { right: 0; left: 0; }
+}
 
+/* --- Very small phones (≤380px) --- */
+@media (max-width: 380px) {
+    .toolbar-top { padding: 0.35rem 0.4rem; gap: 0.25rem; }
+    .brand-icon { width: 24px; height: 24px; }
+    .btn-icon { width: 26px; height: 26px; }
+    .pill-group label { padding: 0.2rem 0.35rem; font-size: 0.65rem; }
+
+    /* Sidebar tabs even more compact */
+    .sidebar-tab { padding: 0.4rem 0.3rem; }
+    .sidebar-tab svg { width: 11px; height: 11px; }
 }
 
 /* ================================================================
@@ -3171,6 +3192,323 @@ details.dropdown .dropdown-body {
     }
     .matrix-label-text {
         font-size: 0.68rem;
+    }
+}
+
+/* ================================================================
+   INSIGHTS MODAL
+   ================================================================ */
+.insights-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+}
+
+.insights-backdrop.open {
+    display: flex;
+}
+
+.insights-modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: min(720px, 92vw);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    animation: shortcut-modal-in 0.15s ease;
+}
+
+.insights-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.insights-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--primary);
+}
+
+.insights-header-left h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.insights-body {
+    overflow-y: auto;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* ---- Footer with export ---- */
+.insights-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.insights-footer-label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-right: 0.15rem;
+}
+
+.insights-export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.insights-export-btn:hover {
+    color: var(--text);
+    background: var(--bg-sunken);
+    border-color: var(--border-strong);
+}
+
+/* ---- Health score row ---- */
+.ins-score-row {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 0.85rem 1rem;
+    background: var(--bg);
+    border-radius: var(--radius-md);
+    margin-bottom: 0.25rem;
+}
+
+.ins-score-ring {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+}
+
+.ins-score-ring svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.ins-score-bg {
+    fill: none;
+    stroke: var(--bg-sunken);
+    stroke-width: 3;
+}
+
+.ins-score-arc {
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dasharray 0.6s ease;
+}
+
+.ins-score-num {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.ins-score-info {
+    flex: 1;
+}
+
+.ins-score-label {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.ins-overview-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.ins-stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.ins-stat-val {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.ins-stat-label {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+}
+
+/* ---- Issue sections ---- */
+.ins-section {
+    border-radius: var(--radius-md);
+    background: var(--bg);
+}
+
+.ins-section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.65rem 0.85rem;
+}
+
+.ins-section-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.ins-danger .ins-section-icon { color: var(--danger); }
+.ins-warning .ins-section-icon { color: var(--warning); }
+.ins-info .ins-section-icon { color: var(--primary); }
+
+.ins-section-name {
+    font-size: 0.82rem;
+    font-weight: 650;
+    color: var(--text);
+}
+
+.ins-section-sub {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+.ins-section-advice {
+    padding: 0.4rem 0.85rem 0.5rem;
+    padding-left: calc(0.85rem + 15px + 0.6rem); /* align with text after icon */
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
+.ins-section-content {
+    padding: 0 0.85rem 0.6rem;
+    padding-left: calc(0.85rem + 15px + 0.6rem); /* align with text after icon */
+}
+
+/* ---- File rows ---- */
+.ins-file-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.3rem 0.25rem;
+    border-radius: 4px;
+}
+
+.ins-file-row:hover {
+    background: var(--primary-soft);
+}
+
+.ins-file-name {
+    font-size: 0.74rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.ins-file-more {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.ins-badge {
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 0.15rem 0.45rem;
+    border-radius: 9px;
+    white-space: nowrap;
+}
+
+.ins-badge.badge-red {
+    background: var(--danger-soft);
+    color: var(--danger);
+    border: 1px solid var(--danger-border);
+}
+
+.ins-badge.badge-orange {
+    background: var(--warning-soft);
+    color: var(--warning);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.ins-badge.badge-yellow {
+    background: var(--warning-soft);
+    color: var(--warning);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.ins-badge.badge-blue {
+    background: var(--primary-soft);
+    color: var(--primary);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.ins-empty {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* Severity left-border accent */
+.ins-danger { border-left: 2.5px solid var(--danger); }
+.ins-warning { border-left: 2.5px solid var(--warning); }
+.ins-info { border-left: 2.5px solid var(--primary); }
+
+@media (max-width: 600px) {
+    .ins-score-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .ins-overview-stats {
+        gap: 0.65rem;
     }
 }
 
