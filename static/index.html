@@ -165,6 +165,7 @@
                 <div class="sidebar-tab" data-panel="panel-analysis" onclick="switchTab(this)">Analysis</div>
                 <div class="sidebar-tab" data-panel="panel-unused" onclick="switchTab(this)">Unused</div>
                 <div class="sidebar-tab" data-panel="panel-layers" onclick="switchTab(this)">Layers</div>
+                <div class="sidebar-tab" data-panel="panel-rules" onclick="switchTab(this)">Rules</div>
                 <div class="sidebar-tab" data-panel="panel-diff" onclick="switchTab(this)">Diff</div>
             </div>
 
@@ -207,6 +208,36 @@
                         <button class="btn btn-primary" onclick="checkLayers()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Check</button>
                     </div>
                     <div id="violations-list"></div>
+                </div>
+
+                <!-- Rules panel -->
+                <div id="panel-rules" class="sidebar-panel">
+                    <div class="panel-header">Dependency Rules</div>
+                    <div class="panel-hint">Define rules to enforce dependency boundaries. Violations appear as badges on graph nodes.</div>
+
+                    <div class="rules-form">
+                        <div class="rule-row-inputs">
+                            <select id="ruleType" class="rule-select">
+                                <option value="forbidden">Forbidden</option>
+                                <option value="required">Required only</option>
+                            </select>
+                        </div>
+                        <div class="rule-row-inputs">
+                            <input type="text" id="ruleSource" placeholder="Source pattern (e.g. ui/)" class="rule-input">
+                            <span class="rule-arrow">→</span>
+                            <input type="text" id="ruleTarget" placeholder="Target pattern (e.g. data/)" class="rule-input">
+                        </div>
+                        <div class="rule-row-inputs" style="gap:0.35rem;">
+                            <button class="btn btn-primary" onclick="addRule()" style="padding:0.4rem 0.65rem;font-size:0.75rem;flex:1;">Add Rule</button>
+                            <button class="btn btn-ghost" onclick="checkRules()" style="padding:0.4rem 0.65rem;font-size:0.75rem;flex:1;">Check All</button>
+                        </div>
+                    </div>
+
+                    <div class="panel-header" style="margin-top:0.75rem;">Active Rules <span id="ruleCountBadge" class="count-badge">0</span></div>
+                    <div id="rules-list"></div>
+
+                    <div class="panel-header" style="margin-top:0.75rem;">Violations <span id="ruleViolationBadge" class="count-badge">0</span></div>
+                    <div id="rule-violations-list"></div>
                 </div>
 
                 <!-- Diff panel -->

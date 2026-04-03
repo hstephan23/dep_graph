@@ -1002,6 +1002,75 @@ def check_layers():
     return jsonify({"violations": violations})
 
 
+@app.route('/api/rules', methods=['POST'])
+def check_rules():
+    """Check dependency rules against the current graph.
+
+    Expects JSON: {
+        "rules": [
+            {"type": "forbidden", "source": "<pattern>", "target": "<pattern>"},
+            {"type": "required", "source": "<pattern>", "target": "<pattern>"}
+        ],
+        "graph": { ...graph payload... }
+    }
+
+    Rule types:
+    - forbidden: source must NOT depend on target (any matching edge is a violation)
+    - required:  source must ONLY depend on target (edges to non-matching targets are violations)
+
+    Patterns use simple prefix/substring matching against file paths.
+    A pattern matches a node if the node's id contains that pattern string.
+    """
+    body = request.get_json(force=True)
+    rules = body.get('rules', [])
+    graph = body.get('graph', {})
+
+    if not rules:
+        return jsonify({"violations": [], "error": "No rules defined"}), 400
+
+    nodes = {n["data"]["id"] for n in graph.get("nodes", [])}
+    edges = graph.get("edges", [])
+
+    violations = []
+
+    for rule in rules:
+        rule_type = rule.get('type', 'forbidden')
+        src_pattern = rule.get('source', '').strip()
+        tgt_pattern = rule.get('target', '').strip()
+
+        if not src_pattern or not tgt_pattern:
+            continue
+
+        if rule_type == 'forbidden':
+            # Flag every edge where source matches src_pattern AND target matches tgt_pattern
+            for edge in edges:
+                src = edge["data"]["source"]
+                tgt = edge["data"]["target"]
+                if src_pattern in src and tgt_pattern in tgt:
+                    violations.append({
+                        "source": src,
+                        "target": tgt,
+                        "rule_type": "forbidden",
+                        "rule_desc": f"{src_pattern} must not depend on {tgt_pattern}",
+                    })
+
+        elif rule_type == 'required':
+            # For every source matching src_pattern, flag edges whose target does NOT match tgt_pattern
+            matching_sources = [n for n in nodes if src_pattern in n]
+            for edge in edges:
+                src = edge["data"]["source"]
+                tgt = edge["data"]["target"]
+                if src in matching_sources and tgt_pattern not in tgt:
+                    violations.append({
+                        "source": src,
+                        "target": tgt,
+                        "rule_type": "required",
+                        "rule_desc": f"{src_pattern} must only depend on {tgt_pattern}",
+                    })
+
+    return jsonify({"violations": violations})
+
+
 if __name__ == '__main__':
     import os
     debug = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'

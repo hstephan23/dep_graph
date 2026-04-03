@@ -466,4 +466,141 @@ function loadGraph() {
         }).catch(() => loading.classList.remove('active'));
 }
 
+// --- Dependency Rules ---
+let depRules = [];
+let ruleViolations = [];
+
+function addRule() {
+    const type = document.getElementById('ruleType').value;
+    const source = document.getElementById('ruleSource').value.trim();
+    const target = document.getElementById('ruleTarget').value.trim();
+    if (!source || !target) { showToast('Both source and target patterns are required'); return; }
+    depRules.push({ type, source, target });
+    document.getElementById('ruleSource').value = '';
+    document.getElementById('ruleTarget').value = '';
+    renderRulesList();
+    showToast('Rule added');
+}
+
+function removeRule(idx) {
+    depRules.splice(idx, 1);
+    renderRulesList();
+    clearRuleViolations();
+}
+
+function renderRulesList() {
+    const list = document.getElementById('rules-list');
+    list.innerHTML = '';
+    document.getElementById('ruleCountBadge').textContent = depRules.length;
+    if (!depRules.length) {
+        list.innerHTML = '<div class="panel-hint">No rules defined yet.</div>';
+        return;
+    }
+    depRules.forEach((rule, i) => {
+        const div = document.createElement('div');
+        div.className = 'rule-card';
+        const typeLabel = rule.type === 'forbidden' ? 'FORBIDDEN' : 'REQUIRED ONLY';
+        const typeClass = rule.type === 'forbidden' ? 'rule-type-forbidden' : 'rule-type-required';
+        div.innerHTML = `
+            <div class="rule-card-header">
+                <span class="rule-type-badge ${typeClass}">${typeLabel}</span>
+                <button class="rule-remove-btn" onclick="removeRule(${i})" title="Remove rule">&times;</button>
+            </div>
+            <div class="rule-card-body">${rule.source} <span class="rule-arrow-small">\u2192</span> ${rule.target}</div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function checkRules() {
+    if (!depRules.length) { showToast('Add at least one rule first'); return; }
+    if (!currentGraphData) { showToast('Generate a graph first'); return; }
+    fetch('/api/rules', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules: depRules, graph: currentGraphData }),
+    }).then(r => r.json()).then(data => {
+        ruleViolations = data.violations || [];
+        renderRuleViolations();
+        applyRuleBadges();
+        if (!ruleViolations.length) showToast('No violations found!');
+        else showToast(`Found ${ruleViolations.length} violation${ruleViolations.length > 1 ? 's' : ''}`);
+    });
+}
+
+function renderRuleViolations() {
+    const list = document.getElementById('rule-violations-list');
+    list.innerHTML = '';
+    document.getElementById('ruleViolationBadge').textContent = ruleViolations.length;
+    if (!ruleViolations.length) {
+        list.innerHTML = '<div class="metric-row"><span class="metric-label" style="color:var(--success);">All rules pass</span></div>';
+        return;
+    }
+    ruleViolations.forEach(v => {
+        const div = document.createElement('div');
+        div.className = 'violation-row';
+        const icon = v.rule_type === 'forbidden'
+            ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>'
+            : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/></svg>';
+        div.innerHTML = `${icon} <span class="rule-violation-file">${v.source}</span> <span style="color:var(--text-muted);">\u2192</span> <span class="rule-violation-file">${v.target}</span>`;
+        div.title = v.rule_desc;
+        div.onclick = () => {
+            clearPathHighlight();
+            cy.edges().forEach(e => {
+                if (e.source().id() === v.source && e.target().id() === v.target)
+                    e.style({ 'line-color': '#ef4444', 'target-arrow-color': '#ef4444', width: 6 });
+            });
+            const src = cy.getElementById(v.source);
+            if (src.length) cy.animate({ center: { eles: src }, zoom: 1.5 }, { duration: 400 });
+        };
+        list.appendChild(div);
+    });
+}
+
+function applyRuleBadges() {
+    if (!cy || !ruleViolations.length) return;
+    // Count violations per node
+    const counts = {};
+    ruleViolations.forEach(v => {
+        counts[v.source] = (counts[v.source] || 0) + 1;
+    });
+    // Remove existing badge overlays
+    document.querySelectorAll('.rule-badge-overlay').forEach(el => el.remove());
+    const container = document.getElementById('cy');
+    // Add badge overlays positioned on graph nodes
+    Object.entries(counts).forEach(([nodeId, count]) => {
+        const node = cy.getElementById(nodeId);
+        if (!node.length) return;
+        const badge = document.createElement('div');
+        badge.className = 'rule-badge-overlay';
+        badge.id = 'rule-badge-' + nodeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        badge.textContent = count;
+        badge.title = `${count} rule violation${count > 1 ? 's' : ''} in ${nodeId}`;
+        container.appendChild(badge);
+
+        const updatePos = () => {
+            const pos = node.renderedPosition();
+            const w = node.renderedWidth();
+            badge.style.left = (pos.x + w / 2 - 8) + 'px';
+            badge.style.top = (pos.y - w / 2 - 8) + 'px';
+        };
+        updatePos();
+        cy.on('pan zoom resize', updatePos);
+    });
+    // Tint violating edges red + dashed
+    ruleViolations.forEach(v => {
+        cy.edges().forEach(e => {
+            if (e.source().id() === v.source && e.target().id() === v.target)
+                e.style({ 'line-color': '#ef4444', 'target-arrow-color': '#ef4444', width: 4, 'line-style': 'dashed' });
+        });
+    });
+}
+
+function clearRuleViolations() {
+    ruleViolations = [];
+    document.getElementById('ruleViolationBadge').textContent = '0';
+    document.getElementById('rule-violations-list').innerHTML = '<div class="panel-hint">Run "Check All" to validate rules against the graph.</div>';
+    document.querySelectorAll('.rule-badge-overlay').forEach(el => el.remove());
+    if (cy) cy.edges().removeStyle();
+}
+
 loadGraph();
