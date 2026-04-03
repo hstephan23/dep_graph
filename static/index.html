@@ -9,7 +9,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=4">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet">
 </head>
 <body>
     <noscript>
@@ -40,7 +42,7 @@
 
             <button class="btn btn-primary" onclick="loadGraph()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Generate
+                <span>Generate</span>
             </button>
 
             <div class="input-wrap input-search">
@@ -57,13 +59,13 @@
 
             <label for="zipUpload" class="btn btn-upload" tabindex="0">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Upload
+                <span>Upload</span>
             </label>
             <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs" style="display:none;" onchange="handleZipSelect(event)">
 
             <details class="dropdown">
                 <summary class="btn btn-ghost">
-                    Export
+                    <span>Export</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                 </summary>
                 <div class="dropdown-body export-menu" style="right:0;left:auto;">
@@ -75,6 +77,14 @@
 
             <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
                 <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+
+            <button class="btn-icon btn-help" onclick="toggleShortcutHelp()" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+                <span>?</span>
+            </button>
+
+            <button class="btn-icon" id="sidebarDesktopToggle" onclick="toggleSidebar()" title="Toggle sidebar (S)" aria-label="Toggle sidebar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
             </button>
         </div>
 
@@ -116,25 +126,26 @@
                 </div>
             </details>
 
-            <div class="toolbar-separator"></div>
-
-            <span style="font-size:0.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">Layout</span>
-            <div class="pill-group">
-                <input type="radio" name="layoutMode" id="layoutCose" value="cose" checked onchange="changeLayout(this.value)"><label for="layoutCose">Force</label>
-                <input type="radio" name="layoutMode" id="layoutDagre" value="dagre" onchange="changeLayout(this.value)"><label for="layoutDagre">Hierarchy</label>
-                <input type="radio" name="layoutMode" id="layoutConcentric" value="concentric" onchange="changeLayout(this.value)"><label for="layoutConcentric">Concentric</label>
+            <div class="toolbar-group">
+                <span class="toolbar-group-label">Layout</span>
+                <div class="pill-group">
+                    <input type="radio" name="layoutMode" id="layoutCose" value="cose" checked onchange="changeLayout(this.value)"><label for="layoutCose">Force</label>
+                    <input type="radio" name="layoutMode" id="layoutDagre" value="dagre" onchange="changeLayout(this.value)"><label for="layoutDagre">Hierarchy</label>
+                    <input type="radio" name="layoutMode" id="layoutConcentric" value="concentric" onchange="changeLayout(this.value)"><label for="layoutConcentric">Concentric</label>
+                </div>
             </div>
 
-            <div class="toolbar-separator"></div>
-
-            <label class="check-label" style="font-size:0.75rem;">
-                <input type="checkbox" id="clusterDirs" onchange="toggleClustering()">
-                Cluster dirs
-            </label>
-            <label class="check-label" style="font-size:0.75rem;">
-                <input type="checkbox" id="bundleEdges" onchange="toggleEdgeBundling()">
-                Bundle edges
-            </label>
+            <div class="toolbar-group">
+                <span class="toolbar-group-label">View</span>
+                <label class="check-label" style="font-size:0.75rem;">
+                    <input type="checkbox" id="clusterDirs" onchange="toggleClustering()">
+                    Cluster dirs
+                </label>
+                <label class="check-label" style="font-size:0.75rem;">
+                    <input type="checkbox" id="bundleEdges" onchange="toggleEdgeBundling()">
+                    Bundle edges
+                </label>
+            </div>
         </div>
     </div>
 
@@ -153,20 +164,66 @@
             <div class="empty-state-desc">Check the directory path and make sure a language is enabled in Filters.</div>
         </div>
 
-        <div id="minimap"></div>
-        <div class="path-hint" id="pathHint">Click a node to trace dependencies &middot; Esc to clear</div>
+        <div class="path-hint" id="pathHint">Click a node to trace dependencies &middot; Double-click to view source &middot; Esc to clear</div>
+
+        <!-- File preview drawer -->
+        <div class="preview-drawer" id="previewDrawer">
+            <div class="preview-drawer-header">
+                <div class="preview-drawer-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span id="previewFileName">—</span>
+                    <span class="preview-meta" id="previewMeta"></span>
+                </div>
+                <div class="preview-drawer-actions">
+                    <button class="btn-icon" onclick="closePreview()" title="Close preview" aria-label="Close preview">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="preview-drawer-body" id="previewBody">
+                <pre class="line-numbers"><code id="previewCode"></code></pre>
+            </div>
+        </div>
+
+        <!-- Resize handle for preview drawer -->
+        <div class="preview-resize-handle" id="previewResizeHandle"></div>
+
+        <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
+
+        <!-- Floating sidebar toggle for mobile -->
+        <button class="sidebar-toggle-fab" id="sidebarMobileToggle" onclick="toggleSidebar()" title="Open sidebar" aria-label="Toggle sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+        </button>
 
         <!-- ============================================================
              SIDEBAR
              ============================================================ -->
-        <div class="sidebar">
+        <div class="sidebar" id="sidebar">
             <div class="sidebar-tabs">
-                <div class="sidebar-tab active" data-panel="panel-refs" onclick="switchTab(this)">Refs</div>
-                <div class="sidebar-tab" data-panel="panel-analysis" onclick="switchTab(this)">Analysis</div>
-                <div class="sidebar-tab" data-panel="panel-unused" onclick="switchTab(this)">Unused</div>
-                <div class="sidebar-tab" data-panel="panel-layers" onclick="switchTab(this)">Layers</div>
-                <div class="sidebar-tab" data-panel="panel-rules" onclick="switchTab(this)">Rules</div>
-                <div class="sidebar-tab" data-panel="panel-diff" onclick="switchTab(this)">Diff</div>
+                <div class="sidebar-tab active" data-panel="panel-refs" onclick="switchTab(this)" title="References">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 22h2a2 2 0 0 0 2-2V7l-5-5H8a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><circle cx="8" cy="16" r="6"/><path d="M9.5 17.5 8 16.25V14"/></svg>
+                    <span>Refs</span>
+                </div>
+                <div class="sidebar-tab" data-panel="panel-analysis" onclick="switchTab(this)" title="Analysis">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                    <span>Analysis</span>
+                </div>
+                <div class="sidebar-tab" data-panel="panel-unused" onclick="switchTab(this)" title="Unused files">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                    <span>Unused</span>
+                </div>
+                <div class="sidebar-tab" data-panel="panel-layers" onclick="switchTab(this)" title="Layering violations">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.84Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+                    <span>Layers</span>
+                </div>
+                <div class="sidebar-tab" data-panel="panel-rules" onclick="switchTab(this)" title="Dependency rules">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+                    <span>Rules</span>
+                </div>
+                <div class="sidebar-tab" data-panel="panel-diff" onclick="switchTab(this)" title="Diff mode">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
+                    <span>Diff</span>
+                </div>
             </div>
 
             <div class="sidebar-scroll">
@@ -254,6 +311,30 @@
         </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+    <!-- Keyboard shortcuts help modal -->
+    <div class="shortcut-modal-backdrop" id="shortcutModal" onclick="if(event.target===this)toggleShortcutHelp()">
+        <div class="shortcut-modal">
+            <div class="shortcut-modal-header">
+                <h2>Keyboard Shortcuts</h2>
+                <button class="btn-icon" onclick="toggleShortcutHelp()" aria-label="Close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="shortcut-grid"></div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=4"></script>
 </body>
 </html>

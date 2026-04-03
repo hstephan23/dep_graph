@@ -860,6 +860,65 @@ def index():
     return app.send_static_file('index.html')
 
 
+@app.route('/api/file', methods=['GET'])
+def get_file():
+    """Return the contents of a source file for preview.
+
+    Query params:
+    - dir: base directory the graph was built from
+    - path: relative file path within that directory
+    """
+    directory = request.args.get('dir', '.')
+    filepath = request.args.get('path', '')
+
+    if not filepath:
+        return jsonify({"error": "No file path provided"}), 400
+
+    # Resolve to absolute paths for reliable comparison
+    abs_dir = os.path.abspath(directory)
+    full_path = os.path.abspath(os.path.join(abs_dir, filepath))
+
+    # Security: ensure the resolved path stays within the base directory
+    if not full_path.startswith(abs_dir + os.sep) and full_path != abs_dir:
+        return jsonify({"error": "Invalid file path"}), 403
+
+    # If the direct path doesn't exist, search for the filename within the
+    # directory tree. This handles unresolved includes like "game_state.h"
+    # that are stored as bare filenames in the graph.
+    if not os.path.isfile(full_path):
+        basename = os.path.basename(filepath)
+        found = None
+        for root, _dirs, files in os.walk(abs_dir):
+            if basename in files:
+                found = os.path.join(root, basename)
+                break
+        if found and found.startswith(abs_dir):
+            full_path = found
+            filepath = os.path.relpath(found, abs_dir)
+        else:
+            return jsonify({"error": f"File not found: {filepath}"}), 404
+
+    try:
+        with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+        ext = os.path.splitext(filepath)[1].lower()
+        lang_map = {
+            '.py': 'python', '.js': 'javascript', '.jsx': 'jsx',
+            '.ts': 'typescript', '.tsx': 'tsx', '.mjs': 'javascript',
+            '.cjs': 'javascript', '.c': 'c', '.h': 'c', '.cpp': 'cpp',
+            '.cc': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.hxx': 'cpp',
+            '.java': 'java', '.go': 'go', '.rs': 'rust',
+        }
+        return jsonify({
+            "path": filepath,
+            "content": content,
+            "language": lang_map.get(ext, 'plaintext'),
+            "lines": content.count('\n') + 1,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/detect', methods=['GET'])
 def detect_languages():
     """Scan a directory and return which language groups are present."""
@@ -885,8 +944,15 @@ def get_graph():
     return jsonify(result)
 
 
+# Keep track of the current upload temp dir so file preview works.
+# A new upload replaces (and cleans up) the previous one.
+_current_upload_dir = None
+
+
 @app.route('/api/upload', methods=['POST'])
 def upload_files():
+    global _current_upload_dir
+
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
 
@@ -899,6 +965,10 @@ def upload_files():
                    + _GO_EXTENSIONS + _RUST_EXTENSIONS)
     if not file.filename.endswith(allowed_ext):
         return jsonify({"error": "Unsupported file type. Please upload a ZIP or supported source file."}), 400
+
+    # Clean up previous upload
+    if _current_upload_dir and os.path.isdir(_current_upload_dir):
+        shutil.rmtree(_current_upload_dir, ignore_errors=True)
 
     temp_dir = tempfile.mkdtemp()
 
@@ -914,11 +984,13 @@ def upload_files():
         filters = _parse_filters(request.form, detected=detected)
         result = _build_graph(temp_dir, **filters)
         result["detected"] = detected
+        # Return the temp dir path so the frontend can request file previews
+        result["upload_dir"] = temp_dir
+        _current_upload_dir = temp_dir
         return jsonify(result)
     except Exception as e:
+        shutil.rmtree(temp_dir, ignore_errors=True)
         return jsonify({"error": str(e)}), 500
-    finally:
-        shutil.rmtree(temp_dir)
 
 
 @app.route('/api/diff', methods=['POST'])
