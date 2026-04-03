@@ -119,7 +119,7 @@ function toggleSidebar() {
 
 // --- State ---
 let cy, currentGraphData = null, pathHighlightActive = false;
-let currentLayout = 'cose', clusteringEnabled = false, bundlingEnabled = false;
+let currentLayout = 'cose';
 let currentMode = 'local', currentUploadedFile = null, currentUploadDir = null;
 
 // --- Sidebar tab switching ---
@@ -216,8 +216,6 @@ function showNodeAnalysis(nodeId, up, down) {
 }
 
 // --- Toggles ---
-function toggleClustering() { clusteringEnabled = document.getElementById('clusterDirs').checked; if (currentGraphData) renderGraph(currentGraphData); }
-function toggleEdgeBundling() { bundlingEnabled = document.getElementById('bundleEdges').checked; if (currentGraphData) renderGraph(currentGraphData); }
 
 // --- Layers ---
 function checkLayers() {
@@ -378,37 +376,7 @@ function renderGraph(data) {
 
     if (cy) cy.destroy();
 
-    // Clustering
-    let elements = [...data.nodes, ...data.edges];
-    if (clusteringEnabled) {
-        const dirs = new Set();
-        data.nodes.forEach(n => {
-            const d = n.data.id.includes('/') ? n.data.id.substring(0, n.data.id.lastIndexOf('/')) : '.';
-            dirs.add(d); n.data.parent = 'dir_' + d;
-        });
-        dirs.forEach(d => elements.unshift({ data: { id: 'dir_' + d, label: d || '.' }, classes: 'compound' }));
-    }
-
-    // Edge bundling
-    if (bundlingEnabled) {
-        const bundleMap = {}, individual = [];
-        data.edges.forEach(e => {
-            const sd = e.data.source.includes('/') ? e.data.source.substring(0, e.data.source.lastIndexOf('/')) : '.';
-            const td = e.data.target.includes('/') ? e.data.target.substring(0, e.data.target.lastIndexOf('/')) : '.';
-            if (sd !== td) {
-                const k = sd + '→' + td;
-                if (!bundleMap[k]) bundleMap[k] = { sd, td, count: 0, color: e.data.color, edges: [] };
-                bundleMap[k].count++; bundleMap[k].edges.push(e);
-            } else individual.push(e);
-        });
-        const bundled = [];
-        Object.values(bundleMap).forEach(b => {
-            if (b.count > 1 && clusteringEnabled) bundled.push({ data: { source: 'dir_' + b.sd, target: 'dir_' + b.td, color: b.color, label: String(b.count), bundled: true } });
-            else bundled.push(...b.edges);
-        });
-        elements = elements.filter(e => !e.data || !e.data.source);
-        elements = [...elements, ...individual, ...bundled];
-    }
+    const elements = [...data.nodes, ...data.edges];
 
     cy = cytoscape({
         container: document.getElementById('cy'),
@@ -420,20 +388,14 @@ function renderGraph(data) {
                 'font-size': ele => Math.max(14, Math.min(36, (ele.data('size') || 80) / 8)) + 'px',
                 'text-valign': 'center', 'text-halign': 'center',
             }},
-            { selector: ':parent', style: {
-                'background-color': 'rgba(99,102,241,0.04)', 'border-width': 1.5, 'border-color': 'rgba(99,102,241,0.2)',
-                'border-style': 'dashed', label: 'data(label)', 'text-valign': 'top', 'text-halign': 'center',
-                'font-size': '14px', color: 'var(--text-muted)', 'text-margin-y': -8, padding: 20,
-            }},
             { selector: 'edge', style: { width: 4, 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', opacity: 0.7 } },
-            { selector: 'edge[label]', style: { label: 'data(label)', 'font-size': '11px', 'text-background-color': 'var(--bg-elevated)', 'text-background-opacity': 0.9, 'text-background-padding': '3px', width: ele => Math.min(12, 3 + parseInt(ele.data('label') || '0')) } },
             { selector: 'edge.cycle', style: { 'line-color': '#FF4136', 'target-arrow-color': '#FF4136', width: 3, opacity: 1 } },
         ],
         layout: getLayoutConfig(),
     });
 
-    cy.on('tap', 'node', evt => { if (!evt.target.isParent()) { clearPathHighlight(); highlightPaths(evt.target.id()); } });
-    cy.on('dbltap', 'node', evt => { if (!evt.target.isParent()) openPreview(evt.target.id()); });
+    cy.on('tap', 'node', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); });
+    cy.on('dbltap', 'node', evt => openPreview(evt.target.id()));
     cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
     // Escape handled by global shortcut system below
 
@@ -868,7 +830,7 @@ function renderMinimap() {
 
     // Draw nodes
     cy.nodes().forEach(n => {
-        if (n.style('display') === 'none' || n.isParent()) return;
+        if (n.style('display') === 'none') return;
         const pos = n.position();
         const nx = ox + (pos.x - gx) * scale;
         const ny = oy + (pos.y - gy) * scale;
@@ -1010,8 +972,6 @@ const SHORTCUTS = [
         { keys: '1',           desc: 'Force layout',                   action: () => { changeLayout('cose'); document.getElementById('layoutCose').checked = true; showToast('Layout: Force'); } },
         { keys: '2',           desc: 'Hierarchy layout',               action: () => { changeLayout('dagre'); document.getElementById('layoutDagre').checked = true; showToast('Layout: Hierarchy'); } },
         { keys: '3',           desc: 'Concentric layout',              action: () => { changeLayout('concentric'); document.getElementById('layoutConcentric').checked = true; showToast('Layout: Concentric'); } },
-        { keys: 'c',           desc: 'Toggle directory clustering',    action: () => { document.getElementById('clusterDirs').click(); } },
-        { keys: 'b',           desc: 'Toggle edge bundling',           action: () => { document.getElementById('bundleEdges').click(); } },
     ]},
     { section: 'Panels', items: [
         { keys: 'Shift+1',     desc: 'Refs panel',                     action: () => activatePanel(0) },
