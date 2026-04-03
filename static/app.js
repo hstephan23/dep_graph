@@ -955,7 +955,7 @@ function getFilterValues() {
     const m = document.querySelector('input[name="langMode"]:checked').value;
     const common = { hide_system: document.getElementById('hideSystemHeaders').checked, hide_isolated: document.getElementById('hideIsolated').checked, filter_dir: document.getElementById('filterDirInput').value };
     if (m === 'auto') return { mode: 'auto', ...common };
-    return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust' };
+    return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust', show_cs: m === 'cs' };
 }
 
 function showDetectedLanguages(det) {
@@ -964,7 +964,7 @@ function showDetectedLanguages(det) {
     const langs = [];
     if (det.has_c) langs.push('C'); if (det.has_h) langs.push('Headers'); if (det.has_cpp) langs.push('C++');
     if (det.has_js) langs.push('JS/TS'); if (det.has_py) langs.push('Python'); if (det.has_java) langs.push('Java');
-    if (det.has_go) langs.push('Go'); if (det.has_rust) langs.push('Rust');
+    if (det.has_go) langs.push('Go'); if (det.has_rust) langs.push('Rust'); if (det.has_cs) langs.push('C#');
     el.textContent = langs.length ? 'Detected: ' + langs.join(', ') : 'No supported files detected';
     el.style.display = '';
 }

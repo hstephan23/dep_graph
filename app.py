@@ -115,6 +115,11 @@ _RUST_USE_RE = re.compile(r'^use\s+([\w:]+)', re.MULTILINE)
 _RUST_MOD_RE = re.compile(r'^mod\s+(\w+)\s*;', re.MULTILINE)
 _RUST_EXTERN_RE = re.compile(r'^extern\s+crate\s+(\w+)\s*;', re.MULTILINE)
 
+# C#: using System; using System.Collections.Generic; using static Foo.Bar;
+_CS_USING_RE = re.compile(
+    r'^using\s+(?:static\s+)?([\w.]+)\s*;', re.MULTILINE
+)
+
 # --- File extension groups ---
 _C_EXTENSIONS = ('.c',)
 _H_EXTENSIONS = ('.h',)
@@ -124,6 +129,7 @@ _PY_EXTENSIONS = ('.py',)
 _JAVA_EXTENSIONS = ('.java',)
 _GO_EXTENSIONS = ('.go',)
 _RUST_EXTENSIONS = ('.rs',)
+_CS_EXTENSIONS = ('.cs',)
 
 # Python standard library module names (top-level) — used to classify system imports
 _PY_STDLIB = frozenset([
@@ -161,6 +167,11 @@ _PY_STDLIB = frozenset([
     '_thread', '__future__',
 ])
 
+# C# / .NET system namespace prefixes — used to classify BCL/framework imports
+_CS_SYSTEM_PREFIXES = (
+    'System', 'Microsoft', 'Windows', 'Internal', 'Interop',
+)
+
 # Go standard library prefixes — packages without a dot in the path are stdlib
 # We detect local vs stdlib by checking against go.mod module path
 
@@ -186,7 +197,7 @@ def _should_skip_file(name):
 
 def _wanted_extension(filename, show_c, show_h, show_cpp, show_js=False,
                       show_py=False, show_java=False, show_go=False,
-                      show_rust=False):
+                      show_rust=False, show_cs=False):
     """Check whether a filename has an extension we want to include."""
     if filename.endswith(_C_EXTENSIONS) and show_c:
         return True
@@ -204,12 +215,14 @@ def _wanted_extension(filename, show_c, show_h, show_cpp, show_js=False,
         return True
     if filename.endswith(_RUST_EXTENSIONS) and show_rust:
         return True
+    if filename.endswith(_CS_EXTENSIONS) and show_cs:
+        return True
     return False
 
 
 def _include_target_excluded(filename, show_c, show_h, show_cpp, show_js=False,
                              show_py=False, show_java=False, show_go=False,
-                             show_rust=False):
+                             show_rust=False, show_cs=False):
     """Return True if an include/import target should be excluded."""
     if filename.endswith(_C_EXTENSIONS) and not show_c:
         return True
@@ -226,6 +239,8 @@ def _include_target_excluded(filename, show_c, show_h, show_cpp, show_js=False,
     if filename.endswith(_GO_EXTENSIONS) and not show_go:
         return True
     if filename.endswith(_RUST_EXTENSIONS) and not show_rust:
+        return True
+    if filename.endswith(_CS_EXTENSIONS) and not show_cs:
         return True
     return False
 
@@ -291,7 +306,7 @@ def _find_sccs(adj):
 
 def _collect_source_files(directory, show_c, show_h, show_cpp, show_js=False,
                           show_py=False, show_java=False, show_go=False,
-                          show_rust=False):
+                          show_rust=False, show_cs=False):
     """Walk *directory* and return a list of source file paths to parse."""
     skip_dirs = set()
     if show_js:
@@ -303,6 +318,8 @@ def _collect_source_files(directory, show_c, show_h, show_cpp, show_js=False,
         skip_dirs.add('vendor')
     if show_rust:
         skip_dirs.add('target')
+    if show_cs:
+        skip_dirs.update({'bin', 'obj', 'packages', '.vs'})
 
     result = []
     for root, dirs, files in os.walk(directory):
@@ -312,7 +329,8 @@ def _collect_source_files(directory, show_c, show_h, show_cpp, show_js=False,
             if _should_skip_file(fname):
                 continue
             if _wanted_extension(fname, show_c, show_h, show_cpp, show_js,
-                                 show_py, show_java, show_go, show_rust):
+                                 show_py, show_java, show_go, show_rust,
+                                 show_cs):
                 result.append(os.path.join(root, fname))
     return result
 
@@ -471,10 +489,35 @@ def _resolve_rust_mod(mod_name, source_file, directory, known_files):
     return os.path.join(source_dir, mod_name + '.rs'), False
 
 
+def _resolve_cs_using(namespace, directory, known_files):
+    """Resolve a C# ``using`` directive to a project file if possible.
+
+    C# using directives reference namespaces, not files directly.  We try to
+    map the namespace to a file by converting dots to path separators and
+    looking for a matching ``.cs`` file.  If the namespace starts with a known
+    system prefix (System, Microsoft, etc.) it is classified as external.
+    """
+    # Check for system/framework namespace
+    if namespace.startswith(_CS_SYSTEM_PREFIXES):
+        return namespace, True
+
+    # Try to resolve namespace to a local file
+    # e.g. "MyApp.Models.User" → MyApp/Models/User.cs
+    parts = namespace.split('.')
+    # Try the full path first, then progressively shorter paths
+    for i in range(len(parts), 0, -1):
+        candidate = os.path.join(*parts[:i]) + '.cs'
+        if candidate in known_files:
+            return candidate, False
+
+    # Could not resolve — treat as external
+    return namespace, True
+
+
 def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
                  show_cpp=True, show_js=False, show_py=False,
                  show_java=False, show_go=False, show_rust=False,
-                 hide_isolated=False, filter_dir=""):
+                 show_cs=False, hide_isolated=False, filter_dir=""):
     """Parse source files and return the dependency graph as a dict.
 
     Returns a dict with keys ``nodes``, ``edges``, ``has_cycles``, and
@@ -486,7 +529,7 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
 
     files_to_parse = _collect_source_files(
         directory, show_c, show_h, show_cpp, show_js,
-        show_py, show_java, show_go, show_rust,
+        show_py, show_java, show_go, show_rust, show_cs,
     )
 
     # Build a set of known relative paths for import resolution
@@ -519,6 +562,7 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
         is_java_file = filepath.endswith(_JAVA_EXTENSIONS)
         is_go_file = filepath.endswith(_GO_EXTENSIONS)
         is_rust_file = filepath.endswith(_RUST_EXTENSIONS)
+        is_cs_file = filepath.endswith(_CS_EXTENSIONS)
 
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
@@ -642,6 +686,18 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
                 _add_edge(filename, crate_name)
             continue
 
+        # --- C# using directives ---
+        if is_cs_file:
+            for m in _CS_USING_RE.finditer(content):
+                namespace = m.group(1)
+                resolved, is_external = _resolve_cs_using(
+                    namespace, directory, known_files
+                )
+                if hide_system and is_external:
+                    continue
+                _add_edge(filename, resolved)
+            continue
+
         # --- C / C++ and JS/TS (line-by-line) ---
         for line in content.splitlines():
             if not is_js_file:
@@ -655,7 +711,8 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
 
                 included = match.group(2)
                 if _include_target_excluded(included, show_c, show_h, show_cpp, show_js,
-                                            show_py, show_java, show_go, show_rust):
+                                            show_py, show_java, show_go, show_rust,
+                                            show_cs):
                     continue
 
                 _add_edge(filename, included)
@@ -838,9 +895,11 @@ def _detect_languages(directory):
     flags = {
         "has_c": False, "has_h": False, "has_cpp": False, "has_js": False,
         "has_py": False, "has_java": False, "has_go": False, "has_rust": False,
+        "has_cs": False,
     }
     all_keys = set(flags.keys())
-    skip_dirs = {'node_modules', '__pycache__', '.venv', 'venv', 'target', 'vendor'}
+    skip_dirs = {'node_modules', '__pycache__', '.venv', 'venv', 'target',
+                 'vendor', 'bin', 'obj', 'packages', '.vs'}
     for root, dirs, files in os.walk(directory):
         dirs[:] = [d for d in dirs if not _should_skip_dir(d) and d not in skip_dirs]
         for fname in files:
@@ -862,6 +921,8 @@ def _detect_languages(directory):
                 flags["has_go"] = True
             if fname.endswith(_RUST_EXTENSIONS):
                 flags["has_rust"] = True
+            if fname.endswith(_CS_EXTENSIONS):
+                flags["has_cs"] = True
             if all(flags.values()):
                 return flags
     return flags
@@ -885,9 +946,10 @@ def _parse_filters(source, detected=None):
         show_java = detected["has_java"]
         show_go = detected["has_go"]
         show_rust = detected["has_rust"]
+        show_cs = detected["has_cs"]
     elif mode == 'auto':
         show_c = show_h = show_cpp = show_js = True
-        show_py = show_java = show_go = show_rust = True
+        show_py = show_java = show_go = show_rust = show_cs = True
     else:
         show_c = source.get('show_c', 'true').lower() == 'true'
         show_h = source.get('show_h', 'true').lower() == 'true'
@@ -897,6 +959,7 @@ def _parse_filters(source, detected=None):
         show_java = source.get('show_java', 'false').lower() == 'true'
         show_go = source.get('show_go', 'false').lower() == 'true'
         show_rust = source.get('show_rust', 'false').lower() == 'true'
+        show_cs = source.get('show_cs', 'false').lower() == 'true'
 
     return {
         "hide_system": source.get('hide_system', 'false').lower() == 'true',
@@ -908,6 +971,7 @@ def _parse_filters(source, detected=None):
         "show_java": show_java,
         "show_go": show_go,
         "show_rust": show_rust,
+        "show_cs": show_cs,
         "hide_isolated": source.get('hide_isolated', 'false').lower() == 'true',
         "filter_dir": source.get('filter_dir', ''),
     }
