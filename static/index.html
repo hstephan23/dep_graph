@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=9">
+    <link rel="stylesheet" href="/static/style.css?v=15">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet">
 </head>
@@ -26,6 +26,7 @@
          ============================================================ -->
     <div class="toolbar">
         <div class="toolbar-top">
+            <!-- Left zone: brand -->
             <div class="brand">
                 <div class="brand-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3m-6.36-2.64 2.12-2.12m8.48-8.48 2.12-2.12M3 12h3m12 0h3M5.64 5.64l2.12 2.12m8.48 8.48 2.12 2.12"/></svg>
@@ -33,8 +34,69 @@
                 <span class="brand-name">DepGraph</span>
             </div>
 
-            <div class="toolbar-separator"></div>
+            <div style="flex:1;"></div>
 
+            <!-- Right zone: actions + utilities -->
+            <div class="toolbar-zone toolbar-zone-right">
+                <!-- Status -->
+                <div id="cycleWarning" class="cycle-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                Cycle Detected
+            </div>
+
+            <button class="btn btn-ghost btn-insights" onclick="openInsights()" title="Project insights">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                <span>Insights</span>
+            </button>
+
+            <!-- Actions: Query, Upload, Export -->
+            <button class="btn btn-ghost" onclick="toggleQueryTerminal()" title="Query terminal (Q)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                <span>Query</span>
+            </button>
+
+            <label for="zipUpload" class="btn btn-upload" tabindex="0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Upload</span>
+            </label>
+            <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs,.swift,.rb" style="display:none;" onchange="handleZipSelect(event)">
+
+            <details class="dropdown">
+                <summary class="btn btn-ghost">
+                    <span>Export</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="dropdown-body export-menu" style="right:0;left:auto;">
+                    <button onclick="exportJSON()">JSON</button>
+                    <button onclick="exportPNG()">PNG</button>
+                    <button onclick="exportDOT()">DOT / Graphviz</button>
+                    <button onclick="exportMermaid()">Mermaid</button>
+                </div>
+            </details>
+
+            <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+                <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+
+            <button class="btn btn-ghost btn-tour" onclick="Tour.toggle()" title="Take a tour" aria-label="Take a tour">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+                <span>Tour</span>
+            </button>
+
+            <button class="btn-icon btn-help" onclick="toggleShortcutHelp()" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+                <span>?</span>
+            </button>
+
+            <button class="btn-icon" id="sidebarDesktopToggle" onclick="toggleSidebar()" title="Toggle sidebar (S)" aria-label="Toggle sidebar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+            </button>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             TOOLBAR — CONTROLS ROW (filters, layout, scope, view)
+             ============================================================ -->
+        <div class="toolbar-controls">
             <details class="dropdown">
                 <summary class="btn btn-ghost" style="font-size:0.75rem;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
@@ -65,12 +127,14 @@
                         <input type="radio" name="langMode" id="modeGo" value="go" onchange="updateGraph()"><label for="modeGo">Go</label>
                         <input type="radio" name="langMode" id="modeRust" value="rust" onchange="updateGraph()"><label for="modeRust">Rust</label>
                         <input type="radio" name="langMode" id="modeCs" value="cs" onchange="updateGraph()"><label for="modeCs">C#</label>
+                        <input type="radio" name="langMode" id="modeSwift" value="swift" onchange="updateGraph()"><label for="modeSwift">Swift</label>
+                        <input type="radio" name="langMode" id="modeRuby" value="ruby" onchange="updateGraph()"><label for="modeRuby">Ruby</label>
                     </div>
                     <div id="detectedLangs" class="detected-label" style="display:none;"></div>
                 </div>
             </details>
 
-            <!-- Graph layout: pills + focus lens tucked inside -->
+            <!-- Graph layout -->
             <div class="toolbar-group">
                 <span class="toolbar-group-label">Layout</span>
                 <div class="pill-group">
@@ -84,6 +148,7 @@
                 </button>
             </div>
 
+            <!-- Scope (shown for package-directory view) -->
             <div class="toolbar-group" id="pdViewToggle" style="display:none;">
                 <span class="toolbar-group-label">Scope</span>
                 <div class="pill-group">
@@ -99,7 +164,7 @@
                 </button>
             </div>
 
-            <!-- View mode: Graph/Treemap + metric selector inline -->
+            <!-- View mode -->
             <div class="toolbar-group">
                 <span class="toolbar-group-label">View</span>
                 <div class="pill-group">
@@ -120,63 +185,12 @@
                 </div>
             </div>
 
-            <div style="flex:1;"></div>
-
-            <!-- Status -->
-            <div id="cycleWarning" class="cycle-badge">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                Cycle Detected
+            <!-- Search — right-aligned -->
+            <div class="toolbar-controls-spacer"></div>
+            <div class="input-wrap input-search-controls">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="searchInput" placeholder="Search files... (F)" onkeydown="if(event.key==='Enter')searchNode()" aria-label="Search files">
             </div>
-
-            <button class="btn btn-ghost btn-insights" onclick="openInsights()" title="Project insights">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                <span>Insights</span>
-            </button>
-
-            <!-- Actions: Query, Upload, Export -->
-            <button class="btn btn-ghost" onclick="toggleQueryTerminal()" title="Query terminal (Q)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                <span>Query</span>
-            </button>
-
-            <label for="zipUpload" class="btn btn-upload" tabindex="0">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <span>Upload</span>
-            </label>
-            <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs" style="display:none;" onchange="handleZipSelect(event)">
-
-            <details class="dropdown">
-                <summary class="btn btn-ghost">
-                    <span>Export</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-                </summary>
-                <div class="dropdown-body export-menu" style="right:0;left:auto;">
-                    <button onclick="exportJSON()">JSON</button>
-                    <button onclick="exportPNG()">PNG</button>
-                    <button onclick="exportDOT()">DOT / Graphviz</button>
-                    <button onclick="exportMermaid()">Mermaid</button>
-                </div>
-            </details>
-
-            <div class="toolbar-separator"></div>
-
-            <!-- Utility icons -->
-            <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
-                <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-            </button>
-
-            <button class="btn btn-ghost btn-tour" onclick="Tour.toggle()" title="Take a tour" aria-label="Take a tour">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
-                <span>Tour</span>
-            </button>
-
-            <button class="btn-icon btn-help" onclick="toggleShortcutHelp()" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
-                <span>?</span>
-            </button>
-
-            <button class="btn-icon" id="sidebarDesktopToggle" onclick="toggleSidebar()" title="Toggle sidebar (S)" aria-label="Toggle sidebar">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
-            </button>
         </div>
 
         <!-- ============================================================
@@ -192,10 +206,82 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 <span>Generate</span>
             </button>
+        </div>
+    </div>
 
-            <div class="input-wrap input-search">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="searchInput" placeholder="Search..." onkeydown="if(event.key==='Enter')searchNode()" aria-label="Search files">
+    <!-- ============================================================
+         DEPTH WARNING BANNER
+         ============================================================ -->
+    <div class="depth-warning-banner" id="depthWarningBanner" style="display:none;">
+        <div class="depth-warning-banner-inner">
+            <div class="depth-warning-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            </div>
+            <div class="depth-warning-content">
+                <span class="depth-warning-title" id="depthWarningTitle"></span>
+                <span class="depth-warning-summary" id="depthWarningSummary"></span>
+            </div>
+            <button class="depth-warning-expand-btn" id="depthWarningExpandBtn" onclick="toggleDepthWarningDetails()" title="Show details" aria-label="Show warning details">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button class="depth-warning-settings-btn" id="depthWarningSettingsBtn" onclick="openDepthSettings()" title="Configure thresholds" aria-label="Configure depth warning thresholds">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+            </button>
+            <button class="depth-warning-dismiss-btn" onclick="dismissDepthWarnings()" title="Dismiss" aria-label="Dismiss warnings">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="depth-warning-details" id="depthWarningDetails" style="display:none;"></div>
+    </div>
+
+    <!-- ============================================================
+         DEPTH SETTINGS MODAL
+         ============================================================ -->
+    <div class="modal-overlay" id="depthSettingsOverlay" style="display:none;" onclick="if(event.target===this)closeDepthSettings()">
+        <div class="modal depth-settings-modal">
+            <div class="modal-header">
+                <span class="modal-title">Depth Warning Thresholds</span>
+                <button class="btn-icon" onclick="closeDepthSettings()" aria-label="Close">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="depth-settings-group">
+                    <label class="depth-settings-label">Codebase Reach — Warning (%)</label>
+                    <div class="depth-settings-row">
+                        <input type="range" id="reachWarnSlider" min="10" max="80" value="30" oninput="document.getElementById('reachWarnVal').textContent=this.value+'%'">
+                        <span class="depth-settings-val badge-yellow" id="reachWarnVal">30%</span>
+                    </div>
+                    <div class="depth-settings-hint">Files pulling in more than this % of the codebase get a warning.</div>
+                </div>
+                <div class="depth-settings-group">
+                    <label class="depth-settings-label">Codebase Reach — Critical (%)</label>
+                    <div class="depth-settings-row">
+                        <input type="range" id="reachCritSlider" min="20" max="90" value="50" oninput="document.getElementById('reachCritVal').textContent=this.value+'%'">
+                        <span class="depth-settings-val badge-red" id="reachCritVal">50%</span>
+                    </div>
+                    <div class="depth-settings-hint">Files exceeding this threshold are flagged as critical.</div>
+                </div>
+                <div class="depth-settings-group">
+                    <label class="depth-settings-label">Chain Depth — Warning (levels)</label>
+                    <div class="depth-settings-row">
+                        <input type="range" id="depthWarnSlider" min="2" max="15" value="5" oninput="document.getElementById('depthWarnVal').textContent=this.value">
+                        <span class="depth-settings-val badge-yellow" id="depthWarnVal">5</span>
+                    </div>
+                    <div class="depth-settings-hint">Dependency chains deeper than this get a warning.</div>
+                </div>
+                <div class="depth-settings-group">
+                    <label class="depth-settings-label">Chain Depth — Critical (levels)</label>
+                    <div class="depth-settings-row">
+                        <input type="range" id="depthCritSlider" min="3" max="20" value="8" oninput="document.getElementById('depthCritVal').textContent=this.value">
+                        <span class="depth-settings-val badge-red" id="depthCritVal">8</span>
+                    </div>
+                    <div class="depth-settings-hint">Chains exceeding this are flagged as critical.</div>
+                </div>
+                <div class="depth-settings-actions">
+                    <button class="btn btn-ghost" onclick="resetDepthSettings()">Reset Defaults</button>
+                    <button class="btn btn-primary" onclick="applyDepthSettings()">Apply &amp; Recheck</button>
+                </div>
             </div>
         </div>
     </div>
@@ -235,17 +321,7 @@
             <span class="status-item"><span class="legend-line" style="background:#ef4444;"></span> Cycle</span>
         </div>
 
-        <!-- Minimap -->
-        <div class="minimap open" id="minimap">
-            <div class="minimap-header">
-                <span class="minimap-title">Minimap</span>
-                <button class="minimap-close" onclick="toggleMinimap()" aria-label="Close minimap">&times;</button>
-            </div>
-            <div class="minimap-body">
-                <canvas id="minimapCanvas"></canvas>
-                <div class="minimap-viewport" id="minimapViewport"></div>
-            </div>
-        </div>
+        <!-- Minimap (moved to sidebar) -->
 
         <!-- File preview drawer -->
         <div class="preview-drawer" id="previewDrawer">
@@ -556,6 +632,18 @@
                     </div>
 
                     <div id="story-content"></div>
+                </div>
+            </div>
+
+            <!-- Minimap pinned to sidebar bottom -->
+            <div class="sidebar-minimap open" id="minimap">
+                <div class="minimap-header">
+                    <span class="minimap-title">Minimap</span>
+                    <button class="minimap-close" onclick="toggleMinimap()" aria-label="Close minimap">&times;</button>
+                </div>
+                <div class="minimap-body">
+                    <canvas id="minimapCanvas"></canvas>
+                    <div class="minimap-viewport" id="minimapViewport"></div>
                 </div>
             </div>
         </div>
