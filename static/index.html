@@ -420,9 +420,9 @@
                     <div class="panel-hint">A guided walkthrough of your project's architecture. Generate a graph first, then hit Play.</div>
 
                     <div class="story-controls">
-                        <button class="btn btn-primary story-play-btn" id="storyPlayBtn" onclick="storyTogglePlay()">
-                            <svg id="storyPlayIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                            <span id="storyPlayLabel">Play</span>
+                        <button class="btn btn-primary story-play-btn" id="storyPlayBtn" onclick="storyLoad()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            <span>Generate Story</span>
                         </button>
                         <div class="story-nav">
                             <button class="btn btn-ghost story-nav-btn" id="storyPrevBtn" onclick="storyPrev()" disabled>
@@ -433,12 +433,6 @@
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
                             </button>
                         </div>
-                    </div>
-
-                    <div class="story-speed">
-                        <label for="storySpeed" style="font-size:0.68rem;color:var(--text-muted);">Speed</label>
-                        <input type="range" id="storySpeed" min="3" max="12" value="6" step="1" style="flex:1;">
-                        <span id="storySpeedLabel" style="font-size:0.68rem;color:var(--text-muted);min-width:2.2rem;text-align:right;">6s</span>
                     </div>
 
                     <div class="story-progress" id="storyProgress">

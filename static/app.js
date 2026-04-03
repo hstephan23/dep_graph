@@ -1834,8 +1834,6 @@ renderGraph = function(data) {
 
 let storySteps = [];
 let storyIndex = -1;
-let storyPlaying = false;
-let storyTimer = null;
 
 // Step type → icon + accent color
 const STORY_THEME = {
@@ -1848,22 +1846,6 @@ const STORY_THEME = {
     coupling:     { icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>', color: '#06b6d4' },
     summary:      { icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>', color: '#10b981' },
 };
-
-function storyGetSpeed() {
-    var slider = document.getElementById('storySpeed');
-    return slider ? parseInt(slider.value, 10) * 1000 : 6000;
-}
-
-// Update the speed label when slider changes
-document.addEventListener('DOMContentLoaded', function() {
-    var slider = document.getElementById('storySpeed');
-    var label = document.getElementById('storySpeedLabel');
-    if (slider && label) {
-        slider.addEventListener('input', function() {
-            label.textContent = slider.value + 's';
-        });
-    }
-});
 
 function storyLoad() {
     if (!currentGraphData) { showToast('Generate a graph first'); return; }
@@ -1939,59 +1921,11 @@ function storyGoTo(index) {
 function storyNext() {
     if (storyIndex < storySteps.length - 1) {
         storyGoTo(storyIndex + 1);
-    } else if (storyPlaying) {
-        storyStop();
     }
 }
 
 function storyPrev() {
     if (storyIndex > 0) storyGoTo(storyIndex - 1);
-}
-
-function storyTogglePlay() {
-    if (storyPlaying) {
-        storyStop();
-    } else {
-        // If no story loaded yet, load first
-        if (!storySteps.length) {
-            storyLoad();
-            // Wait for load, then start play
-            var waitForLoad = setInterval(function() {
-                if (storySteps.length > 0) {
-                    clearInterval(waitForLoad);
-                    storyStartPlay();
-                }
-            }, 200);
-            return;
-        }
-        // If at the end, restart
-        if (storyIndex >= storySteps.length - 1) {
-            storyIndex = -1;
-        }
-        storyStartPlay();
-    }
-}
-
-function storyStartPlay() {
-    storyPlaying = true;
-    document.getElementById('storyPlayIcon').innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
-    document.getElementById('storyPlayLabel').textContent = 'Pause';
-
-    storyNext();
-    storyTimer = setInterval(function() {
-        if (storyIndex >= storySteps.length - 1) {
-            storyStop();
-            return;
-        }
-        storyNext();
-    }, storyGetSpeed());
-}
-
-function storyStop() {
-    storyPlaying = false;
-    if (storyTimer) { clearInterval(storyTimer); storyTimer = null; }
-    document.getElementById('storyPlayIcon').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
-    document.getElementById('storyPlayLabel').textContent = 'Play';
 }
 
 function storyUpdateCounter() {

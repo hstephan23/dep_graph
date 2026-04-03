@@ -1951,29 +1951,6 @@ details.dropdown .dropdown-body {
     min-width: 3rem;
     text-align: center;
 }
-.story-speed {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-    padding: 0 0.15rem;
-}
-.story-speed input[type="range"] {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    outline: none;
-}
-.story-speed input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    background: var(--primary);
-    border-radius: 50%;
-    cursor: pointer;
-}
 .story-progress {
     height: 3px;
     background: var(--border);
