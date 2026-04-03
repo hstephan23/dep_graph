@@ -1387,8 +1387,172 @@ function attachMinimapListeners() {
 // KEYBOARD SHORTCUTS
 // ============================================================
 
+// --- Quick Jump (Cmd+K) ---
+let quickjumpActiveIndex = -1;
+
+function openQuickJump() {
+    const modal = document.getElementById('quickjumpModal');
+    if (!modal) return;
+    const input = document.getElementById('quickjumpInput');
+    const results = document.getElementById('quickjumpResults');
+    const empty = document.getElementById('quickjumpEmpty');
+    const hint = document.getElementById('quickjumpHint');
+    input.value = '';
+    results.innerHTML = '';
+    empty.style.display = 'none';
+    hint.style.display = '';
+    quickjumpActiveIndex = -1;
+    modal.classList.add('open');
+    requestAnimationFrame(() => input.focus());
+}
+
+function closeQuickJump() {
+    const modal = document.getElementById('quickjumpModal');
+    if (modal) modal.classList.remove('open');
+}
+
+function isQuickJumpOpen() {
+    const modal = document.getElementById('quickjumpModal');
+    return modal && modal.classList.contains('open');
+}
+
+function quickjumpHighlightMatch(text, query) {
+    if (!query) return _escapeHtml(text);
+    const lower = text.toLowerCase();
+    const qLower = query.toLowerCase();
+    const idx = lower.indexOf(qLower);
+    if (idx === -1) return _escapeHtml(text);
+    const before = text.slice(0, idx);
+    const match = text.slice(idx, idx + query.length);
+    const after = text.slice(idx + query.length);
+    return _escapeHtml(before) + '<mark>' + _escapeHtml(match) + '</mark>' + _escapeHtml(after);
+}
+
+function quickjumpSetActive(index) {
+    const items = document.querySelectorAll('.quickjump-result-item');
+    items.forEach(el => el.classList.remove('active'));
+    quickjumpActiveIndex = index;
+    if (items[index]) {
+        items[index].classList.add('active');
+        items[index].scrollIntoView({ block: 'nearest' });
+    }
+}
+
+function quickjumpNavigate(nodeId) {
+    closeQuickJump();
+    if (!cy) return;
+    const node = cy.getElementById(nodeId);
+    if (!node || !node.length) { showToast('Node not found in graph'); return; }
+
+    // Clear existing highlights
+    clearPathHighlight();
+
+    // Animate to node
+    cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 400, complete: () => {
+        // Highlight paths from node after arriving
+        highlightPaths(nodeId);
+        showBlastRadius(nodeId);
+    }});
+
+    showToast('Jumped to ' + nodeId.split('/').pop());
+}
+
+function quickjumpSearch(query) {
+    const results = document.getElementById('quickjumpResults');
+    const empty = document.getElementById('quickjumpEmpty');
+    const hint = document.getElementById('quickjumpHint');
+    results.innerHTML = '';
+    quickjumpActiveIndex = -1;
+
+    if (!query) {
+        empty.style.display = 'none';
+        hint.style.display = '';
+        return;
+    }
+
+    hint.style.display = 'none';
+
+    if (!cy) {
+        empty.style.display = '';
+        empty.textContent = 'No graph loaded';
+        return;
+    }
+
+    const q = query.toLowerCase();
+    const nodes = cy.nodes();
+    const matches = [];
+
+    nodes.forEach(n => {
+        const id = n.id();
+        const lower = id.toLowerCase();
+        if (!lower.includes(q)) return;
+        // Score: prefer exact filename match, then start-of-segment match, then substring
+        const filename = id.split('/').pop().toLowerCase();
+        let score = 0;
+        if (filename === q) score = 3;
+        else if (filename.startsWith(q)) score = 2;
+        else if (lower.startsWith(q)) score = 1;
+        matches.push({ id, color: n.data('color'), inDegree: n.indegree(), score });
+    });
+
+    // Sort: highest score first, then by in-degree (most referenced first)
+    matches.sort((a, b) => b.score - a.score || b.inDegree - a.inDegree);
+
+    // Limit to 15 results for performance
+    const capped = matches.slice(0, 15);
+
+    if (!capped.length) {
+        empty.style.display = '';
+        empty.textContent = 'No matching files';
+        return;
+    }
+
+    empty.style.display = 'none';
+
+    capped.forEach((m, i) => {
+        const item = document.createElement('div');
+        item.className = 'quickjump-result-item';
+        item.innerHTML =
+            '<span class="quickjump-result-dot" style="background:' + m.color + '"></span>' +
+            '<span class="quickjump-result-label">' + quickjumpHighlightMatch(m.id, query) + '</span>' +
+            '<span class="quickjump-result-meta">' + m.inDegree + ' ref' + (m.inDegree !== 1 ? 's' : '') + '</span>';
+        item.addEventListener('click', () => quickjumpNavigate(m.id));
+        item.addEventListener('mouseenter', () => quickjumpSetActive(i));
+        results.appendChild(item);
+    });
+
+    // Auto-select first result
+    quickjumpSetActive(0);
+}
+
+// Attach events after DOM is ready
+window.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('quickjumpInput');
+    if (!input) return;
+
+    input.addEventListener('input', () => quickjumpSearch(input.value.trim()));
+
+    input.addEventListener('keydown', e => {
+        const items = document.querySelectorAll('.quickjump-result-item');
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            quickjumpSetActive(Math.min(quickjumpActiveIndex + 1, items.length - 1));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            quickjumpSetActive(Math.max(quickjumpActiveIndex - 1, 0));
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (items[quickjumpActiveIndex]) items[quickjumpActiveIndex].click();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeQuickJump();
+        }
+    });
+});
+
 const SHORTCUTS = [
     { section: 'General', items: [
+        { keys: 'Cmd+K',       desc: 'Quick jump to file',             action: (e) => { e.preventDefault(); openQuickJump(); } },
         { keys: '?',           desc: 'Show / hide this help',          action: () => toggleShortcutHelp() },
         { keys: 'Escape',      desc: 'Close modal / clear selection',  action: () => {
             const modal = document.getElementById('shortcutModal');
@@ -1452,12 +1616,21 @@ function clearPendingPrefix() {
 }
 
 document.addEventListener('keydown', e => {
+    // Cmd+K / Ctrl+K — Quick Jump (works even from inputs)
+    if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        if (isQuickJumpOpen()) closeQuickJump();
+        else openQuickJump();
+        return;
+    }
+
     // Ignore when typing in inputs/textareas/selects
     const tag = e.target.tagName;
     const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
 
     // Allow Escape even in input contexts
     if (e.key === 'Escape') {
+        if (isQuickJumpOpen()) { closeQuickJump(); return; }
         if (isInput) { e.target.blur(); return; }
         for (const sec of SHORTCUTS) {
             for (const s of sec.items) {
@@ -1538,7 +1711,8 @@ window.addEventListener('DOMContentLoaded', () => {
             const keyTokens = parts.filter(p => p !== '+' && p !== ' ' && p !== '');
             keyTokens.forEach((k, i) => {
                 const kbd = document.createElement('kbd');
-                kbd.textContent = k;
+                const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+                kbd.textContent = k === 'Cmd' ? (isMac ? '\u2318' : 'Ctrl') : k;
                 keys.appendChild(kbd);
                 if (i < keyTokens.length - 1) {
                     const sep = document.createElement('span');
