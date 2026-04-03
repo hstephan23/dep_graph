@@ -748,15 +748,7 @@ details.dropdown .dropdown-body {
     border-radius: 1px;
 }
 
-.legend-multi-dot {
-    display: flex;
-    gap: 1px;
-}
-.legend-multi-dot span {
-    width: 5px;
-    height: 8px;
-    border-radius: 2px;
-}
+/* (unused: legend-multi-dot removed) */
 
 /* ================================================================
    LIST ITEMS (reduced border density)
@@ -1022,6 +1014,78 @@ details.dropdown .dropdown-body {
     display: none;
     pointer-events: none;
     box-shadow: var(--shadow-md);
+}
+
+/* Folder color key (collapsible, above the status bar) */
+.folder-color-key {
+    position: absolute;
+    bottom: 44px;
+    left: 12px;
+    display: none;
+    flex-direction: column;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    z-index: 16;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    max-width: 220px;
+}
+
+.folder-key-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.65rem;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    cursor: pointer;
+    width: 100%;
+    transition: color var(--transition);
+}
+.folder-key-toggle:hover { color: var(--text); }
+
+.folder-key-chevron {
+    margin-left: auto;
+    transition: transform 0.2s ease;
+}
+.folder-color-key.open .folder-key-chevron {
+    transform: rotate(180deg);
+}
+
+.folder-key-list {
+    display: none;
+    flex-direction: column;
+    gap: 1px;
+    padding: 0 0.5rem 0.4rem;
+    max-height: 180px;
+    overflow-y: auto;
+}
+.folder-color-key.open .folder-key-list {
+    display: flex;
+}
+
+.folder-key-entry {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.15rem 0;
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.folder-key-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
 
 .graph-status-bar {
