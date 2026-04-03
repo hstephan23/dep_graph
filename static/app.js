@@ -2,6 +2,7 @@
 // Fetches config from the server and hides dev-only UI elements in production.
 // In production mode, the graph auto-loads with the default "test_files" directory.
 let _devMode = false;
+let _currentView = 'graph';
 
 async function _applyDevMode() {
     try {
@@ -279,7 +280,7 @@ function _compoundStyles() {
             'padding': '30px',
             label: ele => ele.data('label'),
             color: 'data(color)',
-            'text-outline-color': '#0a0a0f',
+            'text-outline-color': '#0e1019',
             'text-outline-width': 1,
             'text-outline-opacity': 0.5,
             'font-size': '14px',
@@ -1438,6 +1439,13 @@ function searchNode() {
 // --- Main Render ---
 function renderGraph(data) {
     currentGraphData = data;
+
+    // Reset to graph view when new data loads
+    if (_currentView !== 'graph') {
+        document.getElementById('viewGraph').checked = true;
+        switchView('graph');
+    }
+
     const emptyState = document.getElementById('emptyState');
     emptyState.style.display = (!data.nodes || !data.nodes.length) ? 'block' : 'none';
 
@@ -1910,7 +1918,7 @@ function renderMinimap() {
 
     // Clear
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    ctx.fillStyle = isDark ? '#111527' : '#e2e8f0';
+    ctx.fillStyle = isDark ? '#12131f' : '#e2e8f0';
     ctx.fillRect(0, 0, cw, ch);
 
     // Draw edges
@@ -1925,7 +1933,7 @@ function renderMinimap() {
         const ty = oy + (tp.y - gy) * scale;
 
         const color = e.style('line-color');
-        ctx.strokeStyle = color || (isDark ? 'rgba(148,163,184,0.2)' : 'rgba(148,163,184,0.35)');
+        ctx.strokeStyle = color || (isDark ? 'rgba(139,143,255,0.15)' : 'rgba(148,163,184,0.35)');
         ctx.globalAlpha = parseFloat(e.style('opacity')) || 0.4;
         ctx.beginPath();
         ctx.moveTo(sx, sy);
@@ -2939,6 +2947,43 @@ function clearQuery() {
 }
 
 // --- Query Parser ---
+/**
+ * Parse a user-supplied string into a RegExp.
+ * Accepts /pattern/flags syntax for explicit regex, or a plain string
+ * which is treated as a case-insensitive substring match (like before)
+ * unless it contains regex-special characters, in which case it's
+ * compiled as a regex so users can write things like `.*Controller.*`
+ * without the / delimiters.
+ */
+function _tryParseRegex(input) {
+    // Explicit /regex/flags syntax
+    const delimited = input.match(/^\/(.+)\/([gimsuy]*)$/);
+    if (delimited) {
+        try {
+            return { regex: new RegExp(delimited[1], delimited[2] || 'i') };
+        } catch (e) {
+            return { error: 'Invalid regex: ' + e.message };
+        }
+    }
+
+    // If the string looks like it contains regex metacharacters, compile it
+    const hasRegexChars = /[.*+?^${}()|[\]\\]/.test(input);
+    if (hasRegexChars) {
+        try {
+            return { regex: new RegExp(input, 'i') };
+        } catch (e) {
+            return { error: 'Invalid regex: ' + e.message };
+        }
+    }
+
+    // Plain substring — wrap in a case-insensitive regex
+    return { regex: new RegExp(_escapeRegex(input), 'i') };
+}
+
+function _escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function parseQuery(raw) {
     const q = raw.trim().toLowerCase();
 
@@ -2957,10 +3002,14 @@ function parseQuery(raw) {
         return { type: 'no_upstream' };
     }
 
-    // "files matching <pattern>"
-    const matchPat = q.match(/^files?\s+matching\s+(.+)$/i);
+    // "files matching <pattern>" — supports regex (e.g. /Controller\.js$/) or plain substring
+    // Use raw input (not lowercased q) so regex patterns preserve their intended case
+    const matchPat = raw.trim().match(/^files?\s+matching\s+(.+)$/i);
     if (matchPat) {
-        return { type: 'matching', pattern: matchPat[1].trim() };
+        const patStr = matchPat[1].trim();
+        const parsed = _tryParseRegex(patStr);
+        if (parsed.error) return { type: 'error', message: parsed.error };
+        return { type: 'matching', regex: parsed.regex, raw: patStr };
     }
 
     // "files in <directory>"
@@ -2969,8 +3018,8 @@ function parseQuery(raw) {
         return { type: 'in_dir', dir: inDir[1].trim() };
     }
 
-    // "files where <conditions>"
-    const wherePat = q.match(/^files?\s+where\s+(.+)$/i);
+    // "files where <conditions>" — use raw input to preserve case in regex patterns
+    const wherePat = raw.trim().match(/^files?\s+where\s+(.+)$/i);
     if (wherePat) {
         return parseWhereConditions(wherePat[1]);
     }
@@ -2980,7 +3029,7 @@ function parseQuery(raw) {
         return parseWhereConditions(q);
     }
 
-    return { type: 'error', message: 'Unrecognized query. Try: files where inbound > 3, files in cycles, files matching utils/' };
+    return { type: 'error', message: 'Unrecognized query. Try: files where inbound > 3, files in cycles, files matching /pattern/' };
 }
 
 function parseWhereConditions(str) {
@@ -2988,11 +3037,30 @@ function parseWhereConditions(str) {
     const conditions = [];
 
     for (const part of parts) {
-        const m = part.trim().match(/^(inbound|outbound|depth|impact|stability)\s*(>=|<=|!=|>|<|=)\s*([\d.]+)$/);
+        const trimmed = part.trim();
+
+        // "name matching <pattern>" condition — regex on file name
+        const nameMatch = trimmed.match(/^name\s+matching\s+(.+)$/i);
+        if (nameMatch) {
+            const parsed = _tryParseRegex(nameMatch[1].trim());
+            if (parsed.error) return { type: 'error', message: parsed.error };
+            conditions.push({ type: 'name', regex: parsed.regex });
+            continue;
+        }
+
+        // "in cycles" condition
+        if (/^in\s+cycles?$/i.test(trimmed)) {
+            conditions.push({ type: 'in_cycles' });
+            continue;
+        }
+
+        // Standard metric condition
+        const m = trimmed.match(/^(inbound|outbound|depth|impact|stability)\s*(>=|<=|!=|>|<|=)\s*([\d.]+)$/);
         if (!m) {
-            return { type: 'error', message: `Invalid condition: "${part.trim()}". Use: metric operator value (e.g., inbound > 3)` };
+            return { type: 'error', message: `Invalid condition: "${trimmed}". Use: metric op value (e.g., inbound > 3), name matching <regex>, or in cycles` };
         }
         conditions.push({
+            type: 'metric',
             metric: m[1],
             op: m[2],
             value: parseFloat(m[3])
@@ -3057,13 +3125,15 @@ function executeQuery(raw) {
                 match = metrics.outbound === 0;
                 break;
             case 'matching':
-                match = id.toLowerCase().includes(parsed.pattern.toLowerCase());
+                match = parsed.regex.test(id);
                 break;
             case 'in_dir':
                 match = id.toLowerCase().startsWith(parsed.dir.toLowerCase());
                 break;
             case 'where':
                 match = parsed.conditions.every(c => {
+                    if (c.type === 'name') return c.regex.test(id);
+                    if (c.type === 'in_cycles') return cycleNodes.has(id);
                     const v = metrics[c.metric];
                     switch (c.op) {
                         case '>':  return v > c.value;
@@ -3205,23 +3275,33 @@ function applyQueryToGraph(matchIds) {
 // ================================================================
 // TREEMAP VIEW
 // ================================================================
-let _currentView = 'graph';
 
 function switchView(view) {
     _currentView = view;
     const cyEl = document.getElementById('cy');
     const tmEl = document.getElementById('treemapContainer');
+    const mxEl = document.getElementById('matrixContainer');
     const metricGroup = document.getElementById('treemapMetricGroup');
 
+    // Graph-only overlays: hide when not on graph
+    const graphOnly = document.querySelectorAll('#folderColorKey, #graphStatusBar, #pathHint, #minimap');
+    const isGraph = view === 'graph';
+    graphOnly.forEach(el => el.style.display = isGraph ? '' : 'none');
+
+    cyEl.style.display = 'none';
+    tmEl.style.display = 'none';
+    mxEl.style.display = 'none';
+    metricGroup.style.display = 'none';
+
     if (view === 'treemap') {
-        cyEl.style.display = 'none';
         tmEl.style.display = 'block';
         metricGroup.style.display = '';
         renderTreemap();
+    } else if (view === 'matrix') {
+        mxEl.style.display = 'flex';
+        renderMatrix();
     } else {
         cyEl.style.display = '';
-        tmEl.style.display = 'none';
-        metricGroup.style.display = 'none';
         if (cy) cy.resize();
     }
 }
@@ -3515,8 +3595,343 @@ function _adjustColor(hex, amount) {
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
-// Re-render treemap on resize
+// Re-render views on resize
 window.addEventListener('resize', function() {
     if (_currentView === 'treemap') renderTreemap();
+    if (_currentView === 'matrix') renderMatrix();
 });
+
+// ================================================================
+// MATRIX VIEW
+// ================================================================
+function renderMatrix() {
+    var container = document.getElementById('matrixContainer');
+    container.innerHTML = '';
+    if (!currentGraphData || !currentGraphData.nodes.length) return;
+
+    var nodes = currentGraphData.nodes.slice();
+    var edges = currentGraphData.edges;
+
+    // Build adjacency set: source -> Set(target)
+    var adj = {};
+    edges.forEach(function(e) {
+        var s = e.data.source, t = e.data.target;
+        if (!adj[s]) adj[s] = new Set();
+        adj[s].add(t);
+    });
+
+    // Sort nodes by directory then filename for cluster visibility
+    nodes.sort(function(a, b) {
+        var aId = a.data.id, bId = b.data.id;
+        var aDir = aId.includes('/') ? aId.substring(0, aId.lastIndexOf('/')) : '';
+        var bDir = bId.includes('/') ? bId.substring(0, bId.lastIndexOf('/')) : '';
+        if (aDir !== bDir) return aDir.localeCompare(bDir);
+        return aId.localeCompare(bId);
+    });
+
+    var ids = nodes.map(function(n) { return n.data.id; });
+    var colorMap = {};
+    nodes.forEach(function(n) { colorMap[n.data.id] = n.data.color; });
+
+    // Pre-compute directory boundaries for separator lines
+    var dirs = ids.map(function(id) {
+        return id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.';
+    });
+    var dirBoundaries = new Set();
+    for (var d = 1; d < dirs.length; d++) {
+        if (dirs[d] !== dirs[d - 1]) dirBoundaries.add(d);
+    }
+
+    // Build short labels (filename only, disambiguate if needed)
+    var shortLabels = {};
+    var nameCount = {};
+    ids.forEach(function(id) {
+        var name = id.includes('/') ? id.substring(id.lastIndexOf('/') + 1) : id;
+        nameCount[name] = (nameCount[name] || 0) + 1;
+    });
+    ids.forEach(function(id) {
+        var name = id.includes('/') ? id.substring(id.lastIndexOf('/') + 1) : id;
+        shortLabels[id] = nameCount[name] > 1 ? id : name;
+    });
+
+    var n = ids.length;
+
+    // ---- Wrapper layout ----
+    var wrapper = document.createElement('div');
+    wrapper.className = 'matrix-wrapper';
+
+    // ---- Summary stats bar ----
+    var stats = document.createElement('div');
+    stats.className = 'matrix-stats';
+    var edgeCount = edges.length;
+    var maxPossible = n * (n - 1);
+    var density = maxPossible > 0 ? (edgeCount / maxPossible * 100).toFixed(1) : '0';
+    stats.innerHTML =
+        '<span class="matrix-stat">' + n + ' files</span>' +
+        '<span class="matrix-stat-sep"></span>' +
+        '<span class="matrix-stat">' + edgeCount + ' dependencies</span>' +
+        '<span class="matrix-stat-sep"></span>' +
+        '<span class="matrix-stat">Density: ' + density + '%</span>' +
+        '<span class="matrix-stat-sep"></span>' +
+        '<span class="matrix-stat matrix-stat-hint">' +
+            '<svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="var(--primary)" opacity="0.85"/></svg>' +
+            ' Colored cell = row file imports column file' +
+        '</span>' +
+        '<span class="matrix-stat-sep"></span>' +
+        '<span class="matrix-stat matrix-stat-hint">Click a cell to jump to that edge in the graph</span>';
+    wrapper.appendChild(stats);
+
+    // ---- Scrollable grid area ----
+    var scrollArea = document.createElement('div');
+    scrollArea.className = 'matrix-scroll';
+
+    // Generous cell size — the grid scrolls, so don't over-shrink
+    var cellSize = n <= 20 ? 32 : n <= 50 ? 26 : 20;
+
+    var gridW = n * cellSize;
+    var gridH = n * cellSize;
+    var headerH = Math.min(160, Math.max(80, cellSize * 4));
+
+    // Create canvas for the grid (much faster than DOM for large matrices)
+    var canvas = document.createElement('canvas');
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = gridW * dpr;
+    canvas.height = gridH * dpr;
+    canvas.className = 'matrix-canvas';
+    canvas.style.width = gridW + 'px';
+    canvas.style.height = gridH + 'px';
+
+    var ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    // Draw cells
+    for (var row = 0; row < n; row++) {
+        for (var col = 0; col < n; col++) {
+            var x = col * cellSize;
+            var y = row * cellSize;
+
+            if (row === col) {
+                ctx.fillStyle = getCssVar('--bg-sunken');
+                ctx.fillRect(x, y, cellSize, cellSize);
+            } else if (adj[ids[row]] && adj[ids[row]].has(ids[col])) {
+                var color = colorMap[ids[row]] || '#6366f1';
+                ctx.fillStyle = color;
+                ctx.globalAlpha = 0.85;
+                ctx.fillRect(x, y, cellSize, cellSize);
+                ctx.globalAlpha = 1;
+            }
+        }
+    }
+
+    // Draw directory boundary lines
+    ctx.strokeStyle = getCssVar('--primary');
+    ctx.globalAlpha = 0.25;
+    ctx.lineWidth = 1;
+    dirBoundaries.forEach(function(idx) {
+        var pos = idx * cellSize;
+        ctx.beginPath();
+        ctx.moveTo(pos, 0); ctx.lineTo(pos, gridH);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, pos); ctx.lineTo(gridW, pos);
+        ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+
+    // Draw subtle grid lines
+    ctx.strokeStyle = getCssVar('--border');
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 0.5;
+    for (var i = 0; i <= n; i++) {
+        var p = i * cellSize;
+        ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, gridH); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(gridW, p); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // ---- Row labels (left side) ----
+    var rowLabels = document.createElement('div');
+    rowLabels.className = 'matrix-row-labels';
+    rowLabels.style.height = gridH + 'px';
+    for (var r = 0; r < n; r++) {
+        var rl = document.createElement('div');
+        rl.className = 'matrix-label matrix-row-label';
+        rl.style.height = cellSize + 'px';
+        rl.style.lineHeight = cellSize + 'px';
+        if (dirBoundaries.has(r)) rl.classList.add('matrix-label-boundary');
+        var dot = document.createElement('span');
+        dot.className = 'matrix-label-dot';
+        dot.style.background = colorMap[ids[r]] || '#6366f1';
+        rl.appendChild(dot);
+        var span = document.createElement('span');
+        span.className = 'matrix-label-text';
+        span.textContent = shortLabels[ids[r]];
+        span.title = ids[r];
+        rl.appendChild(span);
+        rowLabels.appendChild(rl);
+    }
+
+    // ---- Column labels (top) ----
+    var colLabels = document.createElement('div');
+    colLabels.className = 'matrix-col-labels';
+    colLabels.style.width = gridW + 'px';
+    colLabels.style.height = headerH + 'px';
+    for (var c = 0; c < n; c++) {
+        var cl = document.createElement('div');
+        cl.className = 'matrix-label matrix-col-label';
+        cl.style.width = cellSize + 'px';
+        cl.style.left = (c * cellSize) + 'px';
+        cl.style.height = headerH + 'px';
+        if (dirBoundaries.has(c)) cl.classList.add('matrix-label-boundary');
+        var cspan = document.createElement('span');
+        cspan.className = 'matrix-label-text';
+        cspan.textContent = shortLabels[ids[c]];
+        cspan.title = ids[c];
+        cl.appendChild(cspan);
+        colLabels.appendChild(cl);
+    }
+
+    // ---- Assemble grid layout ----
+    var corner = document.createElement('div');
+    corner.className = 'matrix-corner';
+    corner.style.height = headerH + 'px';
+    corner.innerHTML = '<span class="matrix-corner-label">← imports →</span>';
+
+    var topRow = document.createElement('div');
+    topRow.className = 'matrix-top-row';
+    topRow.appendChild(corner);
+    topRow.appendChild(colLabels);
+
+    var bodyRow = document.createElement('div');
+    bodyRow.className = 'matrix-body-row';
+    bodyRow.appendChild(rowLabels);
+
+    var canvasWrap = document.createElement('div');
+    canvasWrap.className = 'matrix-canvas-wrap';
+    canvasWrap.appendChild(canvas);
+    bodyRow.appendChild(canvasWrap);
+
+    scrollArea.appendChild(topRow);
+    scrollArea.appendChild(bodyRow);
+    wrapper.appendChild(scrollArea);
+
+    // ---- Hover tooltip & crosshair ----
+    var tip = document.createElement('div');
+    tip.className = 'matrix-tip';
+    wrapper.appendChild(tip);
+
+    var hRow = document.createElement('div');
+    hRow.className = 'matrix-highlight-row';
+    canvasWrap.appendChild(hRow);
+    var hCol = document.createElement('div');
+    hCol.className = 'matrix-highlight-col';
+    canvasWrap.appendChild(hCol);
+
+    canvas.addEventListener('mousemove', function(e) {
+        var rect = canvas.getBoundingClientRect();
+        var mx = e.clientX - rect.left;
+        var my = e.clientY - rect.top;
+        var col = Math.floor(mx / cellSize);
+        var row = Math.floor(my / cellSize);
+        if (row < 0 || row >= n || col < 0 || col >= n) {
+            tip.style.display = 'none';
+            hRow.style.display = 'none';
+            hCol.style.display = 'none';
+            clearLabelHighlights();
+            return;
+        }
+
+        hRow.style.display = 'block';
+        hRow.style.top = (row * cellSize) + 'px';
+        hRow.style.height = cellSize + 'px';
+        hCol.style.display = 'block';
+        hCol.style.left = (col * cellSize) + 'px';
+        hCol.style.width = cellSize + 'px';
+
+        highlightLabels(row, col);
+
+        var source = ids[row], target = ids[col];
+        var hasDep = adj[source] && adj[source].has(target);
+        var hasReverse = adj[target] && adj[target].has(source);
+
+        var html = '<div class="matrix-tip-files">' +
+            '<span class="matrix-tip-source">' + _escapeHtml(shortLabels[source]) + '</span>' +
+            '<span class="matrix-tip-arrow">' + (hasDep ? '→' : '·') + '</span>' +
+            '<span class="matrix-tip-target">' + _escapeHtml(shortLabels[target]) + '</span></div>';
+
+        if (row === col) {
+            html += '<div class="matrix-tip-status">Self (diagonal)</div>';
+        } else if (hasDep && hasReverse) {
+            html += '<div class="matrix-tip-status matrix-tip-mutual">Mutual dependency</div>';
+        } else if (hasDep) {
+            html += '<div class="matrix-tip-status matrix-tip-yes">Depends on</div>';
+        } else {
+            html += '<div class="matrix-tip-status matrix-tip-no">No dependency</div>';
+        }
+
+        tip.innerHTML = html;
+        tip.style.display = 'block';
+
+        var wrapRect = wrapper.getBoundingClientRect();
+        var tx = e.clientX - wrapRect.left + 14;
+        var ty = e.clientY - wrapRect.top + 14;
+        if (tx + 200 > wrapRect.width) tx = e.clientX - wrapRect.left - 200;
+        if (ty + 60 > wrapRect.height) ty = e.clientY - wrapRect.top - 60;
+        tip.style.left = tx + 'px';
+        tip.style.top = ty + 'px';
+    });
+
+    canvas.addEventListener('mouseleave', function() {
+        tip.style.display = 'none';
+        hRow.style.display = 'none';
+        hCol.style.display = 'none';
+        clearLabelHighlights();
+    });
+
+    // Click a cell → switch to graph and focus that edge
+    canvas.addEventListener('click', function(e) {
+        var rect = canvas.getBoundingClientRect();
+        var col = Math.floor((e.clientX - rect.left) / cellSize);
+        var row = Math.floor((e.clientY - rect.top) / cellSize);
+        if (row < 0 || row >= n || col < 0 || col >= n) return;
+        var source = ids[row], target = ids[col];
+        var hasDep = adj[source] && adj[source].has(target);
+        if (hasDep && cy) {
+            document.getElementById('viewGraph').checked = true;
+            switchView('graph');
+            var srcNode = cy.getElementById(source);
+            var tgtNode = cy.getElementById(target);
+            if (srcNode.length && tgtNode.length) {
+                cy.animate({ fit: { eles: srcNode.union(tgtNode), padding: 80 } }, { duration: 400 });
+                setTimeout(function() {
+                    highlightPaths(source);
+                }, 450);
+            }
+        }
+    });
+
+    function highlightLabels(row, col) {
+        var rlc = rowLabels.children;
+        var clc = colLabels.children;
+        for (var i = 0; i < n; i++) {
+            rlc[i].classList.toggle('matrix-label-active', i === row);
+            clc[i].classList.toggle('matrix-label-active', i === col);
+        }
+    }
+
+    function clearLabelHighlights() {
+        var rlc = rowLabels.children;
+        var clc = colLabels.children;
+        for (var i = 0; i < n; i++) {
+            rlc[i].classList.remove('matrix-label-active');
+            clc[i].classList.remove('matrix-label-active');
+        }
+    }
+
+    container.appendChild(wrapper);
+}
+
+function getCssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
 

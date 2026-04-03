@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=7">
+    <link rel="stylesheet" href="/static/style.css?v=8">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet">
 </head>
@@ -105,6 +105,7 @@
                 <div class="pill-group">
                     <input type="radio" name="viewMode" id="viewGraph" value="graph" checked onchange="switchView('graph')"><label for="viewGraph">Graph</label>
                     <input type="radio" name="viewMode" id="viewTreemap" value="treemap" onchange="switchView('treemap')"><label for="viewTreemap">Treemap</label>
+                    <input type="radio" name="viewMode" id="viewMatrix" value="matrix" onchange="switchView('matrix')"><label for="viewMatrix">Matrix</label>
                 </div>
                 <div class="treemap-metric-inline" id="treemapMetricGroup" style="display:none;">
                     <div class="toolbar-group-divider"></div>
@@ -201,6 +202,7 @@
         <div id="loading" class="loading-overlay"><div class="spinner"></div></div>
         <div id="cy"></div>
         <div id="treemapContainer" class="treemap-container" style="display:none;"></div>
+        <div id="matrixContainer" class="matrix-container" style="display:none;"></div>
 
         <div id="emptyState" class="empty-state">
             <div class="empty-state-icon">
@@ -306,6 +308,8 @@
                     <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where impact > 5</code></div>
                     <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where depth > 3</code></div>
                     <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files matching utils/</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files matching /\.(test|spec)\./</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where name matching .*index.* and inbound > 2</code></div>
                 </div>
                 <div class="query-results-list" id="queryResultsList"></div>
                 <div class="query-error" id="queryError"></div>
@@ -324,8 +328,8 @@
              ============================================================ -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-tabs-wrap" role="tablist">
+                <span class="tab-row-label">Inspect</span>
                 <div class="sidebar-tab-row">
-                    <span class="tab-row-label">Inspect</span>
                     <div class="sidebar-tab active" data-panel="panel-refs" onclick="switchTab(this)" title="References" role="tab">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 22h2a2 2 0 0 0 2-2V7l-5-5H8a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><circle cx="8" cy="16" r="6"/><path d="M9.5 17.5 8 16.25V14"/></svg>
                         <span>Refs</span>
@@ -343,8 +347,8 @@
                         <span>Blast</span>
                     </div>
                 </div>
+                <span class="tab-row-label">Tools</span>
                 <div class="sidebar-tab-row">
-                    <span class="tab-row-label">Tools</span>
                     <div class="sidebar-tab" data-panel="panel-layers" onclick="switchTab(this)" title="Layering violations" role="tab">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.84Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
                         <span>Layers</span>
@@ -362,14 +366,15 @@
                         <span>Diff</span>
                     </div>
                 </div>
+                <span class="tab-row-label">More</span>
                 <div class="sidebar-tab-row">
                     <div class="sidebar-tab" data-panel="panel-simulate" onclick="switchTab(this)" title="Refactor simulation" role="tab">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64A9 9 0 0 1 20.77 15"/><path d="M6.16 6.16a9 9 0 1 0 12.68 12.68"/><path d="M12 2v4"/><path d="m2 2 20 20"/></svg>
-                        <span>Simulate Refactor</span>
+                        <span>Simulate</span>
                     </div>
                     <div class="sidebar-tab" data-panel="panel-story" onclick="switchTab(this)" title="Story mode" role="tab">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                        <span>Story Mode</span>
+                        <span>Story</span>
                     </div>
                 </div>
             </div>

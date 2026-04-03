@@ -35,31 +35,45 @@
 }
 
 [data-theme="dark"] {
-    --bg: #0c0f1a;
-    --bg-elevated: #1a2038;
-    --bg-sunken: #111527;
-    --text: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --text-muted: #64748b;
-    --border: #1e293b;
-    --border-hover: #334155;
-    --primary: #818cf8;
-    --primary-hover: #a5b4fc;
-    --primary-soft: rgba(129, 140, 248, 0.1);
-    --primary-glow: rgba(129, 140, 248, 0.2);
-    --danger: #f87171;
-    --danger-soft: rgba(248, 113, 113, 0.1);
-    --danger-border: rgba(248, 113, 113, 0.25);
-    --success: #34d399;
-    --success-soft: rgba(52, 211, 153, 0.1);
+    /* Warmer base tones — slight violet tint instead of cold blue-grey */
+    --bg: #0e1019;
+    --bg-elevated: #181a27;
+    --bg-sunken: #12131f;
+    --bg-glass: rgba(24, 26, 39, 0.72);
+
+    /* Higher-contrast text hierarchy */
+    --text: #eef0f6;
+    --text-secondary: #a1a7be;
+    --text-muted: #5e6380;
+
+    /* Subtler, warmer borders */
+    --border: rgba(148, 163, 184, 0.1);
+    --border-hover: rgba(148, 163, 184, 0.2);
+
+    /* Brighter primary with richer glow */
+    --primary: #8b8fff;
+    --primary-hover: #a5a8ff;
+    --primary-soft: rgba(139, 143, 255, 0.1);
+    --primary-glow: rgba(139, 143, 255, 0.25);
+
+    /* Semantic colors — slightly desaturated for dark backgrounds */
+    --danger: #ff6b6b;
+    --danger-soft: rgba(255, 107, 107, 0.08);
+    --danger-border: rgba(255, 107, 107, 0.2);
+    --success: #4ade80;
+    --success-soft: rgba(74, 222, 128, 0.08);
     --warning: #fbbf24;
-    --warning-soft: rgba(251, 191, 36, 0.1);
-    --loading-bg: rgba(12, 15, 26, 0.85);
-    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
-    --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.4);
-    --shadow-md: 0 4px 12px rgb(0 0 0 / 0.5);
-    --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.6);
-    --dot-color: rgba(100, 116, 139, 0.18);
+    --warning-soft: rgba(251, 191, 36, 0.08);
+
+    --loading-bg: rgba(14, 16, 25, 0.88);
+
+    /* Richer shadows with subtle colored ambient */
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.5), 0 0 0 1px rgba(139, 143, 255, 0.03);
+    --shadow-md: 0 4px 16px rgb(0 0 0 / 0.55), 0 0 0 1px rgba(139, 143, 255, 0.04);
+    --shadow-lg: 0 12px 40px rgb(0 0 0 / 0.65), 0 0 0 1px rgba(139, 143, 255, 0.05);
+
+    --dot-color: rgba(139, 143, 255, 0.06);
 }
 
 /* ================================================================
@@ -614,83 +628,89 @@ details.dropdown .dropdown-body {
     display: none !important;
 }
 
+/* --- Sidebar Tab Navigation --- */
 .sidebar-tabs-wrap {
     flex-shrink: 0;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 0.65rem 0;
+    background: var(--bg-elevated);
 }
 
 .sidebar-tab-row {
     display: flex;
-    align-items: stretch;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    padding-bottom: 0.5rem;
 }
 
 .tab-row-label {
-    display: flex;
-    align-items: center;
-    padding: 0 0.5rem;
+    display: block;
     font-size: 0.58rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     color: var(--text-muted);
     opacity: 0.5;
-    white-space: nowrap;
-    width: 48px;
-    flex-shrink: 0;
-    justify-content: center;
+    padding: 0 0.15rem 0.2rem;
 }
 
-.sidebar-tab-row + .sidebar-tab-row {
+.tab-row-label + .sidebar-tab-row {
+    padding-top: 0;
+}
+
+.sidebar-tab-row + .tab-row-label {
     border-top: 1px solid var(--border);
+    padding-top: 0.55rem;
+    margin-top: 0.1rem;
 }
 
 .sidebar-tab {
-    flex: 1;
-    min-width: 0;
-    padding: 0.55rem 0.45rem;
-    text-align: center;
-    font-size: 0.65rem;
-    font-weight: 600;
+    flex: 0 0 auto;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 500;
     cursor: pointer;
     color: var(--text-muted);
-    border-bottom: 2px solid transparent;
     user-select: none;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     letter-spacing: 0.01em;
-    display: flex;
-    flex-direction: row;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
     gap: 0.3rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: transparent;
 }
 
 .sidebar-tab:focus-visible {
     outline: 2px solid var(--primary);
-    outline-offset: -2px;
+    outline-offset: 1px;
 }
 
 .sidebar-tab svg {
     flex-shrink: 0;
-    opacity: 0.6;
+    opacity: 0.5;
     transition: opacity var(--transition);
 }
 
 .sidebar-tab:hover {
     color: var(--text-secondary);
-    background: color-mix(in srgb, var(--text-muted) 8%, transparent);
+    background: var(--bg);
+    border-color: var(--border);
 }
 
-.sidebar-tab:hover svg { opacity: 0.85; }
+.sidebar-tab:hover svg { opacity: 0.75; }
 
 .sidebar-tab.active {
     color: var(--primary);
-    border-bottom-color: var(--primary);
-    background: color-mix(in srgb, var(--primary) 6%, transparent);
+    background: var(--primary-soft);
+    border-color: color-mix(in srgb, var(--primary) 20%, transparent);
+    font-weight: 600;
 }
 
 .sidebar-tab.active svg { opacity: 1; }
 
+/* --- Sidebar Scrollable Content --- */
 .sidebar-scroll {
     flex: 1;
     overflow-y: auto;
@@ -699,15 +719,15 @@ details.dropdown .dropdown-body {
     mask-image: linear-gradient(
         to bottom,
         transparent 0px,
-        black 12px,
-        black calc(100% - 12px),
+        black 8px,
+        black calc(100% - 8px),
         transparent 100%
     );
     -webkit-mask-image: linear-gradient(
         to bottom,
         transparent 0px,
-        black 12px,
-        black calc(100% - 12px),
+        black 8px,
+        black calc(100% - 8px),
         transparent 100%
     );
     scrollbar-width: thin;
@@ -715,7 +735,7 @@ details.dropdown .dropdown-body {
 }
 
 .sidebar-scroll::-webkit-scrollbar {
-    width: 6px;
+    width: 5px;
 }
 
 .sidebar-scroll::-webkit-scrollbar-track {
@@ -731,17 +751,17 @@ details.dropdown .dropdown-body {
     background: var(--border-hover);
 }
 
-.sidebar-panel { display: none; padding: 0 0.55rem; }
+/* --- Panel Layout --- */
+.sidebar-panel { display: none; padding: 0.25rem 0.5rem 1rem; }
 .sidebar-panel.active { display: block; }
 
 .panel-header {
-    padding: 0.7rem 0.85rem;
-    margin-left: -0.55rem;
-    margin-right: -0.55rem;
-    font-size: 0.8rem;
+    padding: 0.6rem 0.65rem;
+    margin: 0.35rem -0.5rem 0;
+    font-size: 0.72rem;
     font-weight: 600;
     color: var(--text-secondary);
-    background: var(--bg);
+    background: var(--bg-elevated);
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
@@ -751,52 +771,63 @@ details.dropdown .dropdown-body {
     justify-content: space-between;
     cursor: pointer;
     user-select: none;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
+    letter-spacing: 0.01em;
+}
+
+.panel-header:first-child {
+    margin-top: 0;
 }
 
 .panel-header::after {
     content: '';
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid var(--text-muted);
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid var(--text-muted);
+    border-bottom: 1.5px solid var(--text-muted);
+    transform: rotate(45deg);
     transition: transform 0.2s ease;
     flex-shrink: 0;
+    opacity: 0.6;
 }
 
 .panel-header.collapsed::after {
-    transform: rotate(-90deg);
+    transform: rotate(-45deg);
+}
+
+.panel-header:hover {
+    color: var(--text);
 }
 
 .panel-header .count-badge {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     font-weight: 600;
-    padding: 0.1rem 0.45rem;
+    padding: 0.1rem 0.4rem;
     border-radius: 9999px;
     background: var(--primary-soft);
     color: var(--primary);
+    margin-right: 0.5rem;
 }
 
 .panel-hint {
-    padding: 0.65rem 0.85rem;
-    font-size: 0.75rem;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.72rem;
     color: var(--text-muted);
-    line-height: 1.5;
+    line-height: 1.55;
+    border-radius: var(--radius-sm);
 }
 
 .legend-bar {
     display: flex;
-    gap: 0.85rem;
-    padding: 0.5rem 0.85rem;
-    margin-left: -0.55rem;
-    margin-right: -0.55rem;
-    font-size: 0.7rem;
+    gap: 0.75rem;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.68rem;
     color: var(--text-muted);
     border-bottom: 1px solid var(--border);
+    margin: 0 -0.5rem;
 }
 
-.legend-item { display: flex; align-items: center; gap: 0.3rem; }
+.legend-item { display: flex; align-items: center; gap: 0.25rem; }
 
 .legend-dot {
     width: 8px;
@@ -877,11 +908,11 @@ details.dropdown .dropdown-body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.5rem 0.85rem;
-    font-size: 0.82rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.78rem;
     gap: 0.5rem;
-    border-radius: 4px;
-    margin: 1px 4px;
+    border-radius: var(--radius-sm);
+    margin: 1px 0;
     transition: background var(--transition);
 }
 
@@ -892,18 +923,19 @@ details.dropdown .dropdown-body {
     color: var(--text-secondary);
     min-width: 0;
     word-break: break-all;
-    line-height: 1.3;
+    line-height: 1.35;
 }
 
-.metric-value { font-weight: 600; flex-shrink: 0; }
+.metric-value { font-weight: 600; flex-shrink: 0; font-size: 0.76rem; }
 
 .badge {
-    padding: 0.15rem 0.5rem;
+    padding: 0.15rem 0.45rem;
     border-radius: 9999px;
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 700;
     white-space: nowrap;
     flex-shrink: 0;
+    letter-spacing: 0.01em;
 }
 
 .badge-green { background: var(--success-soft); color: var(--success); }
@@ -914,16 +946,16 @@ details.dropdown .dropdown-body {
    VIOLATION ROWS
    ================================================================ */
 .violation-row {
-    padding: 0.5rem 0.85rem;
-    font-size: 0.8rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.76rem;
     color: var(--danger);
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 0.4rem;
     transition: background var(--transition);
-    border-radius: 4px;
-    margin: 1px 4px;
+    border-radius: var(--radius-sm);
+    margin: 1px 0;
 }
 
 .violation-row:hover { background: var(--danger-soft); }
@@ -935,15 +967,15 @@ details.dropdown .dropdown-body {
    ================================================================ */
 .action-row {
     display: flex;
-    gap: 0.5rem;
-    padding: 0.6rem 0.85rem;
+    gap: 0.4rem;
+    padding: 0.5rem 0.65rem;
     align-items: center;
 }
 
 .action-row input {
     flex: 1;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.82rem;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.78rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--bg);
@@ -1246,26 +1278,28 @@ details.dropdown .dropdown-body {
    NODE ANALYSIS CARD
    ================================================================ */
 .node-card {
-    margin: 0.5rem 0.85rem;
+    margin: 0.5rem 0.25rem;
     border: 1px solid var(--border);
     border-left: 3px solid var(--primary);
     border-radius: var(--radius-md);
     overflow: hidden;
+    background: var(--bg-elevated);
 }
 
 .node-card-header {
     padding: 0.5rem 0.65rem;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 600;
     background: var(--bg);
     color: var(--text-secondary);
     word-break: break-all;
     border-bottom: 1px solid var(--border);
+    line-height: 1.4;
 }
 
 .node-card .metric-row {
     padding: 0.4rem 0.65rem;
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     margin: 0;
     border-radius: 0;
 }
@@ -1278,8 +1312,8 @@ details.dropdown .dropdown-body {
 .diff-summary {
     display: flex;
     gap: 0.75rem;
-    padding: 0.6rem 0.85rem;
-    font-size: 0.82rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.78rem;
     font-weight: 600;
 }
 
@@ -1290,7 +1324,7 @@ details.dropdown .dropdown-body {
    DEPENDENCY RULES
    ================================================================ */
 .rules-form {
-    padding: 0.5rem 0.85rem;
+    padding: 0.5rem 0.65rem;
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
@@ -1975,9 +2009,10 @@ details.dropdown .dropdown-body {
    ============================================================ */
 
 .blast-row {
-    padding: 0.25rem 0.5rem;
-    border-radius: 6px;
+    padding: 0.3rem 0.5rem;
+    border-radius: var(--radius-sm);
     transition: background 0.15s;
+    font-size: 0.76rem;
 }
 .blast-row:hover {
     background: color-mix(in srgb, var(--text-muted) 8%, transparent);
@@ -1989,22 +2024,22 @@ details.dropdown .dropdown-body {
     width: 18px;
     height: 18px;
     border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 600;
+    font-size: 0.62rem;
+    font-weight: 700;
     color: #fff;
-    margin-right: 0.45rem;
+    margin-right: 0.4rem;
     flex-shrink: 0;
 }
 .blast-depth-group {
-    margin-top: 0.25rem;
+    margin-top: 0.35rem;
 }
 .blast-depth-label {
-    font-size: 0.7rem;
-    font-weight: 600;
+    font-size: 0.66rem;
+    font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.35rem 0.5rem 0.15rem;
+    letter-spacing: 0.05em;
+    padding: 0.4rem 0.5rem 0.2rem;
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -2014,15 +2049,15 @@ details.dropdown .dropdown-body {
    REFACTOR SIMULATION
    ============================================================ */
 .sim-section {
-    margin-top: 0.75rem;
+    margin-top: 0.85rem;
 }
 .sim-section-label {
-    font-size: 0.7rem;
-    font-weight: 600;
+    font-size: 0.66rem;
+    font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding-left: 0.3rem;
+    letter-spacing: 0.05em;
+    padding-left: 0.25rem;
     margin-bottom: 0.35rem;
 }
 .sim-items {
@@ -2847,4 +2882,584 @@ details.dropdown .dropdown-body {
         width: calc(100vw - 32px);
         max-width: 320px;
     }
+}
+
+/* ================================================================
+   MATRIX VIEW
+   ================================================================ */
+.matrix-container {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+    display: none;
+    flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+}
+
+.matrix-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+/* ---- Stats bar ---- */
+.matrix-stats {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.matrix-stat {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.matrix-stat-hint {
+    font-weight: 500;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.matrix-stat-sep {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+
+/* ---- Scroll area ----
+   Single scroll container. Top row (col labels) and row labels
+   use sticky positioning so headers stay visible while scrolling. */
+.matrix-scroll {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+}
+
+.matrix-top-row {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--bg);
+}
+
+.matrix-body-row {
+    display: flex;
+}
+
+/* ---- Corner cell ---- */
+.matrix-corner {
+    flex-shrink: 0;
+    width: 180px;
+    min-width: 180px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 0.4rem;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    left: 0;
+    z-index: 4;
+}
+
+.matrix-corner-label {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1.3;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* ---- Column labels (top) ---- */
+.matrix-col-labels {
+    position: relative;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.matrix-col-label {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding-bottom: 4px;
+    overflow: hidden;
+}
+
+.matrix-col-label .matrix-label-text {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    font-size: 0.73rem;
+    color: var(--text-secondary);
+    max-height: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.matrix-col-label.matrix-label-boundary {
+    border-left: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.matrix-col-label.matrix-label-active .matrix-label-text {
+    color: var(--text);
+    font-weight: 600;
+}
+
+/* ---- Row labels (left side) ---- */
+.matrix-row-labels {
+    flex-shrink: 0;
+    width: 180px;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    left: 0;
+    z-index: 2;
+}
+
+.matrix-row-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 0.5rem 0 0.35rem;
+    overflow: hidden;
+}
+
+.matrix-row-label.matrix-label-boundary {
+    border-top: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.matrix-row-label.matrix-label-active {
+    background: var(--primary-soft);
+}
+
+.matrix-row-label.matrix-label-active .matrix-label-text {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.matrix-label-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.matrix-label-text {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.1s ease;
+}
+
+/* ---- Canvas grid ---- */
+.matrix-canvas-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.matrix-canvas {
+    display: block;
+    cursor: crosshair;
+}
+
+/* ---- Crosshair highlights ---- */
+.matrix-highlight-row,
+.matrix-highlight-col {
+    position: absolute;
+    pointer-events: none;
+    display: none;
+    z-index: 1;
+}
+
+.matrix-highlight-row {
+    left: 0;
+    width: 100%;
+    background: var(--primary-soft);
+    border-top: 1px solid var(--primary);
+    border-bottom: 1px solid var(--primary);
+    opacity: 0.5;
+}
+
+.matrix-highlight-col {
+    top: 0;
+    height: 100%;
+    background: var(--primary-soft);
+    border-left: 1px solid var(--primary);
+    border-right: 1px solid var(--primary);
+    opacity: 0.5;
+}
+
+/* ---- Tooltip ---- */
+.matrix-tip {
+    display: none;
+    position: absolute;
+    z-index: 10;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.65rem;
+    box-shadow: var(--shadow-md);
+    pointer-events: none;
+    min-width: 160px;
+}
+
+.matrix-tip-files {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.2rem;
+}
+
+.matrix-tip-arrow {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.matrix-tip-status {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+
+.matrix-tip-yes {
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.matrix-tip-mutual {
+    color: var(--warning);
+    font-weight: 500;
+}
+
+.matrix-tip-no {
+    color: var(--text-muted);
+}
+
+@media (max-width: 900px) {
+    .matrix-corner,
+    .matrix-row-labels {
+        width: 120px;
+        min-width: 120px;
+    }
+    .matrix-label-text {
+        font-size: 0.68rem;
+    }
+}
+
+/* ================================================================
+   DARK THEME — COMPONENT OVERRIDES
+   Adds depth, warmth, and modern polish to the dark palette.
+   ================================================================ */
+
+/* --- Toolbar: subtle bottom glow instead of flat border --- */
+[data-theme="dark"] .toolbar {
+    background: var(--bg-elevated);
+    border-bottom-color: transparent;
+    box-shadow: 0 1px 0 var(--border), 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .toolbar-top {
+    border-bottom-color: var(--border);
+}
+
+/* Brand icon: brighter gradient in dark mode */
+[data-theme="dark"] .brand-icon {
+    background: linear-gradient(135deg, #8b8fff 0%, #c084fc 100%);
+    box-shadow: 0 2px 12px rgba(139, 143, 255, 0.3);
+}
+
+/* --- Toolbar groups: glass-like surface --- */
+[data-theme="dark"] .toolbar-group {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* --- Buttons: glow on hover --- */
+[data-theme="dark"] .btn-primary {
+    background: linear-gradient(135deg, #7c7fff 0%, #8b8fff 100%);
+    box-shadow: 0 2px 8px rgba(139, 143, 255, 0.25);
+}
+
+[data-theme="dark"] .btn-primary:hover {
+    background: linear-gradient(135deg, #8b8fff 0%, #a5a8ff 100%);
+    box-shadow: 0 4px 20px rgba(139, 143, 255, 0.35);
+}
+
+[data-theme="dark"] .btn-ghost:hover {
+    background: rgba(139, 143, 255, 0.08);
+    border-color: rgba(139, 143, 255, 0.3);
+}
+
+[data-theme="dark"] .btn-icon:hover {
+    background: rgba(139, 143, 255, 0.1);
+    border-color: rgba(139, 143, 255, 0.25);
+}
+
+[data-theme="dark"] .btn-upload {
+    border-color: var(--border);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="dark"] .btn-upload:hover {
+    border-color: rgba(139, 143, 255, 0.4);
+    background: rgba(139, 143, 255, 0.06);
+    box-shadow: 0 0 12px rgba(139, 143, 255, 0.08);
+}
+
+/* --- Pill selectors: richer checked state --- */
+[data-theme="dark"] .pill-group {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border);
+}
+
+[data-theme="dark"] .pill-group label:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .pill-group input:checked + label {
+    background: linear-gradient(135deg, #7c7fff, #8b8fff);
+    box-shadow: 0 2px 8px rgba(139, 143, 255, 0.3);
+}
+
+/* --- Inputs: subtle inner glow on focus --- */
+[data-theme="dark"] .input-wrap {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border);
+}
+
+[data-theme="dark"] .input-wrap:focus-within {
+    border-color: rgba(139, 143, 255, 0.5);
+    box-shadow: 0 0 0 3px rgba(139, 143, 255, 0.15), inset 0 0 12px rgba(139, 143, 255, 0.04);
+}
+
+[data-theme="dark"] .action-row input:focus {
+    border-color: rgba(139, 143, 255, 0.5);
+    box-shadow: 0 0 0 3px rgba(139, 143, 255, 0.15);
+}
+
+/* --- Dropdowns: glass effect --- */
+[data-theme="dark"] details.dropdown .dropdown-body {
+    background: var(--bg-glass);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(139, 143, 255, 0.05);
+}
+
+/* --- Sidebar: refined surface --- */
+[data-theme="dark"] .sidebar {
+    background: var(--bg-elevated);
+    border-left-color: var(--border);
+    box-shadow: -1px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .sidebar-tabs-wrap {
+    background: var(--bg-sunken);
+}
+
+[data-theme="dark"] .sidebar-tab:hover {
+    background: rgba(139, 143, 255, 0.06);
+}
+
+[data-theme="dark"] .sidebar-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    background: rgba(139, 143, 255, 0.08);
+}
+
+/* --- Panel headers: subtle gradient --- */
+[data-theme="dark"] .panel-header {
+    background: linear-gradient(180deg, var(--bg-sunken) 0%, var(--bg-elevated) 100%);
+    border-bottom-color: var(--border);
+}
+
+/* --- List rows: richer hover --- */
+[data-theme="dark"] .list-row:hover {
+    background: rgba(139, 143, 255, 0.06);
+    box-shadow: inset 3px 0 0 var(--primary);
+}
+
+[data-theme="dark"] .metric-row:hover {
+    background: rgba(139, 143, 255, 0.06);
+}
+
+/* --- Count pills: vibrant in dark mode --- */
+[data-theme="dark"] .count-pill {
+    background: linear-gradient(135deg, #7c7fff, #8b8fff);
+    box-shadow: 0 2px 6px rgba(139, 143, 255, 0.3);
+}
+
+/* --- Cycle badge: warm danger glow --- */
+[data-theme="dark"] .cycle-badge {
+    box-shadow: 0 0 12px rgba(255, 107, 107, 0.15);
+}
+
+[data-theme="dark"] .cycle-card {
+    background: rgba(255, 107, 107, 0.06);
+    border-color: rgba(255, 107, 107, 0.15);
+}
+
+/* --- File preview drawer: deeper code background --- */
+[data-theme="dark"] .preview-drawer {
+    background: var(--bg-elevated);
+    border-top-color: var(--border);
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .preview-drawer-header {
+    background: var(--bg-sunken);
+}
+
+/* --- Query terminal: glass surface --- */
+[data-theme="dark"] .query-terminal {
+    background: var(--bg-glass);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+[data-theme="dark"] .query-terminal-header {
+    border-bottom-color: var(--border);
+}
+
+[data-theme="dark"] .query-mode-btn.active {
+    background: rgba(139, 143, 255, 0.12);
+    color: var(--primary);
+    box-shadow: 0 0 8px rgba(139, 143, 255, 0.12);
+}
+
+/* --- Graph canvas: warmer dot grid --- */
+[data-theme="dark"] #cy {
+    background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+}
+
+/* --- Loading overlay: richer blur --- */
+[data-theme="dark"] .loading-overlay {
+    backdrop-filter: blur(8px) saturate(1.2);
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
+}
+
+[data-theme="dark"] .spinner {
+    border-color: rgba(139, 143, 255, 0.15);
+    border-top-color: var(--primary);
+}
+
+/* --- Toast & tooltip: glass style --- */
+[data-theme="dark"] .toast {
+    background: var(--bg-glass);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+[data-theme="dark"] .custom-tooltip {
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+/* --- Empty state: richer gradient --- */
+[data-theme="dark"] .empty-state-icon {
+    background: linear-gradient(135deg, rgba(139, 143, 255, 0.08), rgba(192, 132, 252, 0.08));
+    box-shadow: 0 0 32px rgba(139, 143, 255, 0.08);
+}
+
+/* --- Status bar & folder key: glass surface --- */
+[data-theme="dark"] .graph-status-bar {
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-color: var(--border);
+}
+
+[data-theme="dark"] .folder-color-key {
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-color: var(--border);
+}
+
+/* --- Path hint: inverted with glass --- */
+[data-theme="dark"] .path-hint {
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+/* --- Minimap: warmer --- */
+[data-theme="dark"] .minimap {
+    background: var(--bg-elevated);
+    border-color: var(--border);
+    box-shadow: var(--shadow-md);
+}
+
+[data-theme="dark"] .minimap-viewport {
+    background: rgba(139, 143, 255, 0.1);
+    border-color: var(--primary);
+}
+
+/* --- Badges: subtle glow --- */
+[data-theme="dark"] .badge-green {
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.1);
+}
+
+[data-theme="dark"] .badge-red {
+    box-shadow: 0 0 8px rgba(255, 107, 107, 0.1);
+}
+
+/* --- Export menu --- */
+[data-theme="dark"] .export-menu button:hover {
+    background: rgba(139, 143, 255, 0.08);
+}
+
+/* --- Scrollbars: subtler --- */
+[data-theme="dark"] .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+/* --- Treemap dark refinements --- */
+[data-theme="dark"] .tm-cell {
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .tm-group {
+    border-color: rgba(255, 255, 255, 0.12);
 }
