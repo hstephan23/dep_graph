@@ -41,10 +41,35 @@ function toggleTheme() {
 
 window.addEventListener('DOMContentLoaded', () => applyThemeIcon(document.documentElement.getAttribute('data-theme')));
 
+// --- Sidebar Toggle (responsive + desktop) ---
+let _sidebarHidden = false;
+
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (window.innerWidth <= 900) {
+        // Mobile: slide-in overlay
+        sidebar.classList.toggle('open');
+        backdrop.classList.toggle('open');
+    } else {
+        // Desktop: toggle via inline styles (avoids CSS caching issues)
+        _sidebarHidden = !_sidebarHidden;
+        if (_sidebarHidden) {
+            sidebar.setAttribute('style', 'display:none !important');
+        } else {
+            sidebar.removeAttribute('style');
+            // Force Cytoscape to resize into the reclaimed space
+            if (typeof cy !== 'undefined' && cy) {
+                setTimeout(() => cy.resize(), 50);
+            }
+        }
+    }
+}
+
 // --- State ---
-let cy, currentGraphData = null, minimapCy = null, pathHighlightActive = false;
+let cy, currentGraphData = null, pathHighlightActive = false;
 let currentLayout = 'cose', clusteringEnabled = false, bundlingEnabled = false;
-let currentMode = 'local', currentUploadedFile = null;
+let currentMode = 'local', currentUploadedFile = null, currentUploadDir = null;
 
 // --- Sidebar tab switching ---
 function switchTab(tab) {
@@ -65,7 +90,7 @@ function getLayoutConfig(name) {
 function changeLayout(name) {
     currentLayout = name;
     localStorage.setItem('layout', name);
-    if (cy) { cy.layout(getLayoutConfig(name)).run(); updateMinimap(); }
+    if (cy) { cy.layout(getLayoutConfig(name)).run(); }
 }
 
 (function restoreLayout() {
@@ -73,23 +98,6 @@ function changeLayout(name) {
     if (s) { currentLayout = s; const r = document.querySelector(`input[name="layoutMode"][value="${s}"]`); if (r) r.checked = true; }
 })();
 
-// --- Minimap ---
-function updateMinimap() {
-    if (!cy) return;
-    if (minimapCy) minimapCy.destroy();
-    minimapCy = cytoscape({
-        container: document.getElementById('minimap'),
-        elements: cy.elements().jsons(),
-        style: [
-            { selector: 'node', style: { width: 5, height: 5, 'background-color': 'data(color)', label: '' } },
-            { selector: 'edge', style: { width: 0.5, 'line-color': '#94a3b8', 'target-arrow-shape': 'none' } },
-            { selector: 'edge.cycle', style: { 'line-color': '#FF4136' } },
-        ],
-        layout: { name: 'preset' },
-        userZoomingEnabled: false, userPanningEnabled: false, boxSelectionEnabled: false, autoungrabify: true,
-    });
-    minimapCy.fit();
-}
 
 // --- Path Highlighting ---
 function highlightPaths(nodeId) {
@@ -351,9 +359,9 @@ function renderGraph(data) {
     });
 
     cy.on('tap', 'node', evt => { if (!evt.target.isParent()) { clearPathHighlight(); highlightPaths(evt.target.id()); } });
+    cy.on('dbltap', 'node', evt => { if (!evt.target.isParent()) openPreview(evt.target.id()); });
     cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') clearPathHighlight(); });
-    setTimeout(updateMinimap, 500);
+    // Escape handled by global shortcut system below
 
     // --- Ref list ---
     const refList = document.getElementById('ref-list');
@@ -431,7 +439,7 @@ function uploadZip() {
     fetch('/api/upload', { method: 'POST', body: fd })
         .then(r => r.json()).then(d => {
             if (d.error) showToast('Error: ' + d.error, 5000);
-            else { renderGraph(d); showDetectedLanguages(d.detected); }
+            else { currentUploadDir = d.upload_dir || null; renderGraph(d); showDetectedLanguages(d.detected); }
             document.getElementById('loading').classList.remove('active');
         }).catch(() => { showToast('Upload failed.', 5000); document.getElementById('loading').classList.remove('active'); });
 }
@@ -465,6 +473,91 @@ function loadGraph() {
             loading.classList.remove('active');
         }).catch(() => loading.classList.remove('active'));
 }
+
+// --- File Preview Drawer ---
+let previewOpen = false;
+let previewDrawerHeight = 280;
+
+function getBaseDir() {
+    if (currentMode === 'local') return document.getElementById('dirInput').value;
+    if (currentMode === 'upload' && currentUploadDir) return currentUploadDir;
+    return '';
+}
+
+function openPreview(fileId) {
+    const dir = getBaseDir();
+    if (!dir) { showToast('File preview only available for local directories'); return; }
+
+    const drawer = document.getElementById('previewDrawer');
+    const handle = document.getElementById('previewResizeHandle');
+
+    document.getElementById('previewFileName').textContent = fileId;
+    document.getElementById('previewMeta').textContent = 'Loading...';
+    document.getElementById('previewCode').textContent = '';
+    document.getElementById('previewCode').className = '';
+
+    drawer.style.height = previewDrawerHeight + 'px';
+    handle.style.bottom = previewDrawerHeight + 'px';
+    drawer.classList.add('open');
+    handle.classList.add('open');
+    previewOpen = true;
+
+    fetch('/api/file?' + new URLSearchParams({ dir, path: fileId }))
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('previewMeta').textContent = '';
+                document.getElementById('previewCode').textContent = data.error;
+                return;
+            }
+            document.getElementById('previewMeta').textContent = `${data.lines} lines \u00b7 ${data.language}`;
+            const codeEl = document.getElementById('previewCode');
+            codeEl.className = 'language-' + data.language;
+            codeEl.textContent = data.content;
+            Prism.highlightElement(codeEl);
+        })
+        .catch(() => {
+            document.getElementById('previewMeta').textContent = '';
+            document.getElementById('previewCode').textContent = 'Failed to load file.';
+        });
+}
+
+function closePreview() {
+    document.getElementById('previewDrawer').classList.remove('open');
+    document.getElementById('previewResizeHandle').classList.remove('open');
+    previewOpen = false;
+}
+
+// Resize handle drag
+(function initPreviewResize() {
+    const handle = document.getElementById('previewResizeHandle');
+    if (!handle) return;
+    let dragging = false, startY = 0, startH = 0;
+
+    handle.addEventListener('mousedown', e => {
+        dragging = true;
+        startY = e.clientY;
+        startH = previewDrawerHeight;
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        const delta = startY - e.clientY;
+        previewDrawerHeight = Math.max(120, Math.min(window.innerHeight * 0.7, startH + delta));
+        document.getElementById('previewDrawer').style.height = previewDrawerHeight + 'px';
+        handle.style.bottom = previewDrawerHeight + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    });
+})();
 
 // --- Dependency Rules ---
 let depRules = [];
@@ -602,5 +695,177 @@ function clearRuleViolations() {
     document.querySelectorAll('.rule-badge-overlay').forEach(el => el.remove());
     if (cy) cy.edges().removeStyle();
 }
+
+// ============================================================
+// KEYBOARD SHORTCUTS
+// ============================================================
+
+const SHORTCUTS = [
+    { section: 'General', items: [
+        { keys: '?',           desc: 'Show / hide this help',          action: () => toggleShortcutHelp() },
+        { keys: 'Escape',      desc: 'Close modal / clear selection',  action: () => {
+            const modal = document.getElementById('shortcutModal');
+            if (modal && modal.classList.contains('open')) { toggleShortcutHelp(); return; }
+            clearPathHighlight();
+            if (previewOpen) closePreview();
+        }},
+        { keys: 't',           desc: 'Toggle light / dark theme',      action: () => toggleTheme() },
+        { keys: 's',           desc: 'Toggle sidebar',                 action: () => toggleSidebar() },
+    ]},
+    { section: 'Graph', items: [
+        { keys: 'g',           desc: 'Generate graph',                 action: () => loadGraph() },
+        { keys: '/',           desc: 'Focus search',                   action: (e) => { e.preventDefault(); document.getElementById('searchInput').focus(); } },
+        { keys: 'd',           desc: 'Focus directory input',          action: () => document.getElementById('dirInput').focus() },
+        { keys: 'f',           desc: 'Fit graph to viewport',          action: () => { if (cy) cy.fit(undefined, 50); } },
+        { keys: 'z',           desc: 'Zoom to selected node',          action: () => { if (cy) { const sel = cy.nodes(':selected'); if (sel.length) cy.animate({ center: { eles: sel }, zoom: 2 }, { duration: 400 }); } } },
+    ]},
+    { section: 'Layout', items: [
+        { keys: '1',           desc: 'Force layout',                   action: () => { changeLayout('cose'); document.getElementById('layoutCose').checked = true; showToast('Layout: Force'); } },
+        { keys: '2',           desc: 'Hierarchy layout',               action: () => { changeLayout('dagre'); document.getElementById('layoutDagre').checked = true; showToast('Layout: Hierarchy'); } },
+        { keys: '3',           desc: 'Concentric layout',              action: () => { changeLayout('concentric'); document.getElementById('layoutConcentric').checked = true; showToast('Layout: Concentric'); } },
+        { keys: 'c',           desc: 'Toggle directory clustering',    action: () => { document.getElementById('clusterDirs').click(); } },
+        { keys: 'b',           desc: 'Toggle edge bundling',           action: () => { document.getElementById('bundleEdges').click(); } },
+    ]},
+    { section: 'Panels', items: [
+        { keys: 'Shift+1',     desc: 'Refs panel',                     action: () => activatePanel(0) },
+        { keys: 'Shift+2',     desc: 'Analysis panel',                 action: () => activatePanel(1) },
+        { keys: 'Shift+3',     desc: 'Unused panel',                   action: () => activatePanel(2) },
+        { keys: 'Shift+4',     desc: 'Layers panel',                   action: () => activatePanel(3) },
+        { keys: 'Shift+5',     desc: 'Rules panel',                    action: () => activatePanel(4) },
+        { keys: 'Shift+6',     desc: 'Diff panel',                     action: () => activatePanel(5) },
+    ]},
+    { section: 'Export', items: [
+        { keys: 'e j',         desc: 'Export JSON',                    action: () => exportJSON(),        combo: true },
+        { keys: 'e p',         desc: 'Export PNG',                     action: () => exportPNG(),         combo: true },
+        { keys: 'e d',         desc: 'Export DOT',                     action: () => exportDOT(),         combo: true },
+    ]},
+];
+
+function activatePanel(index) {
+    const tabs = document.querySelectorAll('.sidebar-tab');
+    if (tabs[index]) {
+        switchTab(tabs[index]);
+        // Ensure sidebar is visible on mobile
+        const sidebar = document.getElementById('sidebar');
+        if (!sidebar.classList.contains('open') && window.innerWidth <= 900) toggleSidebar();
+    }
+}
+
+// --- Sequence key support (for "e j", "e p", etc.) ---
+let pendingPrefix = null;
+let pendingTimer = null;
+
+function clearPendingPrefix() {
+    pendingPrefix = null;
+    if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; }
+}
+
+document.addEventListener('keydown', e => {
+    // Ignore when typing in inputs/textareas/selects
+    const tag = e.target.tagName;
+    const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+
+    // Allow Escape even in input contexts
+    if (e.key === 'Escape') {
+        if (isInput) { e.target.blur(); return; }
+        for (const sec of SHORTCUTS) {
+            for (const s of sec.items) {
+                if (s.keys === 'Escape') { s.action(e); return; }
+            }
+        }
+        return;
+    }
+
+    if (isInput) return;
+
+    // Build the key string
+    let keyStr = e.key;
+
+    // Handle sequence combos (e.g. "e j")
+    if (pendingPrefix) {
+        const comboStr = pendingPrefix + ' ' + keyStr;
+        clearPendingPrefix();
+        for (const sec of SHORTCUTS) {
+            for (const s of sec.items) {
+                if (s.combo && s.keys === comboStr) { s.action(e); return; }
+            }
+        }
+        return;
+    }
+
+    // Check if this key is a prefix for a combo
+    const isPrefix = SHORTCUTS.some(sec => sec.items.some(s => s.combo && s.keys.startsWith(keyStr + ' ')));
+    if (isPrefix) {
+        pendingPrefix = keyStr;
+        pendingTimer = setTimeout(clearPendingPrefix, 800);
+        return;
+    }
+
+    // Handle Shift+number — map the symbol to Shift+N
+    if (e.shiftKey) {
+        const shiftMap = { '!': '1', '@': '2', '#': '3', '$': '4', '%': '5', '^': '6' };
+        if (shiftMap[e.key]) keyStr = 'Shift+' + shiftMap[e.key];
+    }
+
+    // Direct match
+    for (const sec of SHORTCUTS) {
+        for (const s of sec.items) {
+            if (!s.combo && s.keys === keyStr) { s.action(e); return; }
+        }
+    }
+});
+
+// --- Help modal toggle ---
+function toggleShortcutHelp() {
+    const modal = document.getElementById('shortcutModal');
+    if (!modal) return;
+    modal.classList.toggle('open');
+}
+
+// Build help modal content on load
+window.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('shortcutModal');
+    if (!modal) return;
+    const grid = modal.querySelector('.shortcut-grid');
+    if (!grid) return;
+
+    SHORTCUTS.forEach(sec => {
+        const section = document.createElement('div');
+        section.className = 'shortcut-section';
+        const heading = document.createElement('div');
+        heading.className = 'shortcut-section-title';
+        heading.textContent = sec.section;
+        section.appendChild(heading);
+
+        sec.items.forEach(s => {
+            const row = document.createElement('div');
+            row.className = 'shortcut-row';
+            const keys = document.createElement('div');
+            keys.className = 'shortcut-keys';
+            // Split on + or space, but keep the separator type
+            const parts = s.keys.split(/(\+| )/);
+            const keyTokens = parts.filter(p => p !== '+' && p !== ' ' && p !== '');
+            keyTokens.forEach((k, i) => {
+                const kbd = document.createElement('kbd');
+                kbd.textContent = k;
+                keys.appendChild(kbd);
+                if (i < keyTokens.length - 1) {
+                    const sep = document.createElement('span');
+                    sep.className = 'shortcut-sep';
+                    sep.textContent = s.combo ? 'then' : '+';
+                    keys.appendChild(sep);
+                }
+            });
+            const desc = document.createElement('span');
+            desc.className = 'shortcut-desc';
+            desc.textContent = s.desc;
+            row.appendChild(keys);
+            row.appendChild(desc);
+            section.appendChild(row);
+        });
+
+        grid.appendChild(section);
+    });
+});
 
 loadGraph();

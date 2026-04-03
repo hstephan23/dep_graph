@@ -30,12 +30,14 @@
     --shadow-md: 0 4px 12px rgb(0 0 0 / 0.08);
     --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.12);
     --transition: 0.15s ease;
+    --dot-color: rgba(148, 163, 184, 0.25);
+    --sidebar-width: 350px;
 }
 
 [data-theme="dark"] {
     --bg: #0c0f1a;
-    --bg-elevated: #161b2e;
-    --bg-sunken: #0f1322;
+    --bg-elevated: #1a2038;
+    --bg-sunken: #111527;
     --text: #f1f5f9;
     --text-secondary: #94a3b8;
     --text-muted: #64748b;
@@ -57,6 +59,7 @@
     --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.4);
     --shadow-md: 0 4px 12px rgb(0 0 0 / 0.5);
     --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.6);
+    --dot-color: rgba(100, 116, 139, 0.18);
 }
 
 /* ================================================================
@@ -97,7 +100,7 @@ body {
 .toolbar-bottom {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.6rem;
     padding: 0.5rem 1rem;
     flex-wrap: wrap;
 }
@@ -132,6 +135,26 @@ body {
     width: 1px;
     height: 24px;
     background: var(--border);
+    flex-shrink: 0;
+}
+
+/* Toolbar grouping containers */
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.3rem 0.65rem;
+}
+
+.toolbar-group-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     flex-shrink: 0;
 }
 
@@ -170,8 +193,8 @@ body {
     min-width: 0;
 }
 
-.input-dir { width: 220px; }
-.input-search { width: 150px; }
+.input-dir { width: 220px; min-width: 100px; flex-shrink: 1; }
+.input-search { width: 150px; min-width: 80px; flex-shrink: 1; }
 
 .btn {
     display: inline-flex;
@@ -242,6 +265,11 @@ body {
     padding: 2px;
 }
 
+/* Inside toolbar-group, pill-group should not double-up the background */
+.toolbar-group .pill-group {
+    background: var(--bg-elevated);
+}
+
 .pill-group input[type="radio"] { display: none; }
 
 .pill-group label {
@@ -259,6 +287,10 @@ body {
 .pill-group label:hover {
     color: var(--text);
     background: var(--bg-elevated);
+}
+
+.toolbar-group .pill-group label:hover {
+    background: var(--bg);
 }
 
 .pill-group input:checked + label {
@@ -357,20 +389,152 @@ details.dropdown .dropdown-body {
 
 #cy {
     flex: 1;
+    min-width: 0;
     position: relative;
+    z-index: 1;
+    cursor: grab;
+    background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+#cy:active { cursor: grabbing; }
+
+/* ================================================================
+   FILE PREVIEW DRAWER
+   ================================================================ */
+.preview-drawer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: var(--sidebar-width);
+    height: 280px;
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 18;
+    transform: translateY(100%);
+    transition: transform 0.25s ease;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.preview-drawer.open { transform: translateY(0); }
+
+.preview-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex-shrink: 0;
+}
+
+.preview-drawer-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+    min-width: 0;
+    overflow: hidden;
+}
+
+.preview-drawer-title svg {
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+
+.preview-drawer-title span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.preview-meta {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.preview-drawer-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.preview-drawer-body {
+    flex: 1;
+    overflow: auto;
+    font-size: 0.82rem;
+}
+
+.preview-drawer-body pre {
+    margin: 0;
+    border-radius: 0;
+    font-size: 0.8rem;
+    min-height: 100%;
+}
+
+.preview-drawer-body pre[class*="line-numbers"] {
+    padding-left: 3.5em;
+}
+
+.preview-drawer-body code {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+    font-size: 0.8rem;
+    tab-size: 4;
+}
+
+/* Override Prism tomorrow theme to match app colors in dark mode */
+[data-theme="dark"] .preview-drawer-body pre[class*="language-"] {
+    background: var(--bg-sunken);
+}
+
+[data-theme="light"] .preview-drawer-body pre[class*="language-"] {
+    background: #1e1e2e;
+}
+
+/* Resize handle */
+.preview-resize-handle {
+    display: none;
+    position: absolute;
+    bottom: 280px;
+    left: 0;
+    right: var(--sidebar-width);
+    height: 6px;
+    cursor: row-resize;
+    z-index: 19;
+    background: transparent;
+    transition: bottom 0s;
+}
+
+.preview-resize-handle.open { display: block; }
+
+.preview-resize-handle:hover,
+.preview-resize-handle:active {
+    background: var(--primary);
+    opacity: 0.4;
 }
 
 /* ================================================================
    SIDEBAR
    ================================================================ */
 .sidebar {
-    width: 320px;
+    width: var(--sidebar-width);
     background: var(--bg-elevated);
     border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     z-index: 5;
+    flex-shrink: 0;
+}
+
+.sidebar.collapsed {
+    display: none !important;
 }
 
 .sidebar-tabs {
@@ -378,13 +542,18 @@ details.dropdown .dropdown-body {
     border-bottom: 1px solid var(--border);
     background: var(--bg);
     flex-shrink: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
 }
+
+.sidebar-tabs::-webkit-scrollbar { display: none; }
 
 .sidebar-tab {
     flex: 1;
-    padding: 0.55rem 0;
+    min-width: 0;
+    padding: 0.5rem 0.25rem;
     text-align: center;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 600;
     cursor: pointer;
     color: var(--text-muted);
@@ -392,27 +561,58 @@ details.dropdown .dropdown-body {
     user-select: none;
     transition: all var(--transition);
     letter-spacing: 0.01em;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
 }
 
-.sidebar-tab:hover { color: var(--text-secondary); }
+.sidebar-tab svg {
+    flex-shrink: 0;
+    opacity: 0.6;
+    transition: opacity var(--transition);
+}
+
+.sidebar-tab:hover {
+    color: var(--text-secondary);
+}
+
+.sidebar-tab:hover svg { opacity: 0.85; }
 
 .sidebar-tab.active {
     color: var(--primary);
     border-bottom-color: var(--primary);
 }
 
+.sidebar-tab.active svg { opacity: 1; }
+
 .sidebar-scroll {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    position: relative;
+    mask-image: linear-gradient(
+        to bottom,
+        transparent 0px,
+        black 12px,
+        black calc(100% - 12px),
+        transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent 0px,
+        black 12px,
+        black calc(100% - 12px),
+        transparent 100%
+    );
 }
 
 .sidebar-panel { display: none; }
 .sidebar-panel.active { display: block; }
 
 .panel-header {
-    padding: 0.65rem 0.85rem;
-    font-size: 0.75rem;
+    padding: 0.7rem 0.85rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--text-secondary);
     background: var(--bg);
@@ -426,29 +626,28 @@ details.dropdown .dropdown-body {
 }
 
 .panel-header .count-badge {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     font-weight: 600;
-    padding: 0.1rem 0.4rem;
+    padding: 0.1rem 0.45rem;
     border-radius: 9999px;
     background: var(--primary-soft);
     color: var(--primary);
 }
 
 .panel-hint {
-    padding: 0.6rem 0.85rem;
-    font-size: 0.7rem;
+    padding: 0.65rem 0.85rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
-    border-bottom: 1px solid var(--border);
     line-height: 1.5;
 }
 
 .legend-bar {
     display: flex;
     gap: 0.85rem;
-    padding: 0.4rem 0.85rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.65rem;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
 }
 
 .legend-item { display: flex; align-items: center; gap: 0.3rem; }
@@ -460,16 +659,17 @@ details.dropdown .dropdown-body {
 }
 
 /* ================================================================
-   LIST ITEMS
+   LIST ITEMS (reduced border density)
    ================================================================ */
 .list-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.55rem 0.85rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.8rem;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.82rem;
     transition: background var(--transition);
+    border-radius: 4px;
+    margin: 1px 4px;
 }
 
 .list-row:hover { background: var(--primary-soft); }
@@ -506,23 +706,25 @@ details.dropdown .dropdown-body {
     color: white;
     padding: 0.15rem 0.45rem;
     border-radius: 9999px;
-    font-size: 0.65rem;
+    font-size: 0.68rem;
     font-weight: 700;
     min-width: 1.3rem;
     text-align: center;
 }
 
 /* ================================================================
-   METRIC ROWS
+   METRIC ROWS (reduced border density)
    ================================================================ */
 .metric-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 0.85rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     gap: 0.5rem;
+    border-radius: 4px;
+    margin: 1px 4px;
+    transition: background var(--transition);
 }
 
 .metric-row:hover { background: var(--primary-soft); }
@@ -540,7 +742,7 @@ details.dropdown .dropdown-body {
 .badge {
     padding: 0.15rem 0.5rem;
     border-radius: 9999px;
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     font-weight: 700;
     white-space: nowrap;
     flex-shrink: 0;
@@ -555,14 +757,15 @@ details.dropdown .dropdown-body {
    ================================================================ */
 .violation-row {
     padding: 0.5rem 0.85rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: var(--danger);
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 0.4rem;
     transition: background var(--transition);
+    border-radius: 4px;
+    margin: 1px 4px;
 }
 
 .violation-row:hover { background: var(--danger-soft); }
@@ -577,13 +780,12 @@ details.dropdown .dropdown-body {
     gap: 0.5rem;
     padding: 0.6rem 0.85rem;
     align-items: center;
-    border-bottom: 1px solid var(--border);
 }
 
 .action-row input {
     flex: 1;
     padding: 0.4rem 0.6rem;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--bg);
@@ -607,14 +809,14 @@ details.dropdown .dropdown-body {
     background: var(--danger-soft);
     border: 1px solid var(--danger-border);
     border-radius: var(--radius-md);
-    font-size: 0.78rem;
+    font-size: 0.82rem;
 }
 
 .cycle-card-title {
     font-weight: 600;
     color: var(--danger);
     margin-bottom: 0.35rem;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
 }
 
 .cycle-card-node {
@@ -627,26 +829,6 @@ details.dropdown .dropdown-body {
 
 .cycle-card-node:hover { color: var(--primary); }
 
-/* ================================================================
-   MINIMAP
-   ================================================================ */
-#minimap {
-    position: absolute;
-    bottom: 14px;
-    left: 14px;
-    width: 170px;
-    height: 120px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--bg-elevated);
-    box-shadow: var(--shadow-md);
-    z-index: 15;
-    overflow: hidden;
-    opacity: 0.9;
-    transition: opacity var(--transition);
-}
-
-#minimap:hover { opacity: 1; }
 
 /* ================================================================
    OVERLAYS
@@ -709,7 +891,7 @@ details.dropdown .dropdown-body {
 }
 
 .empty-state-desc {
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     color: var(--text-muted);
     line-height: 1.5;
 }
@@ -723,7 +905,7 @@ details.dropdown .dropdown-body {
     color: var(--bg);
     padding: 0.4rem 1rem;
     border-radius: 9999px;
-    font-size: 0.75rem;
+    font-size: 0.78rem;
     font-weight: 500;
     z-index: 16;
     display: none;
@@ -740,7 +922,7 @@ details.dropdown .dropdown-body {
     color: var(--bg);
     padding: 0.55rem 1.1rem;
     border-radius: 9999px;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     font-weight: 500;
     box-shadow: var(--shadow-lg);
     z-index: 9999;
@@ -785,7 +967,7 @@ details.dropdown .dropdown-body {
     color: var(--text-secondary);
     border: none;
     padding: 0.4rem 0.6rem;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     border-radius: 4px;
     cursor: pointer;
     transition: all var(--transition);
@@ -810,7 +992,7 @@ details.dropdown .dropdown-body {
 
 .node-card-header {
     padding: 0.5rem 0.65rem;
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     font-weight: 600;
     background: var(--bg);
     color: var(--text-secondary);
@@ -820,7 +1002,9 @@ details.dropdown .dropdown-body {
 
 .node-card .metric-row {
     padding: 0.4rem 0.65rem;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
+    margin: 0;
+    border-radius: 0;
 }
 
 .node-card .metric-row:last-child { border-bottom: none; }
@@ -832,7 +1016,7 @@ details.dropdown .dropdown-body {
     display: flex;
     gap: 0.75rem;
     padding: 0.6rem 0.85rem;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     font-weight: 600;
 }
 
@@ -862,7 +1046,7 @@ details.dropdown .dropdown-body {
     border-radius: var(--radius-sm);
     background: var(--bg-elevated);
     color: var(--text);
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     font-family: inherit;
     font-weight: 500;
     outline: none;
@@ -879,7 +1063,7 @@ details.dropdown .dropdown-body {
     border-radius: var(--radius-sm);
     background: var(--bg-elevated);
     color: var(--text);
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     font-family: inherit;
     outline: none;
     min-width: 0;
@@ -903,7 +1087,7 @@ details.dropdown .dropdown-body {
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--bg);
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     transition: border-color var(--transition);
 }
 
@@ -917,7 +1101,7 @@ details.dropdown .dropdown-body {
 }
 
 .rule-type-badge {
-    font-size: 0.62rem;
+    font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 0.05em;
     padding: 0.15rem 0.4rem;
@@ -993,4 +1177,287 @@ details.dropdown .dropdown-body {
     0% { transform: translate(-50%, -50%) scale(0); }
     70% { transform: translate(-50%, -50%) scale(1.2); }
     100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ================================================================
+   SIDEBAR TOGGLE FAB (floating, for mobile only)
+   ================================================================ */
+.sidebar-toggle-fab {
+    display: none;
+    position: fixed;
+    bottom: 1.25rem;
+    right: 1.25rem;
+    z-index: 48;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--primary);
+    box-shadow: var(--shadow-md);
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition), box-shadow var(--transition), transform 0.25s ease;
+}
+.sidebar-toggle-fab:hover {
+    background: var(--primary-soft);
+    box-shadow: var(--shadow-lg);
+}
+/* Hide the FAB when sidebar is open (it slides behind the backdrop) */
+.sidebar-toggle-fab.hidden { transform: scale(0); pointer-events: none; }
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+
+/* --- Large tablets / narrow desktops (≤1100px) --- */
+@media (max-width: 1100px) {
+    :root { --sidebar-width: 300px; }
+}
+
+/* --- Tablets (≤900px): sidebar becomes a drawer --- */
+@media (max-width: 900px) {
+    .sidebar {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100vh;
+        width: min(var(--sidebar-width), 85vw);
+        transform: translateX(100%);
+        transition: transform 0.25s ease;
+        box-shadow: var(--shadow-lg);
+        z-index: 50;
+    }
+
+    .sidebar.open { transform: translateX(0); }
+
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        z-index: 49;
+    }
+
+    .sidebar-backdrop.open { display: block; }
+
+    /* Show the floating sidebar toggle on mobile */
+    .sidebar-toggle-fab { display: flex; }
+
+    /* Preview drawer spans full width when sidebar is off-canvas */
+    .preview-drawer { right: 0; }
+    .preview-resize-handle { right: 0; }
+
+    /* Sidebar tabs: icon-only */
+    .sidebar-tab span { display: none; }
+    .sidebar-tab { padding: 0.55rem 0.35rem; }
+
+    /* Toolbar: let items wrap */
+    .toolbar-top { flex-wrap: wrap; gap: 0.5rem; }
+    .toolbar-bottom { gap: 0.4rem; padding: 0.4rem 0.75rem; }
+    .toolbar-group { padding: 0.25rem 0.5rem; }
+
+    /* Shrink inputs */
+    .input-dir { width: 180px; }
+    .input-search { width: 120px; }
+}
+
+/* --- Small tablets / large phones (≤700px) --- */
+@media (max-width: 700px) {
+    /* Collapse toolbar to a more compact layout */
+    .toolbar-top {
+        padding: 0.45rem 0.65rem;
+        gap: 0.4rem;
+    }
+
+    .toolbar-bottom { flex-wrap: wrap; }
+
+    .toolbar-separator { display: none; }
+
+    /* Inputs become fluid */
+    .input-dir { width: auto; flex: 1; min-width: 100px; }
+    .input-search { width: auto; flex: 1; min-width: 80px; }
+
+    /* Hide text labels on buttons, keep icons */
+    .btn-primary > span,
+    .btn-upload > span,
+    .btn-ghost > span { display: none; }
+
+    /* Toolbar groups stack better */
+    .toolbar-group { flex-wrap: wrap; }
+    .toolbar-group-label { display: none; }
+
+    /* Pill labels get smaller */
+    .pill-group label { padding: 0.25rem 0.45rem; font-size: 0.7rem; }
+
+    /* Preview drawer gets more height on small screens */
+    .preview-drawer { right: 0; }
+}
+
+/* --- Phones (≤500px) --- */
+@media (max-width: 500px) {
+    .brand-name { display: none; }
+
+    .toolbar-top { padding: 0.4rem 0.5rem; }
+    .toolbar-bottom { padding: 0.35rem 0.5rem; }
+
+    /* Full-width inputs */
+    .input-dir, .input-search { width: 100%; flex: unset; }
+
+    /* Make the top toolbar wrap into rows */
+    .toolbar-top {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 0.4rem;
+    }
+
+    /* Brand + separator in first cell */
+    .brand { grid-column: 1; }
+
+    /* Dir input spans middle */
+    .input-wrap.input-dir { grid-column: 2; width: auto; }
+
+    /* Generate button */
+    .btn-primary { grid-column: 3; }
+
+    /* Search + actions wrap to next row */
+    .input-wrap.input-search { grid-column: 1 / -1; width: auto; }
+
+    /* Cycle badge, upload, export, theme toggle flow naturally */
+    .cycle-badge { font-size: 0.68rem; padding: 0.2rem 0.5rem; }
+
+    /* Sidebar takes full width on phones */
+    .sidebar {
+        width: 100vw;
+    }
+
+    /* Bottom drawer fills full width */
+    .preview-drawer {
+        right: 0;
+        left: 0;
+    }
+
+}
+
+/* ================================================================
+   KEYBOARD SHORTCUTS HELP MODAL
+   ================================================================ */
+
+.btn-help span {
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-muted);
+}
+.btn-help:hover span {
+    color: var(--primary);
+}
+
+.shortcut-modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+}
+
+.shortcut-modal-backdrop.open {
+    display: flex;
+}
+
+.shortcut-modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: min(640px, 90vw);
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 1.5rem;
+    animation: shortcut-modal-in 0.15s ease;
+}
+
+@keyframes shortcut-modal-in {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.shortcut-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+}
+
+.shortcut-modal-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.shortcut-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.25rem;
+}
+
+.shortcut-section-title {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.shortcut-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+    gap: 0.75rem;
+}
+
+.shortcut-keys {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+.shortcut-keys kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    padding: 0 0.4rem;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 1px 0 var(--border);
+}
+
+.shortcut-sep {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    padding: 0 0.1rem;
+}
+
+.shortcut-desc {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    text-align: right;
 }
