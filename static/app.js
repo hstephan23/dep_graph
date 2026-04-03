@@ -74,6 +74,87 @@ function toggleTheme() {
 
 window.addEventListener('DOMContentLoaded', () => applyThemeIcon(document.documentElement.getAttribute('data-theme')));
 
+// --- Shareable URL ---
+function buildShareableURL() {
+    const params = new URLSearchParams();
+    const dir = document.getElementById('dirInput').value;
+    if (dir && dir !== 'test_files') params.set('dir', dir);
+    const langMode = document.querySelector('input[name="langMode"]:checked').value;
+    if (langMode !== 'auto') params.set('lang', langMode);
+    if (!document.getElementById('hideSystemHeaders').checked) params.set('sys', '1');
+    if (!document.getElementById('hideIsolated').checked) params.set('iso', '1');
+    const filterDir = document.getElementById('filterDirInput').value;
+    if (filterDir) params.set('fdir', filterDir);
+    if (currentLayout !== 'cose') params.set('layout', currentLayout);
+    const theme = document.documentElement.getAttribute('data-theme');
+    if (theme === 'dark') params.set('theme', 'dark');
+    const qs = params.toString();
+    return window.location.origin + window.location.pathname + (qs ? '?' + qs : '');
+}
+
+function pushURLState() {
+    const url = buildShareableURL();
+    if (url !== window.location.href) {
+        history.replaceState(null, '', url);
+    }
+}
+
+function copyShareableURL() {
+    pushURLState();
+    const url = buildShareableURL();
+    navigator.clipboard.writeText(url).then(
+        () => showToast('Link copied to clipboard'),
+        () => {
+            // Fallback for older browsers
+            const ta = document.createElement('textarea');
+            ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select();
+            document.execCommand('copy'); document.body.removeChild(ta);
+            showToast('Link copied to clipboard');
+        }
+    );
+}
+
+function restoreFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.toString()) return false;
+
+    // Directory
+    const dir = params.get('dir');
+    if (dir) document.getElementById('dirInput').value = dir;
+
+    // Language mode
+    const lang = params.get('lang');
+    if (lang) {
+        const radio = document.querySelector(`input[name="langMode"][value="${lang}"]`);
+        if (radio) radio.checked = true;
+    }
+
+    // Filters
+    if (params.get('sys') === '1') document.getElementById('hideSystemHeaders').checked = false;
+    if (params.get('iso') === '1') document.getElementById('hideIsolated').checked = false;
+    const fdir = params.get('fdir');
+    if (fdir) document.getElementById('filterDirInput').value = fdir;
+
+    // Layout
+    const layout = params.get('layout');
+    if (layout) {
+        currentLayout = layout;
+        const radio = document.querySelector(`input[name="layoutMode"][value="${layout}"]`);
+        if (radio) radio.checked = true;
+    }
+
+    // Theme
+    const theme = params.get('theme');
+    if (theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+        applyThemeIcon(theme);
+    }
+
+    return true;
+}
+
 // --- Collapsible Panel Sections ---
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.panel-header').forEach(header => {
@@ -142,6 +223,7 @@ function changeLayout(name) {
     currentLayout = name;
     localStorage.setItem('layout', name);
     if (cy) { cy.layout(getLayoutConfig(name)).run(); }
+    pushURLState();
 }
 
 (function restoreLayout() {
@@ -626,6 +708,90 @@ function exportDOT() {
     a.download = "dependency_graph.dot"; document.body.appendChild(a); a.click(); a.remove();
 }
 
+function exportMermaid() {
+    if (!currentGraphData) return;
+
+    // Sanitize node IDs for Mermaid — replace non-alphanumeric chars with underscores
+    // but keep the original name for display labels
+    const idMap = {};
+    let counter = 0;
+    function mermaidId(name) {
+        if (idMap[name]) return idMap[name];
+        const id = 'n' + (counter++);
+        idMap[name] = id;
+        return id;
+    }
+
+    // Group nodes by directory for subgraph support
+    const dirMap = {};
+    (currentGraphData.nodes || []).forEach(n => {
+        const id = n.data.id;
+        const dir = id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.';
+        if (!dirMap[dir]) dirMap[dir] = [];
+        dirMap[dir].push(id);
+    });
+
+    // Detect cycle edges for styling
+    const cycleEdges = new Set();
+    (currentGraphData.edges || []).forEach(e => {
+        if (e.classes && e.classes.includes('cycle')) {
+            cycleEdges.add(e.data.source + '|' + e.data.target);
+        }
+    });
+
+    let s = 'graph TD\n';
+
+    // Emit subgraphs for directories with more than one file
+    const dirs = Object.keys(dirMap).sort();
+    const emittedInSubgraph = new Set();
+
+    dirs.forEach(dir => {
+        const files = dirMap[dir];
+        if (files.length > 1 && dir !== '.') {
+            const subId = dir.replace(/[^a-zA-Z0-9]/g, '_');
+            s += `\n  subgraph ${subId}["${dir}"]\n`;
+            files.forEach(f => {
+                const label = f.includes('/') ? f.substring(f.lastIndexOf('/') + 1) : f;
+                s += `    ${mermaidId(f)}["${label}"]\n`;
+                emittedInSubgraph.add(f);
+            });
+            s += '  end\n';
+        }
+    });
+
+    // Emit remaining nodes not in a subgraph
+    (currentGraphData.nodes || []).forEach(n => {
+        if (!emittedInSubgraph.has(n.data.id)) {
+            s += `  ${mermaidId(n.data.id)}["${n.data.id}"]\n`;
+        }
+    });
+
+    s += '\n';
+
+    // Emit edges
+    (currentGraphData.edges || []).forEach(e => {
+        const src = mermaidId(e.data.source);
+        const tgt = mermaidId(e.data.target);
+        const isCycle = cycleEdges.has(e.data.source + '|' + e.data.target);
+        if (isCycle) {
+            s += `  ${src} -. cycle .-> ${tgt}\n`;
+        } else {
+            s += `  ${src} --> ${tgt}\n`;
+        }
+    });
+
+    // Add cycle edge styling
+    if (cycleEdges.size > 0) {
+        s += '\n  linkStyle default stroke:#94a3b8\n';
+    }
+
+    const a = document.createElement('a');
+    a.href = "data:text/plain;charset=utf-8," + encodeURIComponent(s);
+    a.download = "dependency_graph.mmd";
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast('Exported Mermaid diagram (.mmd)');
+}
+
 // --- Search ---
 function searchNode() {
     if (!cy) return;
@@ -835,6 +1001,7 @@ function loadGraph() {
             else {
                 renderGraph(d);
                 showDetectedLanguages(d.detected);
+                pushURLState();
                 // Smooth fade-in transition
                 const cy = document.getElementById('cy');
                 cy.style.opacity = '0';
@@ -1304,6 +1471,8 @@ const SHORTCUTS = [
         { keys: 'e j',         desc: 'Export JSON',                    action: () => exportJSON(),        combo: true },
         { keys: 'e p',         desc: 'Export PNG',                     action: () => exportPNG(),         combo: true },
         { keys: 'e d',         desc: 'Export DOT',                     action: () => exportDOT(),         combo: true },
+        { keys: 'e m',         desc: 'Export Mermaid',                 action: () => exportMermaid(),     combo: true },
+        { keys: 'e l',         desc: 'Copy shareable link',            action: () => copyShareableURL(),  combo: true },
     ]},
 ];
 
@@ -1434,4 +1603,5 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+restoreFromURL();
 loadGraph();

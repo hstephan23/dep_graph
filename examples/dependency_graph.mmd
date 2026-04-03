@@ -1,0 +1,21 @@
+%% DepGraph — Example Mermaid Export
+%% Generated from test_files/ (C project with system headers visible)
+%% Paste into https://mermaid.live or a ```mermaid``` fenced block to render.
+
+graph TD
+
+  n0["main.c"]
+  n1["utils.c"]
+  n2["utils.h"]
+  n3["stdio.h"]
+  n4["stdlib.h"]
+  n5["string.h"]
+  n6["math_ops.h"]
+
+  n0 --> n2
+  n0 --> n3
+  n0 --> n6
+  n1 --> n2
+  n1 --> n3
+  n2 --> n4
+  n2 --> n5
