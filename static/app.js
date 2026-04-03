@@ -221,7 +221,7 @@ function checkLayers() {
             };
             list.appendChild(div);
         });
-    });
+    }).catch(() => showToast('Error: Failed to check layers', 4000));
 }
 
 // --- Diff ---
@@ -766,7 +766,7 @@ function clearRuleViolations() {
 // MINIMAP
 // ============================================================
 
-let minimapVisible = false;
+let minimapVisible = true;
 let minimapRAF = null;
 
 function toggleMinimap() {
