@@ -76,10 +76,13 @@ function toggleSidebar() {
     } else {
         // Desktop: toggle via inline styles (avoids CSS caching issues)
         _sidebarHidden = !_sidebarHidden;
+        const minimap = document.getElementById('minimap');
         if (_sidebarHidden) {
             sidebar.setAttribute('style', 'display:none !important');
+            if (minimap) minimap.style.right = '12px';
         } else {
             sidebar.removeAttribute('style');
+            if (minimap) minimap.style.right = '';
             // Force Cytoscape to resize into the reclaimed space
             if (typeof cy !== 'undefined' && cy) {
                 setTimeout(() => cy.resize(), 50);
@@ -406,6 +409,9 @@ function renderGraph(data) {
     cy.on('dbltap', 'node', evt => { if (!evt.target.isParent()) openPreview(evt.target.id()); });
     cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
     // Escape handled by global shortcut system below
+
+    // Attach minimap listeners
+    attachMinimapListeners();
 
     // Show graph status bar and path hint
     if (data.nodes && data.nodes.length) {
@@ -757,6 +763,200 @@ function clearRuleViolations() {
 }
 
 // ============================================================
+// MINIMAP
+// ============================================================
+
+let minimapVisible = false;
+let minimapRAF = null;
+
+function toggleMinimap() {
+    const el = document.getElementById('minimap');
+    minimapVisible = !minimapVisible;
+    if (minimapVisible) {
+        el.classList.add('open');
+        renderMinimap();
+    } else {
+        el.classList.remove('open');
+        if (minimapRAF) { cancelAnimationFrame(minimapRAF); minimapRAF = null; }
+    }
+}
+
+function renderMinimap() {
+    if (!cy || !minimapVisible) return;
+
+    const canvas = document.getElementById('minimapCanvas');
+    const body = canvas.parentElement;
+    const ctx = canvas.getContext('2d');
+
+    // Size canvas to container (retina-aware)
+    const dpr = window.devicePixelRatio || 1;
+    const cw = body.clientWidth;
+    const ch = body.clientHeight;
+    canvas.width = cw * dpr;
+    canvas.height = ch * dpr;
+    ctx.scale(dpr, dpr);
+
+    // Get full graph bounding box
+    const bb = cy.elements().boundingBox();
+    if (!bb || bb.w === 0 || bb.h === 0) return;
+
+    // Add padding around graph bounds
+    const pad = 40;
+    const gx = bb.x1 - pad;
+    const gy = bb.y1 - pad;
+    const gw = bb.w + pad * 2;
+    const gh = bb.h + pad * 2;
+
+    // Compute scale to fit graph into canvas
+    const scale = Math.min(cw / gw, ch / gh);
+    const ox = (cw - gw * scale) / 2;
+    const oy = (ch - gh * scale) / 2;
+
+    // Clear
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    ctx.fillStyle = isDark ? '#111527' : '#e2e8f0';
+    ctx.fillRect(0, 0, cw, ch);
+
+    // Draw edges
+    ctx.lineWidth = Math.max(0.5, 1 * scale);
+    cy.edges().forEach(e => {
+        if (e.style('display') === 'none') return;
+        const sp = e.source().position();
+        const tp = e.target().position();
+        const sx = ox + (sp.x - gx) * scale;
+        const sy = oy + (sp.y - gy) * scale;
+        const tx = ox + (tp.x - gx) * scale;
+        const ty = oy + (tp.y - gy) * scale;
+
+        const color = e.style('line-color');
+        ctx.strokeStyle = color || (isDark ? 'rgba(148,163,184,0.2)' : 'rgba(148,163,184,0.35)');
+        ctx.globalAlpha = parseFloat(e.style('opacity')) || 0.4;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+
+    // Draw nodes
+    cy.nodes().forEach(n => {
+        if (n.style('display') === 'none' || n.isParent()) return;
+        const pos = n.position();
+        const nx = ox + (pos.x - gx) * scale;
+        const ny = oy + (pos.y - gy) * scale;
+        const size = Math.max(2, ((n.data('size') || 80) / 2) * scale);
+
+        ctx.fillStyle = n.data('color') || (isDark ? '#818cf8' : '#6366f1');
+        ctx.globalAlpha = parseFloat(n.style('opacity')) || 1;
+        ctx.beginPath();
+        ctx.arc(nx, ny, size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // Update viewport rectangle
+    updateMinimapViewport(gx, gy, gw, gh, scale, ox, oy, cw, ch);
+}
+
+function updateMinimapViewport(gx, gy, gw, gh, scale, ox, oy, cw, ch) {
+    if (!cy) return;
+    const vp = document.getElementById('minimapViewport');
+    const ext = cy.extent(); // visible area in model coords
+
+    // Map extent to canvas coords
+    let vl = ox + (ext.x1 - gx) * scale;
+    let vt = oy + (ext.y1 - gy) * scale;
+    let vw = ext.w * scale;
+    let vh = ext.h * scale;
+
+    // Clamp to canvas
+    vl = Math.max(0, vl);
+    vt = Math.max(0, vt);
+    vw = Math.min(cw - vl, vw);
+    vh = Math.min(ch - vt, vh);
+
+    vp.style.left = vl + 'px';
+    vp.style.top = vt + 'px';
+    vp.style.width = vw + 'px';
+    vp.style.height = vh + 'px';
+
+    // Store transform for click-to-pan
+    vp.dataset.gx = gx;
+    vp.dataset.gy = gy;
+    vp.dataset.scale = scale;
+    vp.dataset.ox = ox;
+    vp.dataset.oy = oy;
+}
+
+// Sync minimap on pan/zoom
+function scheduleMinimapUpdate() {
+    if (!minimapVisible) return;
+    if (minimapRAF) cancelAnimationFrame(minimapRAF);
+    minimapRAF = requestAnimationFrame(renderMinimap);
+}
+
+// Click-to-pan on minimap body
+(function initMinimapInteraction() {
+    document.addEventListener('DOMContentLoaded', () => {
+        const body = document.querySelector('.minimap-body');
+        if (!body) return;
+
+        let dragging = false;
+
+        function panToMinimapPos(clientX, clientY) {
+            if (!cy) return;
+            const vp = document.getElementById('minimapViewport');
+            const rect = body.getBoundingClientRect();
+            const mx = clientX - rect.left;
+            const my = clientY - rect.top;
+
+            const gx = parseFloat(vp.dataset.gx);
+            const gy = parseFloat(vp.dataset.gy);
+            const sc = parseFloat(vp.dataset.scale);
+            const ox = parseFloat(vp.dataset.ox);
+            const oy = parseFloat(vp.dataset.oy);
+
+            if (isNaN(sc) || sc === 0) return;
+
+            // Convert minimap pixel to graph model coordinate
+            const modelX = (mx - ox) / sc + gx;
+            const modelY = (my - oy) / sc + gy;
+
+            cy.animate({ center: { eles: { position: () => ({ x: modelX, y: modelY }) } } }, { duration: 0 });
+            // Direct pan to center on the model point
+            const cyContainer = cy.container();
+            const containerW = cyContainer.clientWidth;
+            const containerH = cyContainer.clientHeight;
+            const zoom = cy.zoom();
+            const panX = containerW / 2 - modelX * zoom;
+            const panY = containerH / 2 - modelY * zoom;
+            cy.pan({ x: panX, y: panY });
+        }
+
+        body.addEventListener('mousedown', e => {
+            dragging = true;
+            panToMinimapPos(e.clientX, e.clientY);
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (!dragging) return;
+            panToMinimapPos(e.clientX, e.clientY);
+        });
+
+        document.addEventListener('mouseup', () => { dragging = false; });
+    });
+})();
+
+// Hook into Cytoscape events after graph render
+function attachMinimapListeners() {
+    if (!cy) return;
+    cy.on('pan zoom resize', scheduleMinimapUpdate);
+    cy.on('layoutstop', () => { setTimeout(renderMinimap, 100); });
+    if (minimapVisible) renderMinimap();
+}
+
+// ============================================================
 // KEYBOARD SHORTCUTS
 // ============================================================
 
@@ -777,6 +977,7 @@ const SHORTCUTS = [
         { keys: '/',           desc: 'Focus search',                   action: (e) => { e.preventDefault(); document.getElementById('searchInput').focus(); } },
         { keys: 'd',           desc: 'Focus directory input',          action: () => document.getElementById('dirInput').focus() },
         { keys: 'f',           desc: 'Fit graph to viewport',          action: () => { if (cy) cy.fit(undefined, 50); } },
+        { keys: 'm',           desc: 'Toggle minimap',                  action: () => toggleMinimap() },
         { keys: 'z',           desc: 'Zoom to selected node',          action: () => { if (cy) { const sel = cy.nodes(':selected'); if (sel.length) cy.animate({ center: { eles: sel }, zoom: 2 }, { duration: 400 }); } } },
     ]},
     { section: 'Layout', items: [

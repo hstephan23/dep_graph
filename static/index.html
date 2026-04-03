@@ -173,6 +173,18 @@
             <span class="status-item"><span class="legend-dot" style="background:#ef4444;"></span> Cycle</span>
         </div>
 
+        <!-- Minimap -->
+        <div class="minimap" id="minimap">
+            <div class="minimap-header">
+                <span class="minimap-title">Minimap</span>
+                <button class="minimap-close" onclick="toggleMinimap()" aria-label="Close minimap">&times;</button>
+            </div>
+            <div class="minimap-body">
+                <canvas id="minimapCanvas"></canvas>
+                <div class="minimap-viewport" id="minimapViewport"></div>
+            </div>
+        </div>
+
         <!-- File preview drawer -->
         <div class="preview-drawer" id="previewDrawer">
             <div class="preview-drawer-header">

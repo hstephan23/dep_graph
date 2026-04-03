@@ -1582,3 +1582,105 @@ details.dropdown .dropdown-body {
     color: var(--text-secondary);
     text-align: right;
 }
+
+/* ================================================================
+   MINIMAP
+   ================================================================ */
+.minimap {
+    position: absolute;
+    bottom: 12px;
+    right: calc(var(--sidebar-width) + 12px);
+    width: 220px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    z-index: 17;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    animation: minimapIn 0.2s ease;
+}
+
+.minimap.open {
+    display: flex;
+}
+
+@keyframes minimapIn {
+    from { opacity: 0; transform: translateY(8px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.minimap-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 0.55rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex-shrink: 0;
+}
+
+.minimap-title {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.minimap-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0 0.15rem;
+    line-height: 1;
+    transition: color var(--transition);
+}
+
+.minimap-close:hover {
+    color: var(--text);
+}
+
+.minimap-body {
+    position: relative;
+    height: 150px;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--bg-sunken);
+}
+
+.minimap-body canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.minimap-viewport {
+    position: absolute;
+    border: 2px solid var(--primary);
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 2px;
+    pointer-events: none;
+    transition: none;
+}
+
+[data-theme="dark"] .minimap-viewport {
+    background: rgba(129, 140, 248, 0.12);
+    border-color: var(--primary);
+}
+
+/* Responsive: shift minimap when sidebar is hidden or on mobile */
+@media (max-width: 900px) {
+    .minimap {
+        right: 12px;
+        bottom: 70px; /* above the FAB */
+        width: 180px;
+    }
+    .minimap-body {
+        height: 120px;
+    }
+}
