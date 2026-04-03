@@ -180,6 +180,332 @@ let cy, currentGraphData = null, pathHighlightActive = false;
 let currentLayout = 'cose';
 let currentMode = 'local', currentUploadedFile = null, currentUploadToken = null;
 
+// ============================================================
+// PROGRESSIVE DISCLOSURE
+// For large graphs (>100 nodes), files are collapsed into
+// clickable directory nodes. Clicking expands one level;
+// clicking again collapses. A toolbar toggle lets the user
+// switch between directory and all-files view.
+// ============================================================
+
+const PD_THRESHOLD = 100;
+let _pd = { active: false, raw: null, expanded: new Set() };
+
+// --- Helpers ---
+
+function _pdDir(fileId) {
+    const i = fileId.lastIndexOf('/');
+    return i === -1 ? '.' : fileId.substring(0, i);
+}
+
+const _PD_PALETTE = [
+    '#6366f1','#818cf8','#8b5cf6','#7c3aed','#6d28d9',
+    '#3b82f6','#60a5fa','#0ea5e9','#06b6d4','#14b8a6',
+    '#0d9488','#475569','#64748b','#7dd3fc','#a78bfa',
+    '#38bdf8','#2dd4bf','#a5b4fc','#94a3b8','#5eead4',
+];
+
+function _pdColor(id) {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+    return _PD_PALETTE[Math.abs(h) % _PD_PALETTE.length];
+}
+
+// --- Shared Cytoscape style definitions ---
+
+function _baseNodeStyle() {
+    return {
+        width: 'data(size)', height: 'data(size)',
+        'background-color': 'data(color)', label: 'data(id)',
+        color: '#fff', 'text-outline-color': 'data(color)', 'text-outline-width': 2,
+        'font-size': ele => Math.max(14, Math.min(36, (ele.data('size') || 80) / 8)) + 'px',
+        'text-valign': 'center', 'text-halign': 'center',
+    };
+}
+
+function _baseEdgeStyle() {
+    return {
+        width: 4, 'line-color': 'data(color)',
+        'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier', opacity: 0.7,
+    };
+}
+
+function _cycleEdgeStyle() {
+    return { 'line-color': '#FF4136', 'target-arrow-color': '#FF4136', width: 3, opacity: 1 };
+}
+
+function _normalStyles() {
+    return [
+        { selector: 'node', style: _baseNodeStyle() },
+        { selector: 'edge', style: _baseEdgeStyle() },
+        { selector: 'edge.cycle', style: _cycleEdgeStyle() },
+    ];
+}
+
+function _pdStyles() {
+    const fileNode = { ..._baseNodeStyle(), 'transition-property': 'opacity', 'transition-duration': '0.25s' };
+    return [
+        { selector: 'node[!isDir]', style: fileNode },
+        { selector: 'node[?isDir]', style: {
+            width: 'data(size)', height: 'data(size)',
+            'background-color': 'data(color)', 'background-opacity': 0.15,
+            'border-width': 3, 'border-color': 'data(color)', 'border-style': 'solid',
+            label: ele => (ele.data('pdExpanded') ? '−  ' : '+  ') + ele.data('id') + '/ (' + ele.data('fileCount') + ')',
+            color: 'data(color)',
+            'text-outline-color': '#000', 'text-outline-width': 1, 'text-outline-opacity': 0.3,
+            'font-size': ele => Math.max(16, Math.min(40, (ele.data('size') || 100) / 6)) + 'px',
+            'font-weight': 'bold',
+            'text-valign': 'center', 'text-halign': 'center',
+            shape: 'round-rectangle',
+            'transition-property': 'background-opacity, border-width',
+            'transition-duration': '0.25s',
+        }},
+        { selector: 'node[?pdExpanded]', style: { 'border-style': 'dashed', 'background-opacity': 0.06 } },
+        { selector: 'node[?isDir].pd-hover', style: {
+            'border-width': 5, 'background-opacity': 0.25,
+            'overlay-color': 'data(color)', 'overlay-opacity': 0.08,
+        }},
+        { selector: 'edge', style: {
+            ..._baseEdgeStyle(),
+            width: 'data(width)',
+            label: ele => (ele.data('edgeCount') || 0) > 1 ? ele.data('edgeCount') : '',
+            'font-size': '12px', color: '#94a3b8',
+            'text-outline-color': '#000', 'text-outline-width': 1, 'text-outline-opacity': 0.4,
+            'text-rotation': 'autorotate',
+            'transition-property': 'opacity', 'transition-duration': '0.2s',
+        }},
+        { selector: 'edge.cycle', style: _cycleEdgeStyle() },
+    ];
+}
+
+// --- Data aggregation ---
+
+function _pdResolveNode(fileId) {
+    const dir = _pdDir(fileId);
+    if (_pd.expanded.has(dir)) return fileId;
+    const parts = dir.split('/');
+    for (let i = parts.length - 1; i > 0; i--) {
+        if (_pd.expanded.has(parts.slice(0, i).join('/'))) return parts.slice(0, i + 1).join('/');
+    }
+    return parts[0] || '.';
+}
+
+function _pdBuildView() {
+    const data = _pd.raw;
+    const fileToDisplay = {};
+    const groups = new Map();       // displayId → Set of file ids
+
+    data.nodes.forEach(n => {
+        const display = _pdResolveNode(n.data.id);
+        fileToDisplay[n.data.id] = display;
+        if (!groups.has(display)) groups.set(display, new Set());
+        groups.get(display).add(n.data.id);
+    });
+
+    // Build node list
+    const nodes = [];
+    const sizeIndex = new Map(data.nodes.map(n => [n.data.id, n.data.size || 80]));
+
+    groups.forEach((files, displayId) => {
+        const isDir = files.size > 1 || !files.has(displayId);
+
+        // Single-file directories → show the file directly
+        if (isDir && files.size === 1) {
+            const fid = [...files][0];
+            fileToDisplay[fid] = fid;
+            nodes.push({ data: {
+                id: fid, color: _pdColor(_pdDir(fid)),
+                size: sizeIndex.get(fid) || 80,
+                isDir: false, fileCount: 0, pdExpanded: false,
+            }});
+            return;
+        }
+
+        nodes.push({ data: {
+            id: displayId,
+            color: _pdColor(isDir ? displayId : _pdDir(displayId)),
+            size: isDir ? 100 + files.size * 8 : (sizeIndex.get(displayId) || 80),
+            isDir, fileCount: isDir ? files.size : 0,
+            pdExpanded: _pd.expanded.has(displayId),
+        }});
+    });
+
+    // Aggregate edges
+    const edgeCounts = new Map();
+    data.edges.forEach(e => {
+        const s = fileToDisplay[e.data.source] || e.data.source;
+        const t = fileToDisplay[e.data.target] || e.data.target;
+        if (s === t) return;
+        const key = s + '\t' + t;
+        edgeCounts.set(key, (edgeCounts.get(key) || 0) + 1);
+    });
+
+    const edges = [];
+    edgeCounts.forEach((count, key) => {
+        const [s, t] = key.split('\t');
+        edges.push({ data: {
+            source: s, target: t,
+            color: count > 5 ? '#f97316' : '#94a3b8',
+            edgeCount: count,
+            width: Math.min(12, 2 + Math.log2(count) * 2),
+        }});
+    });
+
+    return { nodes, edges };
+}
+
+// --- Cytoscape init helpers ---
+
+function _pdInitCy(elements, styles) {
+    if (cy) cy.destroy();
+    cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements, style: styles, layout: getLayoutConfig(),
+    });
+    attachMinimapListeners();
+}
+
+function _pdBindNormalHandlers() {
+    cy.on('tap', 'node', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); showBlastRadius(evt.target.id()); });
+    cy.on('dbltap', 'node', evt => openPreview(evt.target.id()));
+    cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
+}
+
+function _pdBindDirHandlers() {
+    const container = cy.container();
+    cy.on('tap', 'node[?isDir]', evt => pdToggle(evt.target.id()));
+    cy.on('tap', 'node[!isDir]', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); showBlastRadius(evt.target.id()); });
+    cy.on('dbltap', 'node[!isDir]', evt => openPreview(evt.target.id()));
+    cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
+    cy.on('mouseover', 'node[?isDir]', evt => { evt.target.addClass('pd-hover'); if (container) container.style.cursor = 'pointer'; });
+    cy.on('mouseout', 'node[?isDir]', evt => { evt.target.removeClass('pd-hover'); if (container) container.style.cursor = ''; });
+}
+
+// --- Public API ---
+
+function pdShouldActivate(data) {
+    return data.nodes && data.nodes.length > PD_THRESHOLD;
+}
+
+/** Full (re)build of the PD directory view. Used on first load and view toggle. */
+function pdFullRender(data) {
+    _pd = { active: true, raw: data, expanded: new Set() };
+    const view = _pdBuildView();
+    _pdInitCy([...view.nodes, ...view.edges], _pdStyles());
+    _pdBindDirHandlers();
+    _pdUpdateColorKey();
+}
+
+/** Expand or collapse a directory, then incrementally update the live graph. */
+function pdToggle(dirId) {
+    if (_pd.expanded.has(dirId)) {
+        // Collapse this dir and all children
+        [..._pd.expanded].filter(d => d === dirId || d.startsWith(dirId + '/')).forEach(d => _pd.expanded.delete(d));
+    } else {
+        _pd.expanded.add(dirId);
+    }
+
+    if (!_pd.raw || !cy) return;
+
+    // Cancel any in-flight animations
+    cy.nodes().stop(true, true);
+    cy.edges().stop(true, true);
+
+    // Snapshot the clicked node's position before we modify anything
+    const dirEle = cy.getElementById(dirId);
+    const origin = dirEle.length ? { ...dirEle.position() } : null;
+    const oldIds = new Set();
+    cy.nodes().forEach(n => oldIds.add(n.id()));
+
+    const view = _pdBuildView();
+    const wantNodes = new Map(view.nodes.map(n => [n.data.id, n]));
+    const wantEdgeKey = e => e.data.source + '\t' + e.data.target;
+    const wantEdges = new Map(view.edges.map(e => [wantEdgeKey(e), e]));
+
+    // 1. Remove stale elements
+    const staleEdges = cy.edges().filter(e => !wantEdges.has(e.data('source') + '\t' + e.data('target')));
+    const staleNodes = cy.nodes().filter(n => !wantNodes.has(n.id()));
+    cy.batch(() => { staleEdges.remove(); staleNodes.remove(); });
+
+    // 2. Update surviving elements
+    cy.batch(() => {
+        wantNodes.forEach((n, id) => { const el = cy.getElementById(id); if (el.length) el.data(n.data); });
+        wantEdges.forEach((e, key) => {
+            cy.edges().forEach(el => { if (el.data('source') + '\t' + el.data('target') === key) el.data(e.data); });
+        });
+    });
+
+    // 3. Add new nodes + edges
+    const newNodes = view.nodes.filter(n => !oldIds.has(n.data.id));
+    const existingEdgeKeys = new Set();
+    cy.edges().forEach(e => existingEdgeKeys.add(e.data('source') + '\t' + e.data('target')));
+    const newEdges = view.edges.filter(e => !existingEdgeKeys.has(wantEdgeKey(e)));
+
+    let added = cy.collection();
+    if (newNodes.length) {
+        added = cy.add(newNodes.map(n => ({
+            group: 'nodes', data: n.data,
+            position: origin
+                ? { x: origin.x + (Math.random() - 0.5) * 20, y: origin.y + (Math.random() - 0.5) * 20 }
+                : { x: Math.random() * 800, y: Math.random() * 800 },
+        })));
+        added.style('opacity', 0);
+    }
+
+    if (newEdges.length) {
+        const ae = cy.add(newEdges.map(e => ({ group: 'edges', data: e.data })));
+        ae.style('opacity', 0);
+        setTimeout(() => ae.animate({ style: { opacity: 0.7 } }, { duration: 250 }), 200);
+    }
+
+    // 4. Animate new nodes into a ring around the origin
+    if (added.length && origin && added.length < 40) {
+        const step = (2 * Math.PI) / added.length;
+        const radius = 120 + added.length * 10;
+        let angle = 0;
+        added.forEach(n => {
+            n.animate({
+                position: { x: origin.x + Math.cos(angle) * radius, y: origin.y + Math.sin(angle) * radius },
+                style: { opacity: 1 },
+            }, { duration: 450, easing: 'ease-out-cubic' });
+            angle += step;
+        });
+    } else if (added.length) {
+        added.style('opacity', 1);
+        cy.layout({ ...getLayoutConfig(), eles: added.union(added.neighborhood()), fit: false, animate: true, animationDuration: 500 }).run();
+    }
+
+    _pdUpdateColorKey();
+}
+
+/** Switch between directory / all-files view via toolbar toggle. */
+function pdSetView(mode) {
+    if (!currentGraphData) return;
+    if (mode === 'files') {
+        _pd = { active: false, raw: null, expanded: new Set() };
+        _pdInitCy([...currentGraphData.nodes, ...currentGraphData.edges], _normalStyles());
+        _pdBindNormalHandlers();
+        buildFolderColorKey(currentGraphData.nodes);
+    } else {
+        pdFullRender(currentGraphData);
+    }
+}
+
+function pdUpdateToggle() {
+    const el = document.getElementById('pdViewToggle');
+    // Always show the view toggle when a graph is loaded so users can
+    // switch to directory view on any graph, not just large ones.
+    if (el) el.style.display = currentGraphData ? '' : 'none';
+}
+
+function _pdUpdateColorKey() {
+    if (!cy) return;
+    const nodes = [];
+    cy.nodes().forEach(n => nodes.push({ data: { id: n.id(), color: n.data('color') } }));
+    buildFolderColorKey(nodes);
+}
+
 // --- Sidebar tab switching ---
 function switchTab(tab) {
     document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
@@ -199,13 +525,150 @@ function getLayoutConfig(name) {
 function changeLayout(name) {
     currentLayout = name;
     localStorage.setItem('layout', name);
-    if (cy) { cy.layout(getLayoutConfig(name)).run(); }
+    if (cy) {
+        const config = getLayoutConfig(name);
+        // Animate node positions smoothly when switching layouts
+        config.animate = true;
+        config.animationDuration = 600;
+        config.animationEasing = 'ease-in-out-cubic';
+        // For cose, animate: true causes it to show the simulation running
+        // which is visually noisy — instead, run it offscreen and animate to result
+        if (name === 'cose') {
+            config.animate = false;
+            const layout = cy.layout(config);
+            // Capture start positions
+            const startPos = {};
+            cy.nodes().forEach(n => { startPos[n.id()] = { ...n.position() }; });
+            layout.one('layoutstop', () => {
+                // Capture end positions
+                const endPos = {};
+                cy.nodes().forEach(n => { endPos[n.id()] = { ...n.position() }; });
+                // Reset to start positions
+                cy.nodes().forEach(n => n.position(startPos[n.id()]));
+                // Animate to end positions
+                cy.nodes().forEach(n => {
+                    n.animate({ position: endPos[n.id()] }, {
+                        duration: 600,
+                        easing: 'ease-in-out-cubic',
+                    });
+                });
+            });
+            layout.run();
+        } else {
+            cy.layout(config).run();
+        }
+    }
 }
 
 (function restoreLayout() {
     const s = localStorage.getItem('layout');
     if (s) { currentLayout = s; const r = document.querySelector(`input[name="layoutMode"][value="${s}"]`); if (r) r.checked = true; }
 })();
+
+
+// --- Fisheye / Focus+Context Distortion ---
+// When enabled, nodes near the cursor are magnified and spaced out while
+// distant nodes shrink, providing a smooth focus+context effect.
+
+let _fisheye = {
+    active: false,
+    radius: 300,       // influence radius in model coordinates
+    magnification: 2.5, // max scale factor for closest nodes
+    minScale: 0.5,     // minimum scale for distant nodes
+    restoreData: null,  // original sizes to restore on disable
+    rafId: null,
+};
+
+function fisheyeToggle() {
+    _fisheye.active = !_fisheye.active;
+    const btn = document.getElementById('fisheyeToggle');
+    if (btn) btn.classList.toggle('active', _fisheye.active);
+
+    if (_fisheye.active) {
+        if (!cy) return;
+        // Store original node sizes
+        _fisheye.restoreData = {};
+        cy.nodes().forEach(n => {
+            _fisheye.restoreData[n.id()] = {
+                width: n.style('width'),
+                height: n.style('height'),
+                fontSize: n.style('font-size'),
+            };
+        });
+        cy.on('mousemove', _fisheyeHandler);
+        showToast('Focus lens enabled — move cursor to magnify', 2500);
+    } else {
+        if (cy) {
+            cy.off('mousemove', _fisheyeHandler);
+            _fisheyeRestore();
+        }
+        showToast('Focus lens disabled', 1500);
+    }
+}
+
+function _fisheyeHandler(evt) {
+    if (!_fisheye.active || !cy) return;
+    if (_fisheye.rafId) cancelAnimationFrame(_fisheye.rafId);
+    const pos = evt.position; // model coordinates
+    _fisheye.rafId = requestAnimationFrame(() => _fisheyeApply(pos));
+}
+
+function _fisheyeApply(cursor) {
+    if (!cy || !_fisheye.active) return;
+    const R = _fisheye.radius;
+    const mag = _fisheye.magnification;
+    const minS = _fisheye.minScale;
+
+    cy.batch(() => {
+        cy.nodes().forEach(n => {
+            const p = n.position();
+            const dx = p.x - cursor.x;
+            const dy = p.y - cursor.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            let scale;
+            if (dist < R) {
+                // Smooth falloff: full magnification at center, 1.0 at radius edge
+                const t = 1 - (dist / R);
+                // Ease-out cubic for smooth falloff
+                scale = 1 + (mag - 1) * (t * t * (3 - 2 * t));
+            } else {
+                // Outside radius: slightly shrink for context effect
+                const falloff = Math.min(1, (dist - R) / R);
+                scale = 1 - (1 - minS) * Math.min(1, falloff);
+            }
+
+            const orig = _fisheye.restoreData[n.id()];
+            if (!orig) return;
+            const origW = parseFloat(orig.width);
+            const origH = parseFloat(orig.height);
+            const origF = parseFloat(orig.fontSize);
+
+            n.style({
+                'width': origW * scale,
+                'height': origH * scale,
+                'font-size': Math.max(8, origF * scale) + 'px',
+            });
+        });
+    });
+}
+
+function _fisheyeRestore() {
+    if (!cy || !_fisheye.restoreData) return;
+    cy.batch(() => {
+        cy.nodes().forEach(n => {
+            const orig = _fisheye.restoreData[n.id()];
+            if (orig) {
+                n.style({
+                    'width': orig.width,
+                    'height': orig.height,
+                    'font-size': orig.fontSize,
+                });
+            }
+        });
+    });
+    _fisheye.restoreData = null;
+}
 
 
 // --- Path Highlighting ---
@@ -834,39 +1297,43 @@ function renderGraph(data) {
         });
     } else { warning.style.display = 'none'; cyclesHeader.style.display = 'none'; cyclesList.innerHTML = ''; }
 
+    // Reset fisheye if active before destroying graph
+    if (_fisheye.active) {
+        _fisheye.active = false;
+        _fisheye.restoreData = null;
+        const fishBtn = document.getElementById('fisheyeToggle');
+        if (fishBtn) fishBtn.classList.remove('active');
+    }
+
     if (cy) cy.destroy();
 
-    const elements = [...data.nodes, ...data.edges];
-
-    cy = cytoscape({
-        container: document.getElementById('cy'),
-        elements,
-        style: [
-            { selector: 'node', style: {
-                width: 'data(size)', height: 'data(size)', 'background-color': 'data(color)', label: 'data(id)',
-                color: '#fff', 'text-outline-color': 'data(color)', 'text-outline-width': 2,
-                'font-size': ele => Math.max(14, Math.min(36, (ele.data('size') || 80) / 8)) + 'px',
-                'text-valign': 'center', 'text-halign': 'center',
-            }},
-            { selector: 'edge', style: { width: 4, 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', opacity: 0.7 } },
-            { selector: 'edge.cycle', style: { 'line-color': '#FF4136', 'target-arrow-color': '#FF4136', width: 3, opacity: 1 } },
-        ],
-        layout: getLayoutConfig(),
-    });
-
-    cy.on('tap', 'node', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); showBlastRadius(evt.target.id()); });
-    cy.on('dbltap', 'node', evt => openPreview(evt.target.id()));
-    cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
+    // --- Progressive disclosure: auto-collapse large graphs ---
+    if (pdShouldActivate(data)) {
+        pdFullRender(data);
+        showToast('Large graph — showing directories. Click a folder to expand.', 5000);
+    } else {
+        _pd.active = false;
+        _pd.raw = null;
+        _pd.expanded = new Set();
+        const elements = [...data.nodes, ...data.edges];
+        _pdInitCy(elements, _normalStyles());
+        _pdBindNormalHandlers();
+    }
     // Escape handled by global shortcut system below
 
     // Attach minimap listeners
     attachMinimapListeners();
 
+    // Show/hide the progressive disclosure toggle and sync radio state
+    pdUpdateToggle();
+    const pdRadio = document.getElementById(_pd.active ? 'pdViewDirs' : 'pdViewFiles');
+    if (pdRadio) pdRadio.checked = true;
+
     // Show graph status bar, path hint, and folder color key
     if (data.nodes && data.nodes.length) {
         document.getElementById('graphStatusBar').style.display = 'flex';
         document.getElementById('pathHint').style.display = 'block';
-        buildFolderColorKey(data.nodes);
+        if (!_pd.active) buildFolderColorKey(data.nodes);
         updatePathDatalist();
     }
 
@@ -1607,6 +2074,7 @@ const SHORTCUTS = [
         { keys: '1',           desc: 'Force layout',                   action: () => { changeLayout('cose'); document.getElementById('layoutCose').checked = true; showToast('Layout: Force'); } },
         { keys: '2',           desc: 'Hierarchy layout',               action: () => { changeLayout('dagre'); document.getElementById('layoutDagre').checked = true; showToast('Layout: Hierarchy'); } },
         { keys: '3',           desc: 'Concentric layout',              action: () => { changeLayout('concentric'); document.getElementById('layoutConcentric').checked = true; showToast('Layout: Concentric'); } },
+        { keys: 'l',           desc: 'Toggle focus lens',              action: () => fisheyeToggle() },
     ]},
     { section: 'Panels', items: [
         { keys: 'Shift+1',     desc: 'Refs panel',                     action: () => activatePanel(0) },
@@ -2562,4 +3030,322 @@ function applyQueryToGraph(matchIds) {
         }
     }
 }
+
+// ================================================================
+// TREEMAP VIEW
+// ================================================================
+let _currentView = 'graph';
+
+function switchView(view) {
+    _currentView = view;
+    const cyEl = document.getElementById('cy');
+    const tmEl = document.getElementById('treemapContainer');
+    const metricGroup = document.getElementById('treemapMetricGroup');
+
+    if (view === 'treemap') {
+        cyEl.style.display = 'none';
+        tmEl.style.display = 'block';
+        metricGroup.style.display = '';
+        renderTreemap();
+    } else {
+        cyEl.style.display = '';
+        tmEl.style.display = 'none';
+        metricGroup.style.display = 'none';
+        if (cy) cy.resize();
+    }
+}
+
+// Tooltip singleton
+const _tmTooltip = document.createElement('div');
+_tmTooltip.className = 'tm-tooltip';
+document.body.appendChild(_tmTooltip);
+
+function _tmShowTooltip(e, data) {
+    const metricLabel = document.getElementById('treemapMetric').selectedOptions[0].text;
+    _tmTooltip.innerHTML =
+        '<div class="tm-tooltip-title">' + _escapeHtml(data.id) + '</div>'
+        + '<div class="tm-tooltip-row"><span>Directory</span><span class="tm-tooltip-val">' + _escapeHtml(data.dir) + '</span></div>'
+        + '<div class="tm-tooltip-row"><span>' + _escapeHtml(metricLabel) + '</span><span class="tm-tooltip-val">' + data.sizeValue + '</span></div>'
+        + '<div class="tm-tooltip-row"><span>Inbound</span><span class="tm-tooltip-val">' + data.inbound + '</span></div>'
+        + '<div class="tm-tooltip-row"><span>Outbound</span><span class="tm-tooltip-val">' + data.outbound + '</span></div>'
+        + '<div class="tm-tooltip-row"><span>Impact</span><span class="tm-tooltip-val">' + data.impact + '</span></div>'
+        + '<div class="tm-tooltip-row"><span>Stability</span><span class="tm-tooltip-val">' + data.stability + '</span></div>';
+    _tmTooltip.classList.add('visible');
+    _positionTooltip(e);
+}
+
+function _positionTooltip(e) {
+    var tt = _tmTooltip;
+    var pad = 12;
+    var x = e.clientX + pad;
+    var y = e.clientY + pad;
+    var w = tt.offsetWidth || 200;
+    var h = tt.offsetHeight || 100;
+    if (x + w > window.innerWidth - pad) x = e.clientX - w - pad;
+    if (y + h > window.innerHeight - pad) y = e.clientY - h - pad;
+    tt.style.left = x + 'px';
+    tt.style.top = y + 'px';
+}
+
+function _tmHideTooltip() {
+    _tmTooltip.classList.remove('visible');
+}
+
+// --- Squarified Treemap Layout ---
+function _squarify(items, x, y, w, h) {
+    var rects = [];
+    if (!items.length || w <= 0 || h <= 0) return rects;
+
+    var totalArea = w * h;
+    var totalValue = items.reduce(function(s, it) { return s + it.value; }, 0);
+    if (totalValue <= 0) return rects;
+
+    var scaled = items.map(function(it) {
+        var copy = {};
+        for (var k in it) copy[k] = it[k];
+        copy.area = (it.value / totalValue) * totalArea;
+        return copy;
+    });
+
+    _layoutStrip(scaled, rects, x, y, w, h);
+    return rects;
+}
+
+function _layoutStrip(items, rects, x, y, w, h) {
+    if (!items.length) return;
+    if (items.length === 1) {
+        var it = items[0];
+        it.x = x; it.y = y; it.w = w; it.h = h;
+        rects.push(it);
+        return;
+    }
+
+    var isHoriz = w >= h;
+    var total = items.reduce(function(s, it) { return s + it.area; }, 0);
+
+    var stripSum = 0;
+    var stripItems = [];
+    var bestWorst = Infinity;
+
+    for (var i = 0; i < items.length; i++) {
+        var testSum = stripSum + items[i].area;
+        var testItems = stripItems.concat([items[i]]);
+        var worst = _worstAspect(testItems, testSum, isHoriz ? h : w, total, isHoriz ? w : h);
+
+        if (worst <= bestWorst || stripItems.length === 0) {
+            bestWorst = worst;
+            stripSum = testSum;
+            stripItems = testItems;
+        } else {
+            var stripSize = isHoriz
+                ? (stripSum / total) * w
+                : (stripSum / total) * h;
+
+            _placeStrip(stripItems, rects, x, y, isHoriz, stripSize, isHoriz ? h : w);
+
+            var remaining = items.slice(i);
+            if (isHoriz) {
+                _layoutStrip(remaining, rects, x + stripSize, y, w - stripSize, h);
+            } else {
+                _layoutStrip(remaining, rects, x, y + stripSize, w, h - stripSize);
+            }
+            return;
+        }
+    }
+
+    // All items in one strip
+    _placeStrip(stripItems, rects, x, y, isHoriz, isHoriz ? w : h, isHoriz ? h : w);
+}
+
+function _placeStrip(items, rects, x, y, isHoriz, stripLen, crossLen) {
+    var totalArea = items.reduce(function(s, it) { return s + it.area; }, 0);
+    var offset = 0;
+
+    items.forEach(function(it) {
+        var ratio = it.area / totalArea;
+        var len = ratio * crossLen;
+
+        if (isHoriz) {
+            it.x = x; it.y = y + offset; it.w = stripLen; it.h = len;
+        } else {
+            it.x = x + offset; it.y = y; it.w = len; it.h = stripLen;
+        }
+        rects.push(it);
+        offset += len;
+    });
+}
+
+function _worstAspect(items, stripSum, sideLen, totalArea, mainLen) {
+    var stripRealLen = (stripSum / totalArea) * mainLen;
+    if (stripRealLen <= 0) return Infinity;
+    var worst = 0;
+    items.forEach(function(it) {
+        var itemLen = (it.area / stripSum) * sideLen;
+        if (itemLen <= 0) return;
+        var aspect = Math.max(stripRealLen / itemLen, itemLen / stripRealLen);
+        if (aspect > worst) worst = aspect;
+    });
+    return worst;
+}
+
+// --- Render Treemap ---
+function renderTreemap() {
+    if (!currentGraphData || !currentGraphData.nodes.length) return;
+
+    var container = document.getElementById('treemapContainer');
+    container.innerHTML = '';
+    var rect = container.getBoundingClientRect();
+    var W = rect.width;
+    var H = rect.height;
+    if (W <= 0 || H <= 0) return;
+
+    var metric = document.getElementById('treemapMetric').value;
+
+    // Build metrics
+    var inDeg = {};
+    var outDeg = {};
+    currentGraphData.nodes.forEach(function(n) { inDeg[n.data.id] = 0; outDeg[n.data.id] = 0; });
+    currentGraphData.edges.forEach(function(e) {
+        if (inDeg[e.data.target] !== undefined) inDeg[e.data.target]++;
+        if (outDeg[e.data.source] !== undefined) outDeg[e.data.source]++;
+    });
+
+    // Group files by directory
+    var dirGroups = {};
+    currentGraphData.nodes.forEach(function(n) {
+        var id = n.data.id;
+        var dir = id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.';
+        if (!dirGroups[dir]) dirGroups[dir] = { files: [], color: n.data.color };
+
+        var inb = inDeg[id] || 0;
+        var outb = outDeg[id] || 0;
+        var sizeVal;
+        switch (metric) {
+            case 'inbound':   sizeVal = inb; break;
+            case 'outbound':  sizeVal = outb; break;
+            case 'impact':    sizeVal = n.data.impact || 0; break;
+            case 'depth':     sizeVal = n.data.depth || 0; break;
+            case 'stability': sizeVal = parseFloat(n.data.stability) || 0; break;
+            default:          sizeVal = inb + outb; break;
+        }
+        dirGroups[dir].files.push({
+            id: id,
+            dir: dir,
+            value: Math.max(sizeVal, 0.3),
+            sizeValue: sizeVal,
+            inbound: inb,
+            outbound: outb,
+            impact: n.data.impact || 0,
+            stability: n.data.stability || 0,
+            color: n.data.color
+        });
+    });
+
+    // Sort dirs by total value
+    var dirNames = Object.keys(dirGroups).sort(function(a, b) {
+        var sumA = dirGroups[a].files.reduce(function(s, f) { return s + f.value; }, 0);
+        var sumB = dirGroups[b].files.reduce(function(s, f) { return s + f.value; }, 0);
+        return sumB - sumA;
+    });
+
+    // Top-level items: one per directory
+    var topItems = dirNames.map(function(dir) {
+        return {
+            dir: dir,
+            value: dirGroups[dir].files.reduce(function(s, f) { return s + f.value; }, 0),
+            color: dirGroups[dir].color,
+            files: dirGroups[dir].files.sort(function(a, b) { return b.value - a.value; })
+        };
+    });
+
+    // Layout directories
+    var pad = 2;
+    var dirRects = _squarify(topItems, pad, pad, W - pad * 2, H - pad * 2);
+
+    // For each directory, sub-layout files
+    dirRects.forEach(function(dr) {
+        // Directory group container
+        var groupEl = document.createElement('div');
+        groupEl.className = 'tm-group';
+        groupEl.style.cssText = 'left:' + dr.x + 'px;top:' + dr.y + 'px;width:' + dr.w + 'px;height:' + dr.h + 'px;';
+
+        var headerH = 18;
+        if (dr.w > 40 && dr.h > 20) {
+            var label = document.createElement('div');
+            label.className = 'tm-group-label';
+            label.textContent = dr.dir;
+            label.style.background = 'linear-gradient(to bottom, ' + _adjustColor(dr.color, -30) + ', transparent)';
+            groupEl.appendChild(label);
+        }
+
+        container.appendChild(groupEl);
+
+        // Sub-layout files
+        var innerPad = 1;
+        var innerY = dr.y + headerH;
+        var innerH = dr.h - headerH;
+        if (innerH < 4) return;
+
+        var fileRects = _squarify(dr.files, dr.x + innerPad, innerY + innerPad, dr.w - innerPad * 2, innerH - innerPad * 2);
+
+        fileRects.forEach(function(fr) {
+            var cell = document.createElement('div');
+            cell.className = 'tm-cell';
+            cell.style.cssText = 'left:' + fr.x + 'px;top:' + fr.y + 'px;width:' + fr.w + 'px;height:' + fr.h + 'px;background:' + fr.color + ';';
+
+            // Label if large enough
+            if (fr.w > 50 && fr.h > 24) {
+                var fname = fr.id.includes('/') ? fr.id.substring(fr.id.lastIndexOf('/') + 1) : fr.id;
+                var lbl = document.createElement('div');
+                lbl.className = 'tm-cell-label';
+                lbl.textContent = fname;
+                cell.appendChild(lbl);
+
+                if (fr.h > 38) {
+                    var val = document.createElement('div');
+                    val.className = 'tm-cell-value';
+                    val.textContent = metric === 'stability' ? parseFloat(fr.sizeValue).toFixed(2) : fr.sizeValue;
+                    cell.appendChild(val);
+                }
+            }
+
+            // Tooltip
+            cell.addEventListener('mouseenter', function(e) { _tmShowTooltip(e, fr); });
+            cell.addEventListener('mousemove', function(e) { _positionTooltip(e); });
+            cell.addEventListener('mouseleave', _tmHideTooltip);
+
+            // Click: switch to graph and zoom to node
+            cell.addEventListener('click', function() {
+                switchView('graph');
+                document.getElementById('viewGraph').checked = true;
+                setTimeout(function() {
+                    if (cy) {
+                        var node = cy.getElementById(fr.id);
+                        if (node.length) {
+                            highlightPaths(fr.id);
+                            showBlastRadius(fr.id);
+                            cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 400 });
+                        }
+                    }
+                }, 100);
+            });
+
+            container.appendChild(cell);
+        });
+    });
+}
+
+function _adjustColor(hex, amount) {
+    hex = hex.replace('#', '');
+    var num = parseInt(hex, 16);
+    var r = Math.min(255, Math.max(0, ((num >> 16) & 0xff) + amount));
+    var g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amount));
+    var b = Math.min(255, Math.max(0, (num & 0xff) + amount));
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+// Re-render treemap on resize
+window.addEventListener('resize', function() {
+    if (_currentView === 'treemap') renderTreemap();
+});
 

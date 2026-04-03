@@ -489,29 +489,140 @@ def _resolve_rust_mod(mod_name, source_file, directory, known_files):
     return os.path.join(source_dir, mod_name + '.rs'), False
 
 
-def _resolve_cs_using(namespace, directory, known_files):
-    """Resolve a C# ``using`` directive to a project file if possible.
+_CS_NAMESPACE_RE = re.compile(
+    r'^\s*namespace\s+([\w.]+)', re.MULTILINE
+)
 
-    C# using directives reference namespaces, not files directly.  We try to
-    map the namespace to a file by converting dots to path separators and
-    looking for a matching ``.cs`` file.  If the namespace starts with a known
-    system prefix (System, Microsoft, etc.) it is classified as external.
+
+def _build_cs_namespace_map(directory, known_files):
+    """Pre-scan .cs files to build a map of declared namespace → [file paths].
+
+    Also builds a class-name → file path map for individual type resolution.
+    Returns ``(ns_map, class_map)`` where *ns_map* maps a full namespace string
+    to a sorted list of relative file paths and *class_map* maps
+    ``Namespace.ClassName`` to the file that likely defines it.
+    """
+    ns_map = {}   # "MyApp.Models" → ["Models/Order.cs", "Models/User.cs"]
+    class_map = {}  # "MyApp.Models.User" → "Models/User.cs"
+
+    for rel_path in known_files:
+        if not rel_path.endswith('.cs'):
+            continue
+        full_path = os.path.join(directory, rel_path)
+        try:
+            with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+        except OSError:
+            continue
+
+        for m in _CS_NAMESPACE_RE.finditer(content):
+            ns = m.group(1)
+            ns_map.setdefault(ns, [])
+            if rel_path not in ns_map[ns]:
+                ns_map[ns].append(rel_path)
+
+            # Map Namespace.FileName (sans extension) → file path
+            basename = os.path.splitext(os.path.basename(rel_path))[0]
+            class_key = ns + '.' + basename
+            class_map[class_key] = rel_path
+
+    # Sort file lists for deterministic output
+    for ns in ns_map:
+        ns_map[ns] = sorted(ns_map[ns])
+
+    return ns_map, class_map
+
+
+def _resolve_cs_using(namespace, directory, known_files, ns_map=None,
+                      class_map=None):
+    """Resolve a C# ``using`` directive to project file(s) if possible.
+
+    C# using directives reference namespaces, not files directly.  Resolution
+    proceeds in priority order:
+
+    1. **Namespace map** (most reliable) — match against namespaces actually
+       declared in the project's ``.cs`` files.  A ``using`` that matches a
+       parent namespace returns *all* files declaring that namespace; a
+       ``using`` that matches a ``Namespace.ClassName`` pattern returns just
+       that one file.
+    2. **Path heuristics** — convert namespace segments to path components
+       (with hyphen/underscore normalisation) and look for a matching file
+       or directory.
+    3. If nothing matches, the namespace is treated as external.
+
+    Returns ``(list_of_resolved_paths, is_external)``.
     """
     # Check for system/framework namespace
     if namespace.startswith(_CS_SYSTEM_PREFIXES):
-        return namespace, True
+        return [namespace], True
 
-    # Try to resolve namespace to a local file
-    # e.g. "MyApp.Models.User" → MyApp/Models/User.cs
+    # --- Strategy 1: namespace map from actual declarations ---
+    if ns_map is not None:
+        # Exact namespace match (e.g. "using MyApp.Models;" → all files in
+        # the MyApp.Models namespace)
+        if namespace in ns_map:
+            return ns_map[namespace], False
+
+        # Try as Namespace.ClassName (e.g. "using static MyApp.Models.User;")
+        if class_map and namespace in class_map:
+            return [class_map[namespace]], False
+
+        # Check if this namespace is a *parent* of any known namespace
+        # e.g. "using MyApp;" might want all files in MyApp.* namespaces
+        prefix = namespace + '.'
+        children = []
+        for ns, files in ns_map.items():
+            if ns.startswith(prefix) or ns == namespace:
+                children.extend(files)
+        if children:
+            return sorted(set(children)), False
+
+    # --- Strategy 2: path heuristics (fallback) ---
     parts = namespace.split('.')
-    # Try the full path first, then progressively shorter paths
-    for i in range(len(parts), 0, -1):
-        candidate = os.path.join(*parts[:i]) + '.cs'
-        if candidate in known_files:
-            return candidate, False
+
+    def _normalize(s):
+        """Normalise a string for fuzzy directory matching."""
+        return s.lower().replace('-', '_')
+
+    # Build a normalised lookup of known file directories
+    norm_dir_map = {}  # normalised_dir → original_dir
+    for f in known_files:
+        d = os.path.dirname(f)
+        if d:
+            norm_dir_map[_normalize(d)] = d
+
+    # 2a. Try to match a specific .cs file
+    for start in range(len(parts)):
+        for end in range(len(parts), start, -1):
+            seg = parts[start:end]
+            candidate = os.path.join(*seg) + '.cs'
+            if candidate in known_files:
+                return [candidate], False
+            # Fuzzy: try with hyphens replaced by underscores and vice versa
+            candidate_norm = candidate.replace('_', '-')
+            if candidate_norm != candidate and candidate_norm in known_files:
+                return [candidate_norm], False
+
+    # 2b. Try to match a directory
+    for start in range(len(parts)):
+        seg = parts[start:]
+        candidate_dir = os.path.join(*seg)
+        # Exact match
+        matches = [f for f in known_files
+                   if os.path.dirname(f) == candidate_dir and f.endswith('.cs')]
+        if matches:
+            return sorted(matches), False
+        # Fuzzy match (hyphen ↔ underscore)
+        norm_key = _normalize(candidate_dir)
+        if norm_key in norm_dir_map:
+            real_dir = norm_dir_map[norm_key]
+            matches = [f for f in known_files
+                       if os.path.dirname(f) == real_dir and f.endswith('.cs')]
+            if matches:
+                return sorted(matches), False
 
     # Could not resolve — treat as external
-    return namespace, True
+    return [namespace], True
 
 
 def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
@@ -537,6 +648,11 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
 
     # Pre-read go.mod if Go is enabled
     go_module_path = _parse_go_mod(directory) if show_go else None
+
+    # Pre-scan C# namespace declarations for accurate resolution
+    cs_ns_map, cs_class_map = (
+        _build_cs_namespace_map(directory, known_files) if show_cs else ({}, {})
+    )
 
     def _add_edge(source, target):
         edges.append({
@@ -690,12 +806,15 @@ def _build_graph(directory, hide_system=False, show_c=True, show_h=True,
         if is_cs_file:
             for m in _CS_USING_RE.finditer(content):
                 namespace = m.group(1)
-                resolved, is_external = _resolve_cs_using(
-                    namespace, directory, known_files
+                resolved_list, is_external = _resolve_cs_using(
+                    namespace, directory, known_files,
+                    ns_map=cs_ns_map, class_map=cs_class_map
                 )
                 if hide_system and is_external:
                     continue
-                _add_edge(filename, resolved)
+                for resolved in resolved_list:
+                    if resolved != filename:  # skip self-references
+                        _add_edge(filename, resolved)
             continue
 
         # --- C / C++ and JS/TS (line-by-line) ---
