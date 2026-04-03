@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Interactive Dependency Graph Viewer. Visualize file dependencies, reference counts, and detect circular dependencies for C, C++, JavaScript, and TypeScript projects.">
+    <meta name="description" content="Interactive Dependency Graph Viewer. Visualize file dependencies, reference counts, and detect circular dependencies for C, C++, JavaScript, TypeScript, Python, Java, Go, and Rust projects.">
     <title>Dependency Graph Viewer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.23.0/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -382,10 +384,8 @@
 
         .mode-selector {
             display: flex;
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            overflow: hidden;
+            flex-wrap: wrap;
+            gap: 0.375rem;
         }
 
         .mode-selector input[type="radio"] {
@@ -393,27 +393,170 @@
         }
 
         .mode-selector label {
-            padding: 0.5rem 1rem;
-            font-size: 0.875rem;
+            padding: 0.35rem 0.75rem;
+            font-size: 0.8rem;
             font-weight: 500;
             cursor: pointer;
             color: var(--text-muted);
-            border-right: 1px solid var(--border-color);
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
             user-select: none;
-            transition: background-color 0.2s, color 0.2s;
-        }
-
-        .mode-selector label:last-of-type {
-            border-right: none;
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
         }
 
         .mode-selector label:hover {
-            background-color: var(--border-color);
+            border-color: var(--primary);
+            color: var(--text-main);
         }
 
         .mode-selector input[type="radio"]:checked + label {
             background-color: var(--primary);
             color: white;
+            border-color: var(--primary);
+        }
+
+        /* --- Minimap --- */
+        #minimap {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            width: 180px;
+            height: 130px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--panel-bg);
+            box-shadow: var(--shadow-md);
+            z-index: 15;
+            overflow: hidden;
+        }
+
+        /* --- Sidebar tabs --- */
+        .sidebar-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-color);
+            position: sticky;
+            top: 0;
+            z-index: 3;
+        }
+
+        .sidebar-tab {
+            flex: 1;
+            padding: 0.6rem 0.4rem;
+            text-align: center;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            color: var(--text-muted);
+            border-bottom: 2px solid transparent;
+            user-select: none;
+            transition: color 0.15s, border-color 0.15s;
+        }
+
+        .sidebar-tab:hover { color: var(--text-main); }
+        .sidebar-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .sidebar-panel { display: none; }
+        .sidebar-panel.active { display: block; }
+
+        /* --- Analysis metric row --- */
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.8rem;
+        }
+        .metric-row:hover { background-color: var(--bg-color); }
+        .metric-label { color: var(--text-muted); }
+        .metric-value { font-weight: 600; }
+        .metric-badge {
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .badge-green { background: #dcfce7; color: #166534; }
+        .badge-yellow { background: #fef9c3; color: #854d0e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        [data-theme="dark"] .badge-green { background: #14532d; color: #86efac; }
+        [data-theme="dark"] .badge-yellow { background: #713f12; color: #fde047; }
+        [data-theme="dark"] .badge-red { background: #7f1d1d; color: #fca5a5; }
+
+        /* --- Layers config --- */
+        .layer-input-row {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            align-items: center;
+        }
+        .layer-input-row input {
+            flex: 1;
+            padding: 0.35rem 0.5rem;
+            font-size: 0.8rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-color);
+            color: var(--text-main);
+            font-family: inherit;
+        }
+
+        .violation-item {
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.8rem;
+            color: var(--danger);
+            cursor: pointer;
+        }
+        .violation-item:hover { background: var(--warning-bg); }
+
+        /* --- Path highlight styles --- */
+        .path-hint {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--text-main);
+            color: var(--bg-color);
+            padding: 0.4rem 1rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            z-index: 16;
+            display: none;
+            pointer-events: none;
+        }
+
+        /* Layout selector (reuses mode-selector styling) */
+        .layout-selector {
+            display: flex;
+            gap: 0.375rem;
+        }
+        .layout-selector input[type="radio"] { display: none; }
+        .layout-selector label {
+            padding: 0.35rem 0.75rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            color: var(--text-muted);
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            user-select: none;
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+        }
+        .layout-selector label:hover {
+            border-color: var(--primary);
+            color: var(--text-main);
+        }
+        .layout-selector input[type="radio"]:checked + label {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
         }
     </style>
 </head>
@@ -464,6 +607,14 @@
                             <label for="modeCpp">C++</label>
                             <input type="radio" name="langMode" id="modeJs" value="js" onchange="updateGraph()">
                             <label for="modeJs">TS/JS</label>
+                            <input type="radio" name="langMode" id="modePy" value="py" onchange="updateGraph()">
+                            <label for="modePy">Python</label>
+                            <input type="radio" name="langMode" id="modeJava" value="java" onchange="updateGraph()">
+                            <label for="modeJava">Java</label>
+                            <input type="radio" name="langMode" id="modeGo" value="go" onchange="updateGraph()">
+                            <label for="modeGo">Go</label>
+                            <input type="radio" name="langMode" id="modeRust" value="rust" onchange="updateGraph()">
+                            <label for="modeRust">Rust</label>
                         </div>
                         <div id="detectedLangs" style="font-size: 0.75rem; color: var(--text-muted); display: none;"></div>
                         <label class="checkbox-label">
@@ -475,8 +626,30 @@
             </div>
 
             <div class="control-group">
+                <div class="layout-selector">
+                    <input type="radio" name="layoutMode" id="layoutCose" value="cose" checked onchange="changeLayout(this.value)">
+                    <label for="layoutCose">Force</label>
+                    <input type="radio" name="layoutMode" id="layoutDagre" value="dagre" onchange="changeLayout(this.value)">
+                    <label for="layoutDagre">Hierarchy</label>
+                    <input type="radio" name="layoutMode" id="layoutConcentric" value="concentric" onchange="changeLayout(this.value)">
+                    <label for="layoutConcentric">Concentric</label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="checkbox-label" style="font-size:0.8rem;">
+                    <input type="checkbox" id="clusterDirs" onchange="toggleClustering()">
+                    Cluster Dirs
+                </label>
+                <label class="checkbox-label" style="font-size:0.8rem;">
+                    <input type="checkbox" id="bundleEdges" onchange="toggleEdgeBundling()">
+                    Bundle Edges
+                </label>
+            </div>
+
+            <div class="control-group">
                 <label for="zipUpload" role="button" tabindex="0" style="background-color: var(--warning-border); color: var(--text-main); border: none; border-radius: 6px; padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; font-family: inherit; display: inline-block;">Upload File/ZIP</label>
-                <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx" style="display: none;" onchange="handleZipSelect(event)">
+                <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs" style="display: none;" onchange="handleZipSelect(event)">
                 <details class="dropdown">
                     <summary style="background-color: var(--primary); color: white; border: none;">
                         Export
@@ -506,15 +679,73 @@
             <div style="font-size:2rem; margin-bottom:0.75rem;">No files found</div>
             <div>Make sure the directory path is correct and that at least one file type toggle is enabled in Filters &amp; Settings.</div>
         </div>
+        <div id="minimap"></div>
+        <div class="path-hint" id="pathHint">Click a node to highlight dependencies. Press Esc to clear.</div>
         <div id="sidebar">
-            <div class="sidebar-header" id="cycles-header" style="display: none;">Circular Dependencies</div>
-            <div id="cycles-list"></div>
-            <div class="sidebar-header">Reference Counts</div>
-            <div class="sidebar-legend">
-                <span class="legend-item"><span class="legend-dot legend-dot--god"></span> God (high refs)</span>
-                <span class="legend-item"><span class="legend-dot legend-dot--orphan"></span> Orphan (0 refs)</span>
+            <div class="sidebar-tabs">
+                <div class="sidebar-tab active" data-panel="panel-refs" onclick="switchTab(this)">Refs</div>
+                <div class="sidebar-tab" data-panel="panel-analysis" onclick="switchTab(this)">Analysis</div>
+                <div class="sidebar-tab" data-panel="panel-unused" onclick="switchTab(this)">Unused</div>
+                <div class="sidebar-tab" data-panel="panel-layers" onclick="switchTab(this)">Layers</div>
+                <div class="sidebar-tab" data-panel="panel-diff" onclick="switchTab(this)">Diff</div>
             </div>
-            <div id="ref-list"></div>
+
+            <!-- Refs panel (original) -->
+            <div id="panel-refs" class="sidebar-panel active">
+                <div class="sidebar-header" id="cycles-header" style="display: none;">Circular Dependencies</div>
+                <div id="cycles-list"></div>
+                <div class="sidebar-header">Reference Counts</div>
+                <div class="sidebar-legend">
+                    <span class="legend-item"><span class="legend-dot legend-dot--god"></span> God (high refs)</span>
+                    <span class="legend-item"><span class="legend-dot legend-dot--orphan"></span> Orphan (0 refs)</span>
+                </div>
+                <div id="ref-list"></div>
+            </div>
+
+            <!-- Analysis panel -->
+            <div id="panel-analysis" class="sidebar-panel">
+                <div class="sidebar-header">Coupling (Top Pairs)</div>
+                <div id="coupling-list"></div>
+                <div class="sidebar-header">Node Analysis <span style="font-weight:400;font-size:0.75rem;color:var(--text-muted);">(click a node)</span></div>
+                <div id="node-analysis">
+                    <div class="metric-row"><span class="metric-label">Select a node to see metrics</span></div>
+                </div>
+            </div>
+
+            <!-- Unused files panel -->
+            <div id="panel-unused" class="sidebar-panel">
+                <div class="sidebar-header">Potentially Unused Files</div>
+                <div style="padding:0.5rem 1rem;font-size:0.75rem;color:var(--text-muted);border-bottom:1px solid var(--border-color);">
+                    Files with zero inbound edges. Entry points (main, index) may appear here.
+                </div>
+                <div id="unused-list"></div>
+            </div>
+
+            <!-- Layers panel -->
+            <div id="panel-layers" class="sidebar-panel">
+                <div class="sidebar-header">Layering Violations</div>
+                <div style="padding:0.5rem 1rem;font-size:0.75rem;color:var(--text-muted);border-bottom:1px solid var(--border-color);">
+                    Define layers top→bottom (e.g. ui, service, data, util). Imports going "up" are violations.
+                </div>
+                <div class="layer-input-row">
+                    <input type="text" id="layerInput" placeholder="ui, service, data, util" onkeydown="if(event.key==='Enter')checkLayers()">
+                    <button onclick="checkLayers()" style="padding:0.35rem 0.75rem;font-size:0.8rem;">Check</button>
+                </div>
+                <div id="violations-list"></div>
+            </div>
+
+            <!-- Diff panel -->
+            <div id="panel-diff" class="sidebar-panel">
+                <div class="sidebar-header">Diff Mode</div>
+                <div style="padding:0.5rem 1rem;font-size:0.75rem;color:var(--text-muted);border-bottom:1px solid var(--border-color);">
+                    Load a second graph to compare. Paste JSON or load from a second directory.
+                </div>
+                <div class="layer-input-row">
+                    <input type="text" id="diffDirInput" placeholder="Second directory path...">
+                    <button onclick="loadDiff()" style="padding:0.35rem 0.75rem;font-size:0.8rem;">Diff</button>
+                </div>
+                <div id="diff-summary" style="padding:0.5rem 1rem;font-size:0.8rem;"></div>
+            </div>
         </div>
     </div>
 
@@ -574,6 +805,295 @@
 
         let cy;
         let currentGraphData = null;
+        let currentLayout = 'cose';
+        let clusteringEnabled = false;
+        let bundlingEnabled = false;
+        let minimapCy = null;
+        let pathHighlightActive = false;
+
+        // --- Sidebar tab switching ---
+        function switchTab(tab) {
+            document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById(tab.dataset.panel).classList.add('active');
+        }
+
+        // --- Layout switching ---
+        function getLayoutConfig(name) {
+            const saved = name || currentLayout;
+            if (saved === 'dagre') {
+                return { name: 'dagre', rankDir: 'TB', nodeSep: 80, rankSep: 200, padding: 60 };
+            }
+            if (saved === 'concentric') {
+                return {
+                    name: 'concentric',
+                    concentric: function(node) { return node.indegree(); },
+                    levelWidth: function() { return 2; },
+                    padding: 60,
+                    minNodeSpacing: 80,
+                };
+            }
+            // Default: cose
+            return {
+                name: 'cose',
+                padding: 200,
+                nodeRepulsion: function() { return 80000000; },
+                idealEdgeLength: function() { return 800; },
+                edgeElasticity: function() { return 100; },
+                gravity: 50,
+                numIter: 2000,
+            };
+        }
+
+        function changeLayout(name) {
+            currentLayout = name;
+            localStorage.setItem('layout', name);
+            if (cy) {
+                cy.layout(getLayoutConfig(name)).run();
+                updateMinimap();
+            }
+        }
+
+        // Restore last layout
+        const savedLayout = localStorage.getItem('layout');
+        if (savedLayout && document.getElementById('layout' + savedLayout.charAt(0).toUpperCase() + savedLayout.slice(1))) {
+            currentLayout = savedLayout;
+            const radio = document.querySelector(`input[name="layoutMode"][value="${savedLayout}"]`);
+            if (radio) radio.checked = true;
+        }
+
+        // --- Minimap ---
+        function updateMinimap() {
+            if (!cy) return;
+            if (minimapCy) minimapCy.destroy();
+            minimapCy = cytoscape({
+                container: document.getElementById('minimap'),
+                elements: cy.elements().jsons(),
+                style: [
+                    { selector: 'node', style: { 'width': 6, 'height': 6, 'background-color': 'data(color)', 'label': '' } },
+                    { selector: 'edge', style: { 'width': 1, 'line-color': '#94a3b8', 'target-arrow-shape': 'none' } },
+                    { selector: 'edge.cycle', style: { 'line-color': '#FF4136' } },
+                ],
+                layout: { name: 'preset' },
+                userZoomingEnabled: false,
+                userPanningEnabled: false,
+                boxSelectionEnabled: false,
+                autoungrabify: true,
+            });
+            minimapCy.fit();
+            minimapCy.on('tap', function(e) {
+                if (e.target === minimapCy) {
+                    const pos = e.position;
+                    cy.animate({ center: { eles: cy.nodes().closest(pos) } }, { duration: 300 });
+                }
+            });
+        }
+
+        // --- Path Highlighting ---
+        function highlightPaths(nodeId) {
+            if (!cy) return;
+            const node = cy.getElementById(nodeId);
+            if (!node || node.length === 0) return;
+
+            // BFS upstream (dependencies: follow outgoing edges)
+            const upstream = new Set();
+            const upQueue = [nodeId];
+            while (upQueue.length) {
+                const cur = upQueue.shift();
+                cy.getElementById(cur).outgoers('node').forEach(n => {
+                    if (!upstream.has(n.id()) && n.id() !== nodeId) {
+                        upstream.add(n.id());
+                        upQueue.push(n.id());
+                    }
+                });
+            }
+
+            // BFS downstream (dependents: follow incoming edges)
+            const downstream = new Set();
+            const downQueue = [nodeId];
+            while (downQueue.length) {
+                const cur = downQueue.shift();
+                cy.getElementById(cur).incomers('node').forEach(n => {
+                    if (!downstream.has(n.id()) && n.id() !== nodeId) {
+                        downstream.add(n.id());
+                        downQueue.push(n.id());
+                    }
+                });
+            }
+
+            // Dim everything first
+            cy.elements().style('opacity', 0.15);
+
+            // Highlight selected node
+            node.style({ 'opacity': 1, 'border-width': 4, 'border-color': '#facc15' });
+
+            // Upstream in blue
+            upstream.forEach(id => {
+                cy.getElementById(id).style({ 'opacity': 1, 'background-color': '#3b82f6' });
+            });
+            cy.edges().forEach(e => {
+                if ((upstream.has(e.source().id()) || e.source().id() === nodeId) &&
+                    (upstream.has(e.target().id()) || e.target().id() === nodeId)) {
+                    e.style({ 'opacity': 1, 'line-color': '#3b82f6', 'target-arrow-color': '#3b82f6' });
+                }
+            });
+
+            // Downstream in orange
+            downstream.forEach(id => {
+                cy.getElementById(id).style({ 'opacity': 1, 'background-color': '#f97316' });
+            });
+            cy.edges().forEach(e => {
+                if ((downstream.has(e.source().id()) || e.source().id() === nodeId) &&
+                    (downstream.has(e.target().id()) || e.target().id() === nodeId)) {
+                    e.style({ 'opacity': 1, 'line-color': '#f97316', 'target-arrow-color': '#f97316' });
+                }
+            });
+
+            pathHighlightActive = true;
+            document.getElementById('pathHint').style.display = 'block';
+
+            // Show node analysis
+            showNodeAnalysis(nodeId, upstream.size, downstream.size);
+        }
+
+        function clearPathHighlight() {
+            if (!cy || !pathHighlightActive) return;
+            cy.elements().removeStyle();
+            pathHighlightActive = false;
+            document.getElementById('pathHint').style.display = 'none';
+        }
+
+        function showNodeAnalysis(nodeId, upstreamCount, downstreamCount) {
+            const node = currentGraphData.nodes.find(n => n.data.id === nodeId);
+            if (!node) return;
+            const d = node.data;
+            const el = document.getElementById('node-analysis');
+            el.innerHTML = `
+                <div class="metric-row"><span class="metric-label">File</span><span class="metric-value" style="word-break:break-all;">${d.id}</span></div>
+                <div class="metric-row"><span class="metric-label">Dep Depth</span><span class="metric-badge ${d.depth > 5 ? 'badge-red' : d.depth > 2 ? 'badge-yellow' : 'badge-green'}">${d.depth}</span></div>
+                <div class="metric-row"><span class="metric-label">Impact (downstream)</span><span class="metric-badge ${d.impact > 10 ? 'badge-red' : d.impact > 3 ? 'badge-yellow' : 'badge-green'}">${d.impact} files</span></div>
+                <div class="metric-row"><span class="metric-label">Stability (I)</span><span class="metric-badge ${d.stability > 0.7 ? 'badge-red' : d.stability < 0.3 ? 'badge-green' : 'badge-yellow'}">${d.stability}</span></div>
+                <div class="metric-row"><span class="metric-label">Upstream deps</span><span class="metric-value">${upstreamCount}</span></div>
+                <div class="metric-row"><span class="metric-label">Downstream deps</span><span class="metric-value">${downstreamCount}</span></div>
+            `;
+            // Switch to analysis tab
+            const tab = document.querySelector('[data-panel="panel-analysis"]');
+            switchTab(tab);
+        }
+
+        // --- Directory Clustering ---
+        function toggleClustering() {
+            clusteringEnabled = document.getElementById('clusterDirs').checked;
+            if (currentGraphData) renderGraph(currentGraphData);
+        }
+
+        // --- Edge Bundling ---
+        function toggleEdgeBundling() {
+            bundlingEnabled = document.getElementById('bundleEdges').checked;
+            if (currentGraphData) renderGraph(currentGraphData);
+        }
+
+        // --- Layering Violation Check ---
+        function checkLayers() {
+            const input = document.getElementById('layerInput').value.trim();
+            if (!input || !currentGraphData) return;
+            const layers = input.split(',').map(s => s.trim()).filter(Boolean);
+            fetch('/api/layers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ layers, graph: currentGraphData }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                const list = document.getElementById('violations-list');
+                list.innerHTML = '';
+                if (!data.violations || data.violations.length === 0) {
+                    list.innerHTML = '<div class="metric-row"><span class="metric-label" style="color:#16a34a;">No violations found!</span></div>';
+                    return;
+                }
+                data.violations.forEach(v => {
+                    const div = document.createElement('div');
+                    div.className = 'violation-item';
+                    div.textContent = `${v.source} (${v.source_layer}) → ${v.target} (${v.target_layer})`;
+                    div.onclick = () => {
+                        // Highlight the offending edge
+                        clearPathHighlight();
+                        cy.edges().forEach(e => {
+                            if (e.source().id() === v.source && e.target().id() === v.target) {
+                                e.style({ 'line-color': '#ef4444', 'target-arrow-color': '#ef4444', 'width': 6 });
+                            }
+                        });
+                        const src = cy.getElementById(v.source);
+                        if (src.length) cy.animate({ center: { eles: src }, zoom: 1.5 }, { duration: 400 });
+                    };
+                    list.appendChild(div);
+                });
+            });
+        }
+
+        // --- Diff Mode ---
+        function loadDiff() {
+            const dir2 = document.getElementById('diffDirInput').value.trim();
+            if (!dir2 || !currentGraphData) return;
+            const filters = getFilterValues();
+            const params = new URLSearchParams({ dir: dir2, ...filters });
+            fetch('/api/graph?' + params)
+                .then(r => r.json())
+                .then(newGraph => {
+                    if (newGraph.error) { showToast('Error: ' + newGraph.error); return; }
+                    fetch('/api/diff', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ old: currentGraphData, new: newGraph }),
+                    })
+                    .then(r => r.json())
+                    .then(diff => renderDiff(diff));
+                });
+        }
+
+        function renderDiff(diff) {
+            if (cy) cy.destroy();
+            // Assign colors based on diff status
+            diff.nodes.forEach(n => {
+                if (n.data.diff === 'added') n.data.color = '#22c55e';
+                else if (n.data.diff === 'removed') n.data.color = '#ef4444';
+                else { n.data.color = '#94a3b8'; }
+                n.data.size = n.data.size || 80;
+            });
+            diff.edges.forEach(e => {
+                if (e.data.diff === 'added') e.data.color = '#22c55e';
+                else if (e.data.diff === 'removed') e.data.color = '#ef4444';
+                else e.data.color = '#cbd5e1';
+            });
+            cy = cytoscape({
+                container: document.getElementById('cy'),
+                elements: [...diff.nodes, ...diff.edges],
+                style: [
+                    { selector: 'node', style: {
+                        'width': 'data(size)', 'height': 'data(size)',
+                        'background-color': 'data(color)', 'label': 'data(id)',
+                        'color': '#fff', 'text-outline-color': 'data(color)',
+                        'text-outline-width': 2, 'font-size': '14px',
+                        'text-valign': 'center', 'text-halign': 'center',
+                    }},
+                    { selector: 'edge', style: {
+                        'width': 3, 'line-color': 'data(color)',
+                        'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                    }},
+                ],
+                layout: getLayoutConfig(),
+            });
+            // Summary
+            const added = diff.nodes.filter(n => n.data.diff === 'added').length;
+            const removed = diff.nodes.filter(n => n.data.diff === 'removed').length;
+            const addedE = diff.edges.filter(e => e.data.diff === 'added').length;
+            const removedE = diff.edges.filter(e => e.data.diff === 'removed').length;
+            document.getElementById('diff-summary').innerHTML =
+                `<span style="color:#22c55e;">+${added} nodes, +${addedE} edges</span> / <span style="color:#ef4444;">-${removed} nodes, -${removedE} edges</span>`;
+            showToast('Diff loaded');
+        }
 
         function exportJSON() {
             if (!currentGraphData) return;
@@ -734,12 +1254,69 @@
                 cyclesList.innerHTML = '';
             }
             if (cy) { cy.destroy(); }
+
+            // --- Directory clustering: add parent compound nodes ---
+            let elements = [...data.nodes, ...data.edges];
+            if (clusteringEnabled) {
+                const dirs = new Set();
+                data.nodes.forEach(n => {
+                    const dir = n.data.id.includes('/') ? n.data.id.substring(0, n.data.id.lastIndexOf('/')) : '.';
+                    dirs.add(dir);
+                    n.data.parent = 'dir_' + dir;
+                });
+                dirs.forEach(dir => {
+                    elements.unshift({
+                        data: {
+                            id: 'dir_' + dir,
+                            label: dir || '.',
+                        },
+                        classes: 'compound',
+                    });
+                });
+            }
+
+            // --- Edge bundling: merge same-dir-to-same-dir edges ---
+            let finalEdges = data.edges;
+            if (bundlingEnabled) {
+                const bundleMap = {};
+                const individualEdges = [];
+                data.edges.forEach(e => {
+                    const srcDir = e.data.source.includes('/') ? e.data.source.substring(0, e.data.source.lastIndexOf('/')) : '.';
+                    const tgtDir = e.data.target.includes('/') ? e.data.target.substring(0, e.data.target.lastIndexOf('/')) : '.';
+                    if (srcDir !== tgtDir) {
+                        const key = srcDir + '→' + tgtDir;
+                        if (!bundleMap[key]) bundleMap[key] = { srcDir, tgtDir, count: 0, color: e.data.color, edges: [] };
+                        bundleMap[key].count++;
+                        bundleMap[key].edges.push(e);
+                    } else {
+                        individualEdges.push(e);
+                    }
+                });
+                // Replace multi-edges with bundled edges where count > 1
+                const bundledEdges = [];
+                Object.values(bundleMap).forEach(b => {
+                    if (b.count > 1 && clusteringEnabled) {
+                        bundledEdges.push({
+                            data: {
+                                source: 'dir_' + b.srcDir,
+                                target: 'dir_' + b.tgtDir,
+                                color: b.color,
+                                label: String(b.count),
+                                bundled: true,
+                            }
+                        });
+                    } else {
+                        bundledEdges.push(...b.edges);
+                    }
+                });
+                finalEdges = [...individualEdges, ...bundledEdges];
+                elements = elements.filter(e => !e.data || !e.data.source); // remove old edges
+                elements = [...elements, ...finalEdges];
+            }
+
             cy = cytoscape({
                 container: document.getElementById('cy'),
-                elements: [
-                    ...data.nodes,
-                    ...data.edges
-                ],
+                elements: elements,
                 style: [
                     {
                         selector: 'node',
@@ -751,9 +1328,24 @@
                             'color': '#fff',
                             'text-outline-color': 'data(color)',
                             'text-outline-width': 2,
-                            'font-size': function(ele) { return Math.max(14, Math.min(36, ele.data('size') / 8)) + 'px'; },
+                            'font-size': function(ele) { return Math.max(14, Math.min(36, (ele.data('size') || 80) / 8)) + 'px'; },
                             'text-valign': 'center',
                             'text-halign': 'center'
+                        }
+                    },
+                    {
+                        selector: ':parent',
+                        style: {
+                            'background-color': 'rgba(100,100,100,0.08)',
+                            'border-width': 2,
+                            'border-color': 'var(--border-color)',
+                            'label': 'data(label)',
+                            'text-valign': 'top',
+                            'text-halign': 'center',
+                            'font-size': '16px',
+                            'color': 'var(--text-muted)',
+                            'text-margin-y': -10,
+                            'padding': 20,
                         }
                     },
                     {
@@ -767,6 +1359,17 @@
                         }
                     },
                     {
+                        selector: 'edge[label]',
+                        style: {
+                            'label': 'data(label)',
+                            'font-size': '12px',
+                            'text-background-color': 'var(--panel-bg)',
+                            'text-background-opacity': 0.8,
+                            'text-background-padding': '3px',
+                            'width': function(ele) { return Math.min(12, 3 + parseInt(ele.data('label') || '0')); },
+                        }
+                    },
+                    {
                         selector: 'edge.cycle',
                         style: {
                             'line-color': '#FF4136',
@@ -775,16 +1378,25 @@
                         }
                     }
                 ],
-                layout: {
-                    name: 'cose',
-                    padding: 200,
-                    nodeRepulsion: function( node ){ return 80000000; },
-                    idealEdgeLength: function( edge ){ return 800; },
-                    edgeElasticity: function( edge ){ return 100; },
-                    gravity: 50,
-                    numIter: 2000
-                }
+                layout: getLayoutConfig(),
             });
+
+            // --- Node click → path highlighting ---
+            cy.on('tap', 'node', function(evt) {
+                const nodeId = evt.target.id();
+                if (evt.target.isParent()) return; // skip compound nodes
+                clearPathHighlight();
+                highlightPaths(nodeId);
+            });
+            cy.on('tap', function(evt) {
+                if (evt.target === cy) clearPathHighlight();
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') clearPathHighlight();
+            });
+
+            // --- Update minimap ---
+            setTimeout(updateMinimap, 500);
 
             const refList = document.getElementById('ref-list');
             refList.innerHTML = '';
@@ -864,9 +1476,40 @@
                         }, { duration: 500 });
                     }
                 };
-                
+
                 refList.appendChild(div);
             });
+
+            // --- Populate unused files panel ---
+            const unusedList = document.getElementById('unused-list');
+            unusedList.innerHTML = '';
+            (data.unused_files || []).forEach(fid => {
+                const div = document.createElement('div');
+                div.className = 'metric-row';
+                div.style.cursor = 'pointer';
+                div.innerHTML = `<span class="metric-label" style="word-break:break-all;">${fid}</span><span class="metric-badge badge-red">0 refs</span>`;
+                div.onclick = () => {
+                    const node = cy.getElementById(fid);
+                    if (node.length) cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 400 });
+                };
+                unusedList.appendChild(div);
+            });
+            if (!(data.unused_files || []).length) {
+                unusedList.innerHTML = '<div class="metric-row"><span class="metric-label" style="color:#16a34a;">All files are referenced!</span></div>';
+            }
+
+            // --- Populate coupling panel ---
+            const couplingList = document.getElementById('coupling-list');
+            couplingList.innerHTML = '';
+            (data.coupling || []).forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'metric-row';
+                div.innerHTML = `<span class="metric-label" style="word-break:break-all;">${c.dir1} ↔ ${c.dir2}</span><span class="metric-badge ${c.score > 0.3 ? 'badge-red' : c.score > 0.1 ? 'badge-yellow' : 'badge-green'}">${c.cross_edges} edges (${c.score})</span>`;
+                couplingList.appendChild(div);
+            });
+            if (!(data.coupling || []).length) {
+                couplingList.innerHTML = '<div class="metric-row"><span class="metric-label">No cross-directory edges</span></div>';
+            }
         }
 
         let currentMode = 'local';
@@ -940,6 +1583,10 @@
                 show_h: mode === 'c' || mode === 'cpp',
                 show_cpp: mode === 'cpp',
                 show_js: mode === 'js',
+                show_py: mode === 'py',
+                show_java: mode === 'java',
+                show_go: mode === 'go',
+                show_rust: mode === 'rust',
                 hide_isolated: document.getElementById('hideIsolated').checked,
                 filter_dir: document.getElementById('filterDirInput').value,
             };
@@ -953,6 +1600,10 @@
             if (detected.has_h) langs.push('Headers');
             if (detected.has_cpp) langs.push('C++');
             if (detected.has_js) langs.push('TS/JS');
+            if (detected.has_py) langs.push('Python');
+            if (detected.has_java) langs.push('Java');
+            if (detected.has_go) langs.push('Go');
+            if (detected.has_rust) langs.push('Rust');
             if (langs.length === 0) {
                 el.textContent = 'No supported files detected';
             } else {
