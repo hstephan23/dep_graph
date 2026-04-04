@@ -637,18 +637,20 @@ details.dropdown .dropdown-body {
    ================================================================ */
 .preview-drawer {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: var(--sidebar-width);
+    bottom: 8px;
+    left: 8px;
+    right: calc(var(--sidebar-width) + 8px);
     height: 280px;
     background: var(--bg-elevated);
-    border-top: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-radius: 16px;
     display: flex;
     flex-direction: column;
     z-index: 18;
-    transform: translateY(100%);
+    transform: translateY(calc(100% + 16px));
     transition: transform 0.25s ease;
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
 }
 
 .preview-drawer.open { transform: translateY(0); }
@@ -661,6 +663,7 @@ details.dropdown .dropdown-body {
     border-bottom: 1px solid var(--border);
     background: var(--bg);
     flex-shrink: 0;
+    border-radius: 16px 16px 0 0;
 }
 
 .preview-drawer-title {
@@ -734,14 +737,15 @@ details.dropdown .dropdown-body {
 .preview-resize-handle {
     display: none;
     position: absolute;
-    bottom: 280px;
-    left: 0;
-    right: var(--sidebar-width);
+    bottom: 288px;
+    left: 8px;
+    right: calc(var(--sidebar-width) + 8px);
     height: 6px;
     cursor: row-resize;
     z-index: 19;
     background: transparent;
     transition: bottom 0s;
+    border-radius: 3px;
 }
 
 .preview-resize-handle.open { display: block; }
@@ -750,6 +754,15 @@ details.dropdown .dropdown-body {
 .preview-resize-handle:active {
     background: var(--primary);
     opacity: 0.4;
+}
+
+/* When sidebar is hidden on desktop, let drawers fill the full width */
+body.sidebar-hidden .preview-drawer,
+body.sidebar-hidden .preview-resize-handle {
+    right: 8px;
+}
+body.sidebar-hidden .query-terminal {
+    right: 0;
 }
 
 /* ================================================================
@@ -1702,8 +1715,8 @@ details.dropdown .dropdown-body {
     .sidebar-toggle-fab { display: flex; }
 
     /* Preview drawer spans full width when sidebar is off-canvas */
-    .preview-drawer { right: 0; }
-    .preview-resize-handle { right: 0; }
+    .preview-drawer { right: 8px; }
+    .preview-resize-handle { right: 8px; }
 
     /* Sidebar tabs: icon-only on small screens */
     .sidebar-tab span { display: none; }
@@ -1803,8 +1816,8 @@ details.dropdown .dropdown-body {
     /* Sidebar takes nearly full width on phones, keeping floating look */
     .sidebar { width: calc(100vw - 16px); }
 
-    /* Bottom drawer fills full width */
-    .preview-drawer { right: 0; left: 0; }
+    /* Bottom drawer fills full width with margin */
+    .preview-drawer { right: 8px; left: 8px; }
 }
 
 /* --- Very small phones (≤380px) --- */
@@ -3861,8 +3874,8 @@ details.dropdown .dropdown-body {
 /* --- File preview drawer: deeper code background --- */
 [data-theme="dark"] .preview-drawer {
     background: var(--bg-elevated);
-    border-top-color: var(--border);
-    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+    border-color: var(--border);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 [data-theme="dark"] .preview-drawer-header {
