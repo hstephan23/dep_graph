@@ -23,7 +23,7 @@ server = ["gunicorn>=21.0"]
 depgraph = "cli:main"
 
 [tool.setuptools]
-py-modules = ["app", "cli"]
+py-modules = ["app", "cli", "graph", "parsers"]
 
 [tool.setuptools.package-data]
 "*" = ["static/**/*", "templates/**/*"]
