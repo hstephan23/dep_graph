@@ -416,6 +416,8 @@ def upload_files():
         C_EXTENSIONS, H_EXTENSIONS, CPP_EXTENSIONS, JS_EXTENSIONS,
         PY_EXTENSIONS, JAVA_EXTENSIONS, GO_EXTENSIONS, RUST_EXTENSIONS,
         CS_EXTENSIONS, SWIFT_EXTENSIONS, RUBY_EXTENSIONS,
+        KOTLIN_EXTENSIONS, SCALA_EXTENSIONS, PHP_EXTENSIONS,
+        DART_EXTENSIONS, ELIXIR_EXTENSIONS,
     )
 
     if 'file' not in request.files:
@@ -436,7 +438,9 @@ def upload_files():
     allowed_ext = (('.zip',) + C_EXTENSIONS + H_EXTENSIONS + CPP_EXTENSIONS
                    + JS_EXTENSIONS + PY_EXTENSIONS + JAVA_EXTENSIONS
                    + GO_EXTENSIONS + RUST_EXTENSIONS + CS_EXTENSIONS
-                   + SWIFT_EXTENSIONS + RUBY_EXTENSIONS)
+                   + SWIFT_EXTENSIONS + RUBY_EXTENSIONS
+                   + KOTLIN_EXTENSIONS + SCALA_EXTENSIONS + PHP_EXTENSIONS
+                   + DART_EXTENSIONS + ELIXIR_EXTENSIONS)
     if not file.filename.endswith(allowed_ext):
         return jsonify({
             "error": "Unsupported file type.",

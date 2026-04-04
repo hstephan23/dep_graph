@@ -216,69 +216,85 @@ class TestWantedExtension:
 
     def test_c_extension_when_enabled(self):
         """C files should match when show_c=True."""
-        assert _wanted_extension("file.c", show_c=True, show_h=False, show_cpp=False) is True
+        assert _wanted_extension("file.c", {"show_c": True}) is True
 
     def test_c_extension_when_disabled(self):
         """C files should not match when show_c=False."""
-        assert _wanted_extension("file.c", show_c=False, show_h=False, show_cpp=False) is False
+        assert _wanted_extension("file.c", {"show_c": False}) is False
 
     def test_h_extension_when_enabled(self):
         """Header files should match when show_h=True."""
-        assert _wanted_extension("file.h", show_c=False, show_h=True, show_cpp=False) is True
+        assert _wanted_extension("file.h", {"show_h": True}) is True
 
     def test_cpp_extension_when_enabled(self):
         """C++ files should match when show_cpp=True."""
-        assert _wanted_extension("file.cpp", show_c=False, show_h=False, show_cpp=True) is True
+        assert _wanted_extension("file.cpp", {"show_cpp": True}) is True
 
     def test_py_extension_when_enabled(self):
         """Python files should match when show_py=True."""
-        assert _wanted_extension("file.py", show_c=False, show_h=False, show_cpp=False,
-                                show_py=True) is True
+        assert _wanted_extension("file.py", {"show_py": True}) is True
 
     def test_js_extension_when_enabled(self):
         """JavaScript files should match when show_js=True."""
-        assert _wanted_extension("file.js", show_c=False, show_h=False, show_cpp=False,
-                                show_js=True) is True
+        assert _wanted_extension("file.js", {"show_js": True}) is True
 
     def test_java_extension_when_enabled(self):
         """Java files should match when show_java=True."""
-        assert _wanted_extension("file.java", show_c=False, show_h=False, show_cpp=False,
-                                show_java=True) is True
+        assert _wanted_extension("file.java", {"show_java": True}) is True
 
     def test_go_extension_when_enabled(self):
         """Go files should match when show_go=True."""
-        assert _wanted_extension("file.go", show_c=False, show_h=False, show_cpp=False,
-                                show_go=True) is True
+        assert _wanted_extension("file.go", {"show_go": True}) is True
 
     def test_rust_extension_when_enabled(self):
         """Rust files should match when show_rust=True."""
-        assert _wanted_extension("file.rs", show_c=False, show_h=False, show_cpp=False,
-                                show_rust=True) is True
+        assert _wanted_extension("file.rs", {"show_rust": True}) is True
 
     def test_cs_extension_when_enabled(self):
         """C# files should match when show_cs=True."""
-        assert _wanted_extension("file.cs", show_c=False, show_h=False, show_cpp=False,
-                                show_cs=True) is True
+        assert _wanted_extension("file.cs", {"show_cs": True}) is True
 
     def test_swift_extension_when_enabled(self):
         """Swift files should match when show_swift=True."""
-        assert _wanted_extension("file.swift", show_c=False, show_h=False, show_cpp=False,
-                                show_swift=True) is True
+        assert _wanted_extension("file.swift", {"show_swift": True}) is True
 
     def test_ruby_extension_when_enabled(self):
         """Ruby files should match when show_ruby=True."""
-        assert _wanted_extension("file.rb", show_c=False, show_h=False, show_cpp=False,
-                                show_ruby=True) is True
+        assert _wanted_extension("file.rb", {"show_ruby": True}) is True
+
+    def test_kotlin_extension_when_enabled(self):
+        """Kotlin files should match when show_kotlin=True."""
+        assert _wanted_extension("file.kt", {"show_kotlin": True}) is True
+        assert _wanted_extension("file.kts", {"show_kotlin": True}) is True
+
+    def test_scala_extension_when_enabled(self):
+        """Scala files should match when show_scala=True."""
+        assert _wanted_extension("file.scala", {"show_scala": True}) is True
+        assert _wanted_extension("file.sc", {"show_scala": True}) is True
+
+    def test_php_extension_when_enabled(self):
+        """PHP files should match when show_php=True."""
+        assert _wanted_extension("file.php", {"show_php": True}) is True
+
+    def test_dart_extension_when_enabled(self):
+        """Dart files should match when show_dart=True."""
+        assert _wanted_extension("file.dart", {"show_dart": True}) is True
+
+    def test_elixir_extension_when_enabled(self):
+        """Elixir files should match when show_elixir=True."""
+        assert _wanted_extension("file.ex", {"show_elixir": True}) is True
+        assert _wanted_extension("file.exs", {"show_elixir": True}) is True
 
     def test_unknown_extension(self):
         """Unknown extensions should return False."""
-        assert _wanted_extension("file.xyz", show_c=True, show_h=True, show_cpp=True) is False
+        assert _wanted_extension("file.xyz", {"show_c": True, "show_h": True, "show_cpp": True}) is False
 
     def test_multiple_extensions_enabled(self):
         """Files should match if their extension matches any enabled language."""
-        assert _wanted_extension("file.c", show_c=True, show_h=True, show_cpp=True) is True
-        assert _wanted_extension("file.h", show_c=True, show_h=True, show_cpp=True) is True
-        assert _wanted_extension("file.cpp", show_c=True, show_h=True, show_cpp=True) is True
+        flags = {"show_c": True, "show_h": True, "show_cpp": True}
+        assert _wanted_extension("file.c", flags) is True
+        assert _wanted_extension("file.h", flags) is True
+        assert _wanted_extension("file.cpp", flags) is True
 
 
 # =========================================================================
@@ -290,7 +306,7 @@ class TestCollectSourceFiles:
 
     def test_collect_test_files_c_and_h(self, test_files_dir):
         """Collect C and header files from test_files."""
-        files = collect_source_files(test_files_dir, show_c=True, show_h=True, show_cpp=False)
+        files = collect_source_files(test_files_dir, {"show_c": True, "show_h": True, "show_cpp": False})
         # Should have main.c, utils.c, utils.h
         basenames = [os.path.basename(f) for f in files]
         assert "main.c" in basenames
@@ -299,7 +315,7 @@ class TestCollectSourceFiles:
 
     def test_skip_test_directories(self, test_files_dir):
         """Test directories should be skipped during collection."""
-        files = collect_source_files(test_files_dir, show_c=True, show_h=True, show_cpp=False)
+        files = collect_source_files(test_files_dir, {"show_c": True, "show_h": True, "show_cpp": False})
         # Check only the path portion WITHIN test_files_dir — parent dirs are irrelevant
         for f in files:
             rel = os.path.relpath(f, test_files_dir)
@@ -311,7 +327,7 @@ class TestCollectSourceFiles:
 
     def test_cpp_files_not_collected_when_disabled(self, test_files_dir):
         """C++ files should not be collected when show_cpp=False."""
-        files = collect_source_files(test_files_dir, show_c=True, show_h=False, show_cpp=False)
+        files = collect_source_files(test_files_dir, {"show_c": True, "show_h": False, "show_cpp": False})
         # Should have main.c, utils.c but not utils.h (since show_h=False)
         basenames = [os.path.basename(f) for f in files]
         assert "main.c" in basenames
@@ -320,12 +336,12 @@ class TestCollectSourceFiles:
 
     def test_empty_directory(self, tmp_path):
         """Empty directory should return empty list."""
-        files = collect_source_files(str(tmp_path), show_c=True, show_h=True, show_cpp=False)
+        files = collect_source_files(str(tmp_path), {"show_c": True, "show_h": True, "show_cpp": False})
         assert files == []
 
     def test_returns_absolute_paths(self, test_files_dir):
         """Collected files should have proper relative paths."""
-        files = collect_source_files(test_files_dir, show_c=True, show_h=True, show_cpp=False)
+        files = collect_source_files(test_files_dir, {"show_c": True, "show_h": True, "show_cpp": False})
         assert len(files) > 0
         # All files should exist
         for f in files:

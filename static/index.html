@@ -59,7 +59,7 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <span>Upload</span>
             </label>
-            <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs,.swift,.rb" style="display:none;" onchange="handleZipSelect(event)">
+            <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs,.swift,.rb,.kt,.kts,.scala,.sc,.php,.dart,.ex,.exs" style="display:none;" onchange="handleZipSelect(event)">
 
             <details class="dropdown">
                 <summary class="btn btn-ghost">
@@ -121,21 +121,32 @@
                         <input type="checkbox" id="hideIsolated" checked onchange="updateGraph()">
                         Hide isolated files
                     </label>
-                    <div class="dropdown-section-label">Language</div>
-                    <div class="pill-group">
-                        <input type="radio" name="langMode" id="modeAuto" value="auto" checked onchange="updateGraph()"><label for="modeAuto">Auto</label>
-                        <input type="radio" name="langMode" id="modeC" value="c" onchange="updateGraph()"><label for="modeC">C</label>
-                        <input type="radio" name="langMode" id="modeCpp" value="cpp" onchange="updateGraph()"><label for="modeCpp">C++</label>
-                        <input type="radio" name="langMode" id="modeJs" value="js" onchange="updateGraph()"><label for="modeJs">JS/TS</label>
-                        <input type="radio" name="langMode" id="modePy" value="py" onchange="updateGraph()"><label for="modePy">Python</label>
-                        <input type="radio" name="langMode" id="modeJava" value="java" onchange="updateGraph()"><label for="modeJava">Java</label>
-                        <input type="radio" name="langMode" id="modeGo" value="go" onchange="updateGraph()"><label for="modeGo">Go</label>
-                        <input type="radio" name="langMode" id="modeRust" value="rust" onchange="updateGraph()"><label for="modeRust">Rust</label>
-                        <input type="radio" name="langMode" id="modeCs" value="cs" onchange="updateGraph()"><label for="modeCs">C#</label>
-                        <input type="radio" name="langMode" id="modeSwift" value="swift" onchange="updateGraph()"><label for="modeSwift">Swift</label>
-                        <input type="radio" name="langMode" id="modeRuby" value="ruby" onchange="updateGraph()"><label for="modeRuby">Ruby</label>
-                    </div>
                     <div id="detectedLangs" class="detected-label" style="display:none;"></div>
+                </div>
+            </details>
+
+            <details class="dropdown dropdown-lang" id="langDropdown">
+                <summary class="btn btn-ghost lang-summary">
+                    <span id="langLabel">Auto</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="dropdown-body lang-dropdown-body">
+                    <button class="lang-option active" data-lang="auto" onclick="selectLang(this)">Auto</button>
+                    <button class="lang-option" data-lang="c" onclick="selectLang(this)">C</button>
+                    <button class="lang-option" data-lang="cpp" onclick="selectLang(this)">C++</button>
+                    <button class="lang-option" data-lang="js" onclick="selectLang(this)">JS / TS</button>
+                    <button class="lang-option" data-lang="py" onclick="selectLang(this)">Python</button>
+                    <button class="lang-option" data-lang="java" onclick="selectLang(this)">Java</button>
+                    <button class="lang-option" data-lang="go" onclick="selectLang(this)">Go</button>
+                    <button class="lang-option" data-lang="rust" onclick="selectLang(this)">Rust</button>
+                    <button class="lang-option" data-lang="cs" onclick="selectLang(this)">C#</button>
+                    <button class="lang-option" data-lang="swift" onclick="selectLang(this)">Swift</button>
+                    <button class="lang-option" data-lang="ruby" onclick="selectLang(this)">Ruby</button>
+                    <button class="lang-option" data-lang="kotlin" onclick="selectLang(this)">Kotlin</button>
+                    <button class="lang-option" data-lang="scala" onclick="selectLang(this)">Scala</button>
+                    <button class="lang-option" data-lang="php" onclick="selectLang(this)">PHP</button>
+                    <button class="lang-option" data-lang="dart" onclick="selectLang(this)">Dart</button>
+                    <button class="lang-option" data-lang="elixir" onclick="selectLang(this)">Elixir</button>
                 </div>
             </details>
 

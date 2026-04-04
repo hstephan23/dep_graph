@@ -1,6 +1,23 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import { getConfig, getWorkspaceRoot } from './config';
+
+// ── Locate the DepGraph Python source directory ───────────────────
+// The extension lives at <depgraph-root>/vscode-extension, so the
+// Python source (cli.py, graph.py, parsers.py) is one level up.
+let _depgraphRoot: string | undefined;
+
+export function setDepgraphRoot(extensionPath: string): void {
+  _depgraphRoot = path.resolve(extensionPath, '..');
+}
+
+function getCliPath(): string {
+  if (!_depgraphRoot) {
+    throw new Error('DepGraph root not set — call setDepgraphRoot() first');
+  }
+  return path.join(_depgraphRoot, 'cli.py');
+}
 
 // ── Types matching the CLI's --json output ──────────────────────────
 
@@ -68,13 +85,14 @@ export async function startServer(): Promise<number> {
   serverPort = findFreePort();
 
   return new Promise<number>((resolve, reject) => {
+    const cliPath = getCliPath();
     const proc = spawn(config.pythonPath, [
-      '-m', 'cli',
+      cliPath,
       root,
       '--serve',
       '--port', String(serverPort),
     ], {
-      cwd: root,
+      cwd: _depgraphRoot,
       env: { ...process.env, DEPGRAPH_BASE_DIR: root },
     });
 
@@ -143,7 +161,8 @@ export async function fetchGraphJSON(directory?: string): Promise<GraphData> {
     throw new Error('No workspace folder open');
   }
 
-  const args = ['-m', 'cli', root, '--json'];
+  const cliPath = getCliPath();
+  const args = [cliPath, root, '--json'];
   if (config.language !== 'auto') {
     args.push('--lang', config.language);
   }
@@ -159,7 +178,7 @@ export async function fetchGraphJSON(directory?: string): Promise<GraphData> {
     let stderr = '';
 
     const proc = spawn(config.pythonPath, args, {
-      cwd: root,
+      cwd: _depgraphRoot,
       env: { ...process.env },
     });
 

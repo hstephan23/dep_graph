@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getGraph, stopServer, onGraphChanged } from './engine';
+import { getGraph, stopServer, onGraphChanged, setDepgraphRoot } from './engine';
 import { getConfig } from './config';
 import { DependencyTreeProvider, CyclesTreeProvider, MetricsTreeProvider } from './sidebar';
 import { GraphWebviewProvider } from './webview';
@@ -9,6 +9,10 @@ import * as commands from './commands';
 
 export function activate(context: vscode.ExtensionContext) {
   const extensionUri = context.extensionUri;
+
+  // Tell the engine where the DepGraph Python source lives
+  // (one directory above the extension: <depgraph>/vscode-extension)
+  setDepgraphRoot(context.extensionPath);
 
   // ── Sidebar tree views ──────────────────────────────────────────
   const depTree = new DependencyTreeProvider();
@@ -97,8 +101,13 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // ── Initial graph load ──────────────────────────────────────────
-  getGraph().catch(() => {
-    // depgraph may not be installed; that's fine, we'll try again on demand
+  getGraph().catch((err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[DepGraph] Initial graph load failed:', msg);
+    // Show a subtle warning so the user knows something's off
+    vscode.window.showWarningMessage(
+      `DepGraph: Could not analyze workspace — ${msg}. Check that Python 3 is installed.`
+    );
   });
 
   // ── Status bar ──────────────────────────────────────────────────

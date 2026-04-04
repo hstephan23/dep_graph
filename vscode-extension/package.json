@@ -22,7 +22,12 @@
     "workspaceContains:**/*.cpp",
     "workspaceContains:**/*.cs",
     "workspaceContains:**/*.swift",
-    "workspaceContains:**/*.rb"
+    "workspaceContains:**/*.rb",
+    "workspaceContains:**/*.kt",
+    "workspaceContains:**/*.scala",
+    "workspaceContains:**/*.php",
+    "workspaceContains:**/*.dart",
+    "workspaceContains:**/*.ex"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -113,7 +118,12 @@
             "rust",
             "cs",
             "swift",
-            "ruby"
+            "ruby",
+            "kotlin",
+            "scala",
+            "php",
+            "dart",
+            "elixir"
           ],
           "description": "Language mode for dependency analysis"
         },

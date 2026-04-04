@@ -74,6 +74,46 @@ def _color_for_path(filepath):
 # File filtering helpers
 # =========================================================================
 
+# Central registry: maps each ``show_*`` flag name to the file extensions it
+# controls.  Adding a new language only requires a single entry here — every
+# filter function, ``collect_source_files``, and ``detect_languages`` picks
+# it up automatically.
+LANG_EXTENSION_TABLE = [
+    ("show_c",       C_EXTENSIONS),
+    ("show_h",       H_EXTENSIONS),
+    ("show_cpp",     CPP_EXTENSIONS),
+    ("show_js",      JS_EXTENSIONS),
+    ("show_py",      PY_EXTENSIONS),
+    ("show_java",    JAVA_EXTENSIONS),
+    ("show_go",      GO_EXTENSIONS),
+    ("show_rust",    RUST_EXTENSIONS),
+    ("show_cs",      CS_EXTENSIONS),
+    ("show_swift",   SWIFT_EXTENSIONS),
+    ("show_ruby",    RUBY_EXTENSIONS),
+    ("show_kotlin",  KOTLIN_EXTENSIONS),
+    ("show_scala",   SCALA_EXTENSIONS),
+    ("show_php",     PHP_EXTENSIONS),
+    ("show_dart",    DART_EXTENSIONS),
+    ("show_elixir",  ELIXIR_EXTENSIONS),
+]
+
+# Directories to skip when a given language flag is enabled.
+LANG_SKIP_DIRS = {
+    "show_js":     {'node_modules'},
+    "show_py":     {'__pycache__', '.venv', 'venv', '.tox', '.eggs',
+                    '*.egg-info'},
+    "show_go":     {'vendor'},
+    "show_rust":   {'target'},
+    "show_cs":     {'bin', 'obj', 'packages', '.vs'},
+    "show_ruby":   {'vendor', '.bundle'},
+    "show_kotlin": {'build'},
+    "show_scala":  {'target', '.bsp', '.metals'},
+    "show_php":    {'vendor'},
+    "show_dart":   {'.dart_tool', 'build', '.pub-cache'},
+    "show_elixir": {'_build', 'deps', '.elixir_ls'},
+}
+
+
 def _should_skip_dir(name):
     """Return True for directories that should be excluded from scanning."""
     lower = name.lower()
@@ -86,85 +126,27 @@ def _should_skip_file(name):
     return 'test' in lower or 'cmake' in lower
 
 
-def _wanted_extension(filename, show_c, show_h, show_cpp, show_js=False,
-                      show_py=False, show_java=False, show_go=False,
-                      show_rust=False, show_cs=False, show_swift=False,
-                      show_ruby=False, show_kotlin=False, show_scala=False,
-                      show_php=False, show_dart=False, show_elixir=False):
-    """Check whether a filename has an extension we want to include."""
-    if filename.endswith(C_EXTENSIONS) and show_c:
-        return True
-    if filename.endswith(H_EXTENSIONS) and show_h:
-        return True
-    if filename.endswith(CPP_EXTENSIONS) and show_cpp:
-        return True
-    if filename.endswith(JS_EXTENSIONS) and show_js:
-        return True
-    if filename.endswith(PY_EXTENSIONS) and show_py:
-        return True
-    if filename.endswith(JAVA_EXTENSIONS) and show_java:
-        return True
-    if filename.endswith(GO_EXTENSIONS) and show_go:
-        return True
-    if filename.endswith(RUST_EXTENSIONS) and show_rust:
-        return True
-    if filename.endswith(CS_EXTENSIONS) and show_cs:
-        return True
-    if filename.endswith(SWIFT_EXTENSIONS) and show_swift:
-        return True
-    if filename.endswith(RUBY_EXTENSIONS) and show_ruby:
-        return True
-    if filename.endswith(KOTLIN_EXTENSIONS) and show_kotlin:
-        return True
-    if filename.endswith(SCALA_EXTENSIONS) and show_scala:
-        return True
-    if filename.endswith(PHP_EXTENSIONS) and show_php:
-        return True
-    if filename.endswith(DART_EXTENSIONS) and show_dart:
-        return True
-    if filename.endswith(ELIXIR_EXTENSIONS) and show_elixir:
-        return True
+def _wanted_extension(filename, lang_flags):
+    """Check whether *filename* has an extension enabled in *lang_flags*.
+
+    *lang_flags* is a dict mapping ``show_*`` keys to booleans, e.g.
+    ``{"show_py": True, "show_js": False, ...}``.
+    """
+    for flag, exts in LANG_EXTENSION_TABLE:
+        if lang_flags.get(flag) and filename.endswith(exts):
+            return True
     return False
 
 
-def _include_target_excluded(filename, show_c, show_h, show_cpp, show_js=False,
-                             show_py=False, show_java=False, show_go=False,
-                             show_rust=False, show_cs=False, show_swift=False,
-                             show_ruby=False, show_kotlin=False, show_scala=False,
-                             show_php=False, show_dart=False, show_elixir=False):
-    """Return True if an include/import target should be excluded."""
-    if filename.endswith(C_EXTENSIONS) and not show_c:
-        return True
-    if filename.endswith(H_EXTENSIONS) and not show_h:
-        return True
-    if filename.endswith(CPP_EXTENSIONS) and not show_cpp:
-        return True
-    if filename.endswith(JS_EXTENSIONS) and not show_js:
-        return True
-    if filename.endswith(PY_EXTENSIONS) and not show_py:
-        return True
-    if filename.endswith(JAVA_EXTENSIONS) and not show_java:
-        return True
-    if filename.endswith(GO_EXTENSIONS) and not show_go:
-        return True
-    if filename.endswith(RUST_EXTENSIONS) and not show_rust:
-        return True
-    if filename.endswith(CS_EXTENSIONS) and not show_cs:
-        return True
-    if filename.endswith(SWIFT_EXTENSIONS) and not show_swift:
-        return True
-    if filename.endswith(RUBY_EXTENSIONS) and not show_ruby:
-        return True
-    if filename.endswith(KOTLIN_EXTENSIONS) and not show_kotlin:
-        return True
-    if filename.endswith(SCALA_EXTENSIONS) and not show_scala:
-        return True
-    if filename.endswith(PHP_EXTENSIONS) and not show_php:
-        return True
-    if filename.endswith(DART_EXTENSIONS) and not show_dart:
-        return True
-    if filename.endswith(ELIXIR_EXTENSIONS) and not show_elixir:
-        return True
+def _include_target_excluded(filename, lang_flags):
+    """Return True if an include/import target should be excluded.
+
+    A target is excluded when its extension belongs to a language group that
+    is *not* enabled in *lang_flags*.
+    """
+    for flag, exts in LANG_EXTENSION_TABLE:
+        if filename.endswith(exts) and not lang_flags.get(flag):
+            return True
     return False
 
 
@@ -244,36 +226,17 @@ def find_sccs(adj):
 # Source file collection
 # =========================================================================
 
-def collect_source_files(directory, show_c, show_h, show_cpp, show_js=False,
-                         show_py=False, show_java=False, show_go=False,
-                         show_rust=False, show_cs=False, show_swift=False,
-                         show_ruby=False, show_kotlin=False, show_scala=False,
-                         show_php=False, show_dart=False, show_elixir=False):
-    """Walk *directory* and return a list of source file paths to parse."""
+def collect_source_files(directory, lang_flags):
+    """Walk *directory* and return a list of source file paths to parse.
+
+    *lang_flags* is a dict of ``show_*`` booleans produced by
+    ``_extract_lang_flags`` or ``parse_filters``.
+    """
+    # Build the set of directories to skip based on active languages.
     skip_dirs = set()
-    if show_js:
-        skip_dirs.add('node_modules')
-    if show_py:
-        skip_dirs.update({'__pycache__', '.venv', 'venv', '.tox', '.eggs',
-                          '*.egg-info'})
-    if show_go:
-        skip_dirs.add('vendor')
-    if show_rust:
-        skip_dirs.add('target')
-    if show_cs:
-        skip_dirs.update({'bin', 'obj', 'packages', '.vs'})
-    if show_ruby:
-        skip_dirs.update({'vendor', '.bundle'})
-    if show_kotlin:
-        skip_dirs.add('build')
-    if show_scala:
-        skip_dirs.update({'target', '.bsp', '.metals'})
-    if show_php:
-        skip_dirs.add('vendor')
-    if show_dart:
-        skip_dirs.update({'.dart_tool', 'build', '.pub-cache'})
-    if show_elixir:
-        skip_dirs.update({'_build', 'deps', '.elixir_ls'})
+    for flag, dirs in LANG_SKIP_DIRS.items():
+        if lang_flags.get(flag):
+            skip_dirs.update(dirs)
 
     result = []
     for root, dirs, files in os.walk(directory):
@@ -282,11 +245,7 @@ def collect_source_files(directory, show_c, show_h, show_cpp, show_js=False,
         for fname in files:
             if _should_skip_file(fname):
                 continue
-            if _wanted_extension(fname, show_c, show_h, show_cpp, show_js,
-                                 show_py, show_java, show_go, show_rust,
-                                 show_cs, show_swift, show_ruby,
-                                 show_kotlin, show_scala, show_php,
-                                 show_dart, show_elixir):
+            if _wanted_extension(fname, lang_flags):
                 result.append(os.path.join(root, fname))
     return result
 
@@ -294,6 +253,15 @@ def collect_source_files(directory, show_c, show_h, show_cpp, show_js=False,
 # =========================================================================
 # Main graph builder
 # =========================================================================
+
+def _extract_lang_flags(**kwargs):
+    """Pull all ``show_*`` keys out of *kwargs* and return them as a dict.
+
+    This lets callers pass individual keyword arguments while internal code
+    works with a compact dict.
+    """
+    return {key: val for key, val in kwargs.items() if key.startswith('show_')}
+
 
 def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                 show_cpp=True, show_js=False, show_py=False,
@@ -307,16 +275,19 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
     Returns a dict with keys ``nodes``, ``edges``, ``has_cycles``, ``cycles``,
     ``unused_files``, ``coupling``, and ``depth_warnings``.
     """
+    lang_flags = _extract_lang_flags(
+        show_c=show_c, show_h=show_h, show_cpp=show_cpp, show_js=show_js,
+        show_py=show_py, show_java=show_java, show_go=show_go,
+        show_rust=show_rust, show_cs=show_cs, show_swift=show_swift,
+        show_ruby=show_ruby, show_kotlin=show_kotlin, show_scala=show_scala,
+        show_php=show_php, show_dart=show_dart, show_elixir=show_elixir,
+    )
+
     nodes = []
     edges = []
     node_set = set()
 
-    files_to_parse = collect_source_files(
-        directory, show_c, show_h, show_cpp, show_js,
-        show_py, show_java, show_go, show_rust, show_cs,
-        show_swift, show_ruby, show_kotlin, show_scala,
-        show_php, show_dart, show_elixir,
-    )
+    files_to_parse = collect_source_files(directory, lang_flags)
 
     # Build a set of known relative paths for import resolution
     known_files = {os.path.relpath(fp, directory) for fp in files_to_parse}
@@ -696,10 +667,7 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                     continue
 
                 included = match.group(2)
-                if _include_target_excluded(included, show_c, show_h, show_cpp,
-                                            show_js, show_py, show_java,
-                                            show_go, show_rust, show_cs,
-                                            show_swift, show_ruby):
+                if _include_target_excluded(included, lang_flags):
                     continue
 
                 _add_edge(filename, included)
@@ -941,58 +909,37 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
 # =========================================================================
 
 def detect_languages(directory):
-    """Scan *directory* for source files and return which language groups exist."""
-    flags = {
-        "has_c": False, "has_h": False, "has_cpp": False, "has_js": False,
-        "has_py": False, "has_java": False, "has_go": False, "has_rust": False,
-        "has_cs": False, "has_swift": False, "has_ruby": False,
-        "has_kotlin": False, "has_scala": False, "has_php": False,
-        "has_dart": False, "has_elixir": False,
-    }
-    skip_dirs = {'node_modules', '__pycache__', '.venv', 'venv', 'target',
-                 'vendor', 'bin', 'obj', 'packages', '.vs', '.bundle',
-                 'build', '.bsp', '.metals', '.dart_tool', '.pub-cache',
-                 '_build', 'deps', '.elixir_ls'}
+    """Scan *directory* for source files and return which language groups exist.
+
+    Returns a dict mapping ``has_*`` keys (one per entry in
+    ``LANG_EXTENSION_TABLE``) to booleans.
+    """
+    # Build flags dict from the table: "show_py" → "has_py"
+    flags = {"has_" + flag[len("show_"):]: False
+             for flag, _ in LANG_EXTENSION_TABLE}
+
+    # Collect all skip dirs (union of every language's skip set).
+    skip_dirs = set()
+    for dirs in LANG_SKIP_DIRS.values():
+        skip_dirs.update(dirs)
+
     for root, dirs, files in os.walk(directory):
         dirs[:] = [d for d in dirs if not _should_skip_dir(d) and d not in skip_dirs]
         for fname in files:
             if _should_skip_file(fname):
                 continue
-            if fname.endswith(C_EXTENSIONS):
-                flags["has_c"] = True
-            if fname.endswith(H_EXTENSIONS):
-                flags["has_h"] = True
-            if fname.endswith(CPP_EXTENSIONS):
-                flags["has_cpp"] = True
-            if fname.endswith(JS_EXTENSIONS):
-                flags["has_js"] = True
-            if fname.endswith(PY_EXTENSIONS):
-                flags["has_py"] = True
-            if fname.endswith(JAVA_EXTENSIONS):
-                flags["has_java"] = True
-            if fname.endswith(GO_EXTENSIONS):
-                flags["has_go"] = True
-            if fname.endswith(RUST_EXTENSIONS):
-                flags["has_rust"] = True
-            if fname.endswith(CS_EXTENSIONS):
-                flags["has_cs"] = True
-            if fname.endswith(SWIFT_EXTENSIONS):
-                flags["has_swift"] = True
-            if fname.endswith(RUBY_EXTENSIONS):
-                flags["has_ruby"] = True
-            if fname.endswith(KOTLIN_EXTENSIONS):
-                flags["has_kotlin"] = True
-            if fname.endswith(SCALA_EXTENSIONS):
-                flags["has_scala"] = True
-            if fname.endswith(PHP_EXTENSIONS):
-                flags["has_php"] = True
-            if fname.endswith(DART_EXTENSIONS):
-                flags["has_dart"] = True
-            if fname.endswith(ELIXIR_EXTENSIONS):
-                flags["has_elixir"] = True
+            for flag, exts in LANG_EXTENSION_TABLE:
+                has_key = "has_" + flag[len("show_"):]
+                if not flags[has_key] and fname.endswith(exts):
+                    flags[has_key] = True
             if all(flags.values()):
                 return flags
     return flags
+
+
+# Languages that default to *on* when no explicit flags are given (the
+# original C/C++/header group).
+_DEFAULT_ON_LANGS = frozenset({"show_c", "show_h", "show_cpp"})
 
 
 def parse_filters(source, detected=None):
@@ -1001,67 +948,29 @@ def parse_filters(source, detected=None):
     When *detected* is provided (a dict from ``detect_languages``), the
     ``mode=auto`` value will use the detected languages instead of enabling
     everything blindly.
+
+    The returned dict is ready to be passed to ``build_graph(**result)``.
     """
     mode = source.get('mode', '')
 
     if mode == 'auto' and detected:
-        show_c = detected["has_c"]
-        show_h = detected["has_h"]
-        show_cpp = detected["has_cpp"]
-        show_js = detected["has_js"]
-        show_py = detected["has_py"]
-        show_java = detected["has_java"]
-        show_go = detected["has_go"]
-        show_rust = detected["has_rust"]
-        show_cs = detected["has_cs"]
-        show_swift = detected["has_swift"]
-        show_ruby = detected["has_ruby"]
-        show_kotlin = detected["has_kotlin"]
-        show_scala = detected["has_scala"]
-        show_php = detected["has_php"]
-        show_dart = detected["has_dart"]
-        show_elixir = detected["has_elixir"]
+        # Map "has_py" → "show_py" for every language in the table.
+        lang = {flag: detected.get("has_" + flag[len("show_"):], False)
+                for flag, _ in LANG_EXTENSION_TABLE}
     elif mode == 'auto':
-        show_c = show_h = show_cpp = show_js = True
-        show_py = show_java = show_go = show_rust = show_cs = True
-        show_swift = show_ruby = True
-        show_kotlin = show_scala = show_php = show_dart = show_elixir = True
+        # No detection data — enable everything.
+        lang = {flag: True for flag, _ in LANG_EXTENSION_TABLE}
     else:
-        show_c = source.get('show_c', 'true').lower() == 'true'
-        show_h = source.get('show_h', 'true').lower() == 'true'
-        show_cpp = source.get('show_cpp', 'true').lower() == 'true'
-        show_js = source.get('show_js', 'false').lower() == 'true'
-        show_py = source.get('show_py', 'false').lower() == 'true'
-        show_java = source.get('show_java', 'false').lower() == 'true'
-        show_go = source.get('show_go', 'false').lower() == 'true'
-        show_rust = source.get('show_rust', 'false').lower() == 'true'
-        show_cs = source.get('show_cs', 'false').lower() == 'true'
-        show_swift = source.get('show_swift', 'false').lower() == 'true'
-        show_ruby = source.get('show_ruby', 'false').lower() == 'true'
-        show_kotlin = source.get('show_kotlin', 'false').lower() == 'true'
-        show_scala = source.get('show_scala', 'false').lower() == 'true'
-        show_php = source.get('show_php', 'false').lower() == 'true'
-        show_dart = source.get('show_dart', 'false').lower() == 'true'
-        show_elixir = source.get('show_elixir', 'false').lower() == 'true'
+        # Explicit flags from the request.  The original C/H/CPP default to
+        # "true"; all others default to "false".
+        lang = {}
+        for flag, _ in LANG_EXTENSION_TABLE:
+            default = 'true' if flag in _DEFAULT_ON_LANGS else 'false'
+            lang[flag] = source.get(flag, default).lower() == 'true'
 
     return {
         "hide_system": source.get('hide_system', 'false').lower() == 'true',
-        "show_c": show_c,
-        "show_h": show_h,
-        "show_cpp": show_cpp,
-        "show_js": show_js,
-        "show_py": show_py,
-        "show_java": show_java,
-        "show_go": show_go,
-        "show_rust": show_rust,
-        "show_cs": show_cs,
-        "show_swift": show_swift,
-        "show_ruby": show_ruby,
-        "show_kotlin": show_kotlin,
-        "show_scala": show_scala,
-        "show_php": show_php,
-        "show_dart": show_dart,
-        "show_elixir": show_elixir,
+        **lang,
         "hide_isolated": source.get('hide_isolated', 'false').lower() == 'true',
         "filter_dir": source.get('filter_dir', ''),
     }
