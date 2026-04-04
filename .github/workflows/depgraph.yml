@@ -2,7 +2,7 @@ name: Dependency Diff
 
 on:
   pull_request:
-    branches: [main]
+    branches: [master]
 
 permissions:
   pull-requests: write
@@ -12,7 +12,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: harrisonstephan/DepGraph@main
         with:
-          path: '.'
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install DepGraph
+        run: pip install .
+
+      - name: Checkout base branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+          git worktree add /tmp/depgraph-base FETCH_HEAD
+
+      - name: Run dependency diff
+        id: diff
+        run: |
+          depgraph . --diff /tmp/depgraph-base --hide-external --hide-isolated -o /tmp/depgraph-diff.md
+          if grep -q "No dependency changes detected" /tmp/depgraph-diff.md; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment on PR
+        if: steps.diff.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
+            --jq '.[] | select(.body | startswith("## DepGraph")) | .id' 2>/dev/null | head -1)
+          if [ -n "$COMMENT_ID" ]; then
+            gh api repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -X DELETE 2>/dev/null || true
+          fi
+          gh pr comment "$PR_NUMBER" --body-file /tmp/depgraph-diff.md
+
+      - name: Cleanup
+        if: always()
+        run: git worktree remove /tmp/depgraph-base --force 2>/dev/null || true
