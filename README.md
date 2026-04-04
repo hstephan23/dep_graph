@@ -28,7 +28,7 @@ Language detection is automatic — DepGraph scans the target directory and enab
 - Minimap for orientation in large graphs with click-to-pan
 - Inline source preview with syntax highlighting (double-click any node)
 - Nodes sized by inbound reference count, colored by directory
-- Animated transitions when switching layouts or views
+- Smooth loading transitions with spinner overlay when switching layouts or views
 
 ### Analysis Tools
 
@@ -127,7 +127,7 @@ The terminal tree output includes colored badges for cycles and depth warnings, 
 
 ## GitHub Action
 
-DepGraph includes a GitHub Action that automatically comments a dependency diff on pull requests. When a PR changes import/include relationships, the action posts a summary of added/removed files and dependencies.
+DepGraph includes a GitHub Actions workflow that automatically comments a dependency diff on pull requests. When a PR changes import/include relationships, the workflow posts a summary of added/removed files, dependencies, and any new circular dependencies.
 
 ### Setup
 
@@ -138,7 +138,7 @@ name: Dependency Diff
 
 on:
   pull_request:
-    branches: [main]
+    branches: [master]
 
 permissions:
   pull-requests: write
@@ -148,23 +148,51 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: your-username/DepGraph@main
         with:
-          path: '.'
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install DepGraph
+        run: pip install .
+
+      - name: Checkout base branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+          git worktree add /tmp/depgraph-base FETCH_HEAD
+
+      - name: Run dependency diff
+        id: diff
+        run: |
+          depgraph . --diff /tmp/depgraph-base --hide-external --hide-isolated -o /tmp/depgraph-diff.md
+          if grep -q "No dependency changes detected" /tmp/depgraph-diff.md; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment on PR
+        if: steps.diff.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
+            --jq '.[] | select(.body | startswith("## DepGraph")) | .id' 2>/dev/null | head -1)
+          if [ -n "$COMMENT_ID" ]; then
+            gh api repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -X DELETE 2>/dev/null || true
+          fi
+          gh pr comment "$PR_NUMBER" --body-file /tmp/depgraph-diff.md
+
+      - name: Cleanup
+        if: always()
+        run: git worktree remove /tmp/depgraph-base --force 2>/dev/null || true
 ```
 
-### Inputs
-
-| Input | Default | Description |
-|---|---|---|
-| `path` | `.` | Path to the source directory to analyze |
-| `lang` | `auto` | Language mode (auto, c, cpp, js, py, java, go, rust, cs, swift, ruby) |
-| `hide-external` | `true` | Hide system/stdlib imports |
-| `hide-isolated` | `true` | Hide files with no dependencies |
-| `github-token` | `${{ github.token }}` | Token for posting PR comments |
-
-The action checks out the base branch into a temporary worktree, runs `depgraph --diff` to compare dependencies, and posts a collapsible Markdown comment on the PR. If there are no dependency changes, it stays silent. Previous DepGraph comments are replaced on each push to keep the PR clean.
+Change `branches: [master]` to match your default branch name. The workflow checks out the base branch into a temporary worktree, runs `depgraph --diff` to compare dependencies, and posts a collapsible Markdown comment on the PR. If there are no dependency changes, it stays silent. Previous DepGraph comments are replaced on each push to keep the PR clean.
 
 ## Web UI
 

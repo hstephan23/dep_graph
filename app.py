@@ -74,8 +74,10 @@ _ALLOWED_BASE_DIR = os.path.abspath(
     os.environ.get('DEPGRAPH_BASE_DIR', os.path.dirname(os.getcwd()))
 )
 
-# Simple rate-limiter: per-IP, max N requests in a sliding window
-_RATE_LIMIT = int(os.environ.get('DEPGRAPH_RATE_LIMIT', '30'))  # requests
+# Simple rate-limiter: per-IP, max N requests in a sliding window.
+# Disabled entirely when FLASK_DEBUG is true (local development).
+_DEBUG_MODE = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+_RATE_LIMIT = int(os.environ.get('DEPGRAPH_RATE_LIMIT', '120'))  # requests
 _RATE_WINDOW = int(os.environ.get('DEPGRAPH_RATE_WINDOW', '60'))  # seconds
 _rate_store = {}  # ip -> list of timestamps
 _rate_lock = threading.Lock()
@@ -126,7 +128,9 @@ def _validate_directory(directory):
 
 @app.before_request
 def _before_request():
-    """Global rate limiting."""
+    """Global rate limiting (skipped in debug/dev mode)."""
+    if _DEBUG_MODE:
+        return
     if _rate_limit_check():
         return jsonify({
             "error": "Rate limit exceeded. Try again later.",

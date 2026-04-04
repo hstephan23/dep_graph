@@ -1,9 +1,10 @@
-// --- Dev mode configuration ---
-// Fetches config from the server and hides dev-only UI elements in production.
-// In production mode, the graph auto-loads with the default "tests/test_files" directory.
-let _devMode = false;
-let _currentView = 'graph';
+// ============================================================
+// APP — Main entry point
+// Loads graph data, renders the graph, handles upload/directory.
+// All other functionality lives in separate module files.
+// ============================================================
 
+// --- Dev mode configuration ---
 async function _applyDevMode() {
     try {
         const res = await fetch('/api/config');
@@ -11,34 +12,10 @@ async function _applyDevMode() {
             const data = await res.json();
             _devMode = !!data.dev_mode;
         }
-    } catch (e) {
-        // Default to production (dev_mode = false) on error
-    }
+    } catch (e) { /* Default to production */ }
     if (!_devMode) {
-        document.querySelectorAll('.dev-only').forEach(el => {
-            el.style.display = 'none';
-        });
-        // Auto-load the default tests/test_files graph in production
-        if (typeof loadGraph === 'function') {
-            loadGraph();
-        }
-    }
-}
-
-// --- CSRF token management ---
-let _csrfToken = '';
-async function _fetchCsrfToken(retries = 3) {
-    for (let i = 0; i < retries; i++) {
-        try {
-            const res = await fetch('/api/csrf-token');
-            if (res.ok) {
-                const data = await res.json();
-                _csrfToken = data.token || '';
-                return;
-            }
-        } catch (e) { /* server may still be booting */ }
-        // Wait before retrying (1s, 2s, 4s)
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+        document.querySelectorAll('.dev-only').forEach(el => el.style.display = 'none');
+        if (typeof loadGraph === 'function') loadGraph();
     }
     console.warn('Could not fetch CSRF token after retries');
 }
@@ -142,572 +119,179 @@ function buildFolderColorKey(nodes) {
     else keyEl.style.display = 'none';
 }
 
-// --- Theme ---
-const ICON_MOON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-const ICON_SUN = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+// --- Main Render ---
+function renderGraph(data) {
+    currentGraphData = data;
 
-document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
-
-function applyThemeIcon(t) { document.getElementById('themeIcon').innerHTML = t === 'dark' ? ICON_SUN : ICON_MOON; }
-
-function toggleTheme() {
-    const n = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', n);
-    localStorage.setItem('theme', n);
-    applyThemeIcon(n);
-    // Refresh compound styles for theme-aware colors
-    if (_compound && _compound.active && typeof cy !== 'undefined' && cy) {
-        cy.style(_compoundStyles());
+    // Reset to graph view when new data loads
+    if (_currentView !== 'graph') {
+        document.getElementById('viewGraph').checked = true;
+        switchView('graph');
     }
-}
 
-window.addEventListener('DOMContentLoaded', () => applyThemeIcon(document.documentElement.getAttribute('data-theme')));
+    const emptyState = document.getElementById('emptyState');
+    emptyState.style.display = (!data.nodes || !data.nodes.length) ? 'block' : 'none';
 
-// Apply dev mode (hide dev-only elements in production, auto-load graph)
-window.addEventListener('DOMContentLoaded', () => _applyDevMode());
-
-// --- Collapsible Panel Sections ---
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.panel-header').forEach(header => {
-        header.addEventListener('click', () => {
-            header.classList.toggle('collapsed');
-            // Find next sibling elements until the next panel-header
-            let el = header.nextElementSibling;
-            while (el && !el.classList.contains('panel-header')) {
-                el.style.display = header.classList.contains('collapsed') ? 'none' : '';
-                el = el.nextElementSibling;
-            }
+    // Cycles
+    const cyclesHeader = document.getElementById('cycles-header');
+    const cyclesList = document.getElementById('cycles-list');
+    const warning = document.getElementById('cycleWarning');
+    if (data.has_cycles) {
+        warning.style.display = 'flex';
+        cyclesHeader.style.display = '';
+        cyclesList.innerHTML = '';
+        (data.cycles || []).forEach((cycle, i) => {
+            const card = document.createElement('div');
+            card.className = 'cycle-card';
+            card.innerHTML = `<div class="cycle-card-title">Cycle ${i + 1} &middot; ${cycle.length} files</div>`;
+            cycle.forEach(nid => {
+                const row = document.createElement('div');
+                row.className = 'cycle-card-node';
+                row.textContent = nid;
+                row.onclick = () => { const n = cy.getElementById(nid); if (n.length) cy.animate({ center: { eles: n }, zoom: 1.5 }, { duration: 400 }); };
+                card.appendChild(row);
+            });
+            cyclesList.appendChild(card);
         });
-    });
-});
+    } else { warning.style.display = 'none'; cyclesHeader.style.display = 'none'; cyclesList.innerHTML = ''; }
 
-// --- Sidebar Toggle (responsive + desktop) ---
-let _sidebarHidden = false;
-
-function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const backdrop = document.getElementById('sidebarBackdrop');
-    if (window.innerWidth <= 900) {
-        // Mobile: slide-in overlay
-        sidebar.classList.toggle('open');
-        backdrop.classList.toggle('open');
-    } else {
-        // Desktop: toggle via inline styles (avoids CSS caching issues)
-        _sidebarHidden = !_sidebarHidden;
-        if (_sidebarHidden) {
-            sidebar.setAttribute('style', 'display:none !important');
-        } else {
-            sidebar.removeAttribute('style');
-            // Force Cytoscape to resize into the reclaimed space
-            if (typeof cy !== 'undefined' && cy) {
-                setTimeout(() => cy.resize(), 50);
-            }
-        }
+    // Reset fisheye if active before destroying graph
+    if (_fisheye.active) {
+        _fisheye.active = false;
+        _fisheye.restoreData = null;
+        const fishBtn = document.getElementById('fisheyeToggle');
+        if (fishBtn) fishBtn.classList.remove('active');
     }
-}
 
-// --- State ---
-let cy, currentGraphData = null, pathHighlightActive = false;
-let currentLayout = 'cose';
-let currentMode = 'local', currentUploadedFile = null, currentUploadToken = null;
+    if (cy) cy.destroy();
 
-// ============================================================
-// COMPOUND NODE SYSTEM
-// Directories are Cytoscape compound (parent) nodes.
-// Files sit visually inside their directory container.
-// Collapse hides children and aggregates edges at the dir level.
-// Expand reveals children in-place with smooth animation.
-// ============================================================
-
-const COMPOUND_THRESHOLD = 100;
-let _compound = {
-    active: false,       // whether compound mode is on
-    raw: null,           // original graph data
-    collapsed: new Set(),// set of collapsed directory IDs
-    dirMap: new Map(),   // dirId → Set<fileId>
-    allDirs: [],         // all unique directory IDs
-};
-
-// --- Helpers ---
-
-function _cDir(fileId) {
-    const i = fileId.lastIndexOf('/');
-    return i === -1 ? '.' : fileId.substring(0, i);
-}
-
-/** Get all ancestor directories for a path, e.g. "a/b/c" → ["a", "a/b", "a/b/c"] */
-function _cAncestors(dirId) {
-    if (dirId === '.') return ['.'];
-    const parts = dirId.split('/');
-    const result = [];
-    for (let i = 1; i <= parts.length; i++) result.push(parts.slice(0, i).join('/'));
-    return result;
-}
-
-const _COMPOUND_PALETTE = [
-    '#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6',
-    '#3b82f6','#ec4899','#14b8a6','#f97316','#06b6d4',
-    '#84cc16','#a855f7','#0ea5e9','#eab308','#22d3ee',
-    '#e879f9','#4ade80','#fb923c','#818cf8','#2dd4bf',
-];
-
-function _cColor(id) {
-    let h = 0;
-    for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
-    return _COMPOUND_PALETTE[Math.abs(h) % _COMPOUND_PALETTE.length];
-}
-
-// --- Shared Cytoscape style definitions ---
-
-function _baseNodeStyle() {
-    return {
-        width: 'data(size)', height: 'data(size)',
-        'background-color': 'data(color)', label: 'data(label)',
-        color: '#fff', 'text-outline-color': 'data(color)', 'text-outline-width': 2,
-        'font-size': ele => Math.max(14, Math.min(36, (ele.data('size') || 80) / 8)) + 'px',
-        'text-valign': 'center', 'text-halign': 'center',
-    };
-}
-
-function _baseEdgeStyle() {
-    return {
-        width: 4, 'line-color': 'data(color)',
-        'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle',
-        'curve-style': 'bezier', opacity: 0.7,
-    };
-}
-
-function _cycleEdgeStyle() {
-    return { 'line-color': '#FF4136', 'target-arrow-color': '#FF4136', width: 3, opacity: 1 };
-}
-
-function _normalStyles() {
-    return [
-        { selector: 'node', style: _baseNodeStyle() },
-        { selector: 'edge', style: _baseEdgeStyle() },
-        { selector: 'edge.cycle', style: _cycleEdgeStyle() },
+    // --- Always start in flat files view (no auto-collapse) ---
+    _compound.active = false;
+    _compound.raw = null;
+    _compound.collapsed = new Set();
+    const elements = [
+        ...data.nodes.map(n => ({ group: 'nodes', data: { ...n.data, label: n.data.id } })),
+        ...data.edges,
     ];
-}
+    _cInitCy(elements, _normalStyles());
+    _cBindNormalHandlers();
 
-/** Theme-aware helper — returns values for light/dark mode */
-function _cTheme() {
-    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-    return {
-        dark,
-        containerBg: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
-        labelOutline: dark ? '#0e1019' : '#f1f5f9',
-        labelColor: dark ? '#a1a7be' : '#475569',
-        edgeLabelOutline: dark ? '#0e1019' : '#ffffff',
-        badgeBg: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    };
-}
-
-/** Styles for compound node mode — directory containers + file children + aggregated edges */
-function _compoundStyles() {
-    const t = _cTheme();
-    return [
-        // File nodes (children inside directories)
-        { selector: 'node[?isFile]', style: {
-            ..._baseNodeStyle(),
-            'transition-property': 'opacity',
-            'transition-duration': '0.25s',
-        }},
-        // Directory compound nodes (base — expanded state)
-        { selector: 'node[?isDir]', style: {
-            'background-color': 'data(color)',
-            'background-opacity': t.dark ? 0.06 : 0.04,
-            'border-width': 1.5,
-            'border-color': 'data(color)',
-            'border-style': 'solid',
-            'border-opacity': 0.3,
-            shape: 'round-rectangle',
-            padding: '24px',
-            label: ele => ele.data('label'),
-            color: t.labelColor,
-            'text-outline-color': t.labelOutline,
-            'text-outline-width': 2,
-            'text-outline-opacity': 0.8,
-            'font-size': '11px',
-            'font-weight': '600',
-            'text-valign': 'top',
-            'text-halign': 'left',
-            'text-margin-y': '-6px',
-            'text-margin-x': '8px',
-            'text-transform': 'uppercase',
-            'min-width': '60px',
-            'min-height': '40px',
-            'transition-property': 'background-opacity, border-width, border-opacity, padding',
-            'transition-duration': '0.3s',
-        }},
-        // Collapsed directory nodes — compact pill shape
-        { selector: 'node[?isCollapsed]', style: {
-            'background-color': 'data(color)',
-            'background-opacity': t.dark ? 0.15 : 0.10,
-            'border-width': 2,
-            'border-opacity': 0.6,
-            'border-style': 'dashed',
-            padding: '0px',
-            width: 'data(collapsedSize)',
-            height: 'data(collapsedSize)',
-            label: ele => {
-                const name = ele.data('label');
-                const count = ele.data('fileCount');
-                return name + '\n' + count + ' file' + (count !== 1 ? 's' : '');
-            },
-            color: 'data(color)',
-            'text-outline-color': t.labelOutline,
-            'text-outline-width': 2,
-            'text-outline-opacity': 0.9,
-            'font-size': ele => Math.max(11, Math.min(16, (ele.data('collapsedSize') || 60) / 6)) + 'px',
-            'font-weight': '600',
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'text-margin-y': '0px',
-            'text-margin-x': '0px',
-            'text-transform': 'none',
-            'text-wrap': 'wrap',
-            'text-max-width': '120px',
-        }},
-        // Expanded directory — show folder icon
-        { selector: 'node[?isDir][!isCollapsed]', style: {
-            label: ele => ele.data('label'),
-        }},
-        // Hover on directory
-        { selector: 'node[?isDir].dir-hover', style: {
-            'border-width': 2.5,
-            'border-opacity': 0.7,
-            'overlay-color': 'data(color)',
-            'overlay-opacity': 0.04,
-        }},
-        // Collapsed hover — lift effect
-        { selector: 'node[?isCollapsed].dir-hover', style: {
-            'background-opacity': t.dark ? 0.2 : 0.14,
-            'border-opacity': 0.8,
-        }},
-        // Aggregated edges (between collapsed dirs)
-        { selector: 'edge[?isAggregated]', style: {
-            ..._baseEdgeStyle(),
-            width: 'data(aggWidth)',
-            'curve-style': 'bezier',
-            label: ele => {
-                const count = ele.data('edgeCount') || 0;
-                return count > 1 ? count + '' : '';
-            },
-            'font-size': '10px',
-            'font-weight': '600',
-            color: t.labelColor,
-            'text-outline-color': t.edgeLabelOutline,
-            'text-outline-width': 2,
-            'text-outline-opacity': 0.9,
-            'text-rotation': 'autorotate',
-            'text-margin-y': '-8px',
-        }},
-        // Normal file-level edges
-        { selector: 'edge[!isAggregated]', style: _baseEdgeStyle() },
-        { selector: 'edge.cycle', style: _cycleEdgeStyle() },
-    ];
-}
-
-// --- Build compound elements from raw graph data ---
-
-function _cBuildDirMap(data) {
-    const dirMap = new Map();
-    data.nodes.forEach(n => {
-        const dir = _cDir(n.data.id);
-        if (!dirMap.has(dir)) dirMap.set(dir, new Set());
-        dirMap.get(dir).add(n.data.id);
-    });
-    return dirMap;
-}
-
-/** Get the immediate parent directory of a directory */
-function _cParentDir(dirId) {
-    if (dirId === '.') return null;
-    const i = dirId.lastIndexOf('/');
-    return i === -1 ? '.' : dirId.substring(0, i);
-}
-
-/** Build all compound elements: directory parent nodes + file child nodes + edges */
-function _cBuildElements(data) {
-    const dirMap = _cBuildDirMap(data);
-    _compound.dirMap = dirMap;
-
-    // Collect all unique directories including intermediate ones
-    const allDirIds = new Set();
-    dirMap.forEach((files, dir) => {
-        _cAncestors(dir).forEach(d => allDirIds.add(d));
-    });
-    _compound.allDirs = [...allDirIds].sort();
-
-    const elements = [];
-
-    // 1. Create directory (parent) nodes — sorted by depth so parents are added first
-    const sortedDirs = _compound.allDirs.slice().sort((a, b) => {
-        const da = a === '.' ? 0 : a.split('/').length;
-        const db = b === '.' ? 0 : b.split('/').length;
-        return da - db;
-    });
-
-    // Skip root '.' if it's the only directory (flat project structure)
-    const skipRoot = allDirIds.size === 1 && allDirIds.has('.');
-
-    sortedDirs.forEach(dirId => {
-        if (skipRoot && dirId === '.') return;
-        const isCollapsed = _compound.collapsed.has(dirId);
-        // Skip collapsed root with no direct files — its children become top-level nodes
-        if (dirId === '.' && isCollapsed && (!dirMap.has('.') || dirMap.get('.').size === 0)) return;
-
-        const parentDir = _cParentDir(dirId);
-        const directFiles = dirMap.has(dirId) ? dirMap.get(dirId).size : 0;
-        // Count total files in this dir and all subdirs
-        let totalFiles = directFiles;
-        _compound.allDirs.forEach(d => {
-            if (d !== dirId && d.startsWith(dirId + '/')) {
-                totalFiles += (dirMap.has(d) ? dirMap.get(d).size : 0);
-            }
-        });
-        // When collapsed, count ALL files under this tree (not just direct files)
-        let collapsedFileCount = totalFiles;
-        const dirLabel = dirId === '.' ? '(root)' : dirId.split('/').pop();
-
-        const nodeData = {
-            id: 'dir:' + dirId,
-            label: dirLabel,
-            color: _cColor(dirId),
-            isDir: true,
-            isFile: false,
-            isCollapsed: isCollapsed,
-            dirId: dirId,
-            fileCount: isCollapsed ? collapsedFileCount : totalFiles,
-            collapsedSize: Math.min(120, 55 + Math.sqrt(isCollapsed ? collapsedFileCount : totalFiles) * 15),
-        };
-
-        // Set parent for nested directories.
-        // Skip if: (a) root is the only dir, or (b) the parent is collapsed
-        // (collapsed parents act as standalone nodes, not containers)
-        if (parentDir !== null && allDirIds.has(parentDir) && !(skipRoot && parentDir === '.')) {
-            const parentCollapsed = _compound.collapsed.has(parentDir);
-            if (!parentCollapsed) {
-                nodeData.parent = 'dir:' + parentDir;
-            }
-        }
-
-        elements.push({ group: 'nodes', data: nodeData });
-    });
-
-    // 2. Create file (child) nodes
-    data.nodes.forEach(n => {
-        const fileId = n.data.id;
-        const dir = _cDir(fileId);
-
-        // Check if any ancestor is collapsed — if so, hide this file
-        const ancestors = _cAncestors(dir);
-        // Ignore root '.' when skipRoot — those files should appear as top-level nodes
-        const hiddenByCollapse = ancestors.some(d =>
-            _compound.collapsed.has(d) && !(skipRoot && d === '.')
-        );
-        if (hiddenByCollapse) return;
-
-        const fileName = fileId.split('/').pop();
-        const nodeData = {
-            ...n.data,
-            id: fileId,
-            label: fileName,
-            isDir: false,
-            isFile: true,
-            isCollapsed: false,
-        };
-        // Set parent if the dir node exists and is NOT collapsed
-        if (!(skipRoot && dir === '.')) {
-            const dirCollapsed = _compound.collapsed.has(dir);
-            if (!dirCollapsed) {
-                nodeData.parent = 'dir:' + dir;
-            }
-        }
-        elements.push({ group: 'nodes', data: nodeData });
-    });
-
-    // 3. Build edges — aggregate when endpoints are inside collapsed dirs
-    const fileToVisible = {};
-    data.nodes.forEach(n => {
-        const dir = _cDir(n.data.id);
-        const ancestors = _cAncestors(dir);
-        // Find the topmost collapsed ancestor
-        let collapsedAt = null;
-        for (const a of ancestors) {
-            if (_compound.collapsed.has(a) && !(skipRoot && a === '.')) { collapsedAt = a; break; }
-        }
-        fileToVisible[n.data.id] = collapsedAt ? 'dir:' + collapsedAt : n.data.id;
-    });
-
-    const edgeCounts = new Map();
-    data.edges.forEach(e => {
-        const s = fileToVisible[e.data.source] || e.data.source;
-        const t = fileToVisible[e.data.target] || e.data.target;
-        if (s === t) return;
-        const key = s + '\t' + t;
-        edgeCounts.set(key, (edgeCounts.get(key) || 0) + 1);
-    });
-
-    edgeCounts.forEach((count, key) => {
-        const [s, t] = key.split('\t');
-        const isAgg = s.startsWith('dir:') || t.startsWith('dir:');
-        elements.push({ group: 'edges', data: {
-            id: 'e:' + s + '->' + t,
-            source: s,
-            target: t,
-            color: isAgg ? (count > 5 ? '#f97316' : count > 2 ? '#60a5fa' : '#94a3b8') : (data.edges.find(e => e.data.source === s && e.data.target === t) || { data: { color: '#94a3b8' } }).data.color,
-            isAggregated: isAgg,
-            edgeCount: count,
-            aggWidth: isAgg ? Math.min(8, 1.5 + Math.log2(count) * 1.5) : 3,
-        }});
-    });
-
-    return elements;
-}
-
-// --- Cytoscape init ---
-
-let _runningLayout = null;
-
-/** Auto-fit the graph after layout completes, with a timeout fallback.
- *  Shows the loading spinner while the layout runs and reveals the graph
- *  only once it is fully positioned and fitted — no zoom-in-then-out. */
-// _cAutoFit is now handled inside _cInitCy — kept as a no-op for any stale callers
-function _cAutoFit() {}
-
-/**
- * Initialise or hot-swap the Cytoscape graph.
- *
- * When `cy` already exists we reuse the same instance — swap elements +
- * styles in a single batch, then run the new layout.  This avoids the
- * destroy → blank → recreate stutter that plagued view switches.
- *
- * A full destroy/create only happens on the very first call (or if the
- * container was removed from the DOM, which shouldn't normally happen).
- */
-function _cInitCy(elements, styles) {
-    // 1. Stop any in-flight layout
-    if (_runningLayout) { try { _runningLayout.stop(); } catch(e) {} _runningLayout = null; }
-
-    const cyContainer = document.getElementById('cy');
-    const overlay     = document.getElementById('loading');
-    const needsCreate = !cy || cy.destroyed() || !cy.container() || !document.contains(cy.container());
-
-    if (needsCreate) {
-        // ── First-time creation (or recovery) ───────────────────────
-        if (cy) { try { cy.destroy(); } catch(e) {} }
-        cyContainer.style.visibility = 'hidden';
-        overlay.classList.add('active');
-
-        cy = cytoscape({
-            container: cyContainer,
-            elements: elements,
-            style: styles,
-            layout: { name: 'preset' },
-        });
-        attachMinimapListeners();
-    } else {
-        // ── Hot-swap: reuse the existing cy instance ────────────────
-        // Fade the canvas slightly so the brief layout frame isn't jarring
-        cyContainer.style.opacity = '0';
-        cyContainer.style.transition = 'opacity 0.12s ease-out';
-
-        cy.batch(() => {
-            cy.elements().remove();
-            cy.add(elements);
-        });
-        cy.style(styles);
-    }
-
-    // 2. Run layout, then reveal
-    const layoutCfg  = { ...getLayoutConfig(), fit: true, animate: false };
-    _runningLayout   = cy.layout(layoutCfg);
-
-    let revealed = false;
-    const reveal = () => {
-        if (revealed) return;
-        revealed = true;
-        _runningLayout = null;
-        if (!cy) return;
-        cy.fit(80);
-
-        if (needsCreate) {
-            cyContainer.style.visibility = '';
-            overlay.classList.remove('active');
-        } else {
-            // Fade back in
-            cyContainer.style.opacity = '1';
-            // Clean up the transition style after it completes
-            setTimeout(() => { cyContainer.style.transition = ''; }, 150);
-        }
-    };
-    _runningLayout.one('layoutstop', reveal);
-    setTimeout(reveal, 3000);           // safety fallback
-    _runningLayout.run();
-}
-
-function _cBindHandlers() {
-    // Remove only interaction events (not layout events like layoutstop)
-    cy.off('tap dbltap mouseover mouseout');
-    const container = cy.container();
-    cy.on('tap', 'node[?isDir]', evt => {
-        const dirId = evt.target.data('dirId');
-        if (dirId) compoundToggle(dirId);
-    });
-    cy.on('tap', 'node[?isFile]', evt => {
-        clearPathHighlight();
-        highlightPaths(evt.target.id());
-        showBlastRadius(evt.target.id());
-    });
-    cy.on('dbltap', 'node[?isFile]', evt => openPreview(evt.target.id()));
-    cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
-    cy.on('mouseover', 'node[?isDir]', evt => {
-        evt.target.addClass('dir-hover');
-        if (container) container.style.cursor = 'pointer';
-    });
-    cy.on('mouseout', 'node[?isDir]', evt => {
-        evt.target.removeClass('dir-hover');
-        if (container) container.style.cursor = '';
-    });
-    attachMinimapListeners();            // re-attach after removeAllListeners
-}
-
-function _cBindNormalHandlers() {
-    // Remove only interaction events (not layout events like layoutstop)
-    cy.off('tap dbltap mouseover mouseout');
-    cy.on('tap', 'node', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); showBlastRadius(evt.target.id()); });
-    cy.on('dbltap', 'node', evt => openPreview(evt.target.id()));
-    cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
+    // Attach minimap listeners
     attachMinimapListeners();
-}
 
-// --- Public API ---
+    // Show/hide the scope toggle and sync radio state
+    pdUpdateToggle();
+    const pdRadio = document.getElementById(_compound.active ? 'pdViewDirs' : 'pdViewFiles');
+    if (pdRadio) pdRadio.checked = true;
 
-function compoundShouldActivate(data) {
-    return data.nodes && data.nodes.length > COMPOUND_THRESHOLD;
-}
+    // Show graph status bar, path hint, and folder color key
+    if (data.nodes && data.nodes.length) {
+        document.getElementById('graphStatusBar').style.display = 'flex';
+        document.getElementById('pathHint').style.display = 'block';
+        if (!_compound.active) buildFolderColorKey(data.nodes);
+        updatePathDatalist();
+    }
 
-// Aliases for backward compat (renderGraph and other callers reference these)
-function pdShouldActivate(data) { return compoundShouldActivate(data); }
+    // --- Ref list ---
+    const refList = document.getElementById('ref-list');
+    refList.innerHTML = '';
+    const inDeg = {};
+    data.nodes.forEach(n => inDeg[n.data.id] = 0);
+    data.edges.forEach(e => { if (inDeg[e.data.target] !== undefined) inDeg[e.data.target]++; });
+    const sorted = data.nodes.map(n => ({ id: n.data.id, count: inDeg[n.data.id] })).sort((a, b) => b.count - a.count);
+    const maxC = sorted.length ? sorted[0].count : 0;
+    const godT = Math.max(10, maxC * 0.5);
+    document.getElementById('nodeCountBadge').textContent = sorted.length;
 
-/** Full render in compound mode — all dirs start collapsed */
-function compoundFullRender(data) {
-    const dirMap = _cBuildDirMap(data);
-    // Start with all directories collapsed
-    const collapsed = new Set();
-    dirMap.forEach((files, dir) => {
-        _cAncestors(dir).forEach(d => collapsed.add(d));
+    sorted.forEach(item => {
+        const isGod = item.count >= godT && item.count > 0;
+        const isOrphan = item.count === 0;
+        const div = document.createElement('div');
+        div.className = 'list-row';
+        const left = document.createElement('div');
+        left.className = 'list-row-left';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.checked = true; cb.title = 'Toggle visibility';
+        left.appendChild(cb);
+        const name = document.createElement('span');
+        name.className = 'file-name' + (isGod ? ' god' : isOrphan ? ' orphan' : '');
+        name.textContent = item.id;
+        left.appendChild(name);
+        const pill = document.createElement('span');
+        pill.className = 'count-pill';
+        pill.textContent = item.count;
+        div.appendChild(left);
+        div.appendChild(pill);
+        cb.onchange = (e) => { const n = cy.getElementById(item.id); if (n.length) n.style('display', e.target.checked ? 'element' : 'none'); };
+        name.onclick = () => { const n = cy.getElementById(item.id); if (n.length) cy.animate({ center: { eles: n }, zoom: 1.5 }, { duration: 400 }); };
+        refList.appendChild(div);
     });
 
-    _compound = { active: true, raw: data, collapsed, dirMap, allDirs: [] };
-    const elements = _cBuildElements(data);
-    _cInitCy(elements, _compoundStyles());
-    _cBindHandlers();
-    _cUpdateColorKey();
+    // --- Unused ---
+    const ul = document.getElementById('unused-list');
+    ul.innerHTML = '';
+    const unused = data.unused_files || [];
+    document.getElementById('unusedCountBadge').textContent = unused.length;
+    if (!unused.length) { ul.innerHTML = '<div class="metric-row"><span class="metric-label" style="color:var(--success);">All files are referenced</span></div>'; }
+    else unused.forEach(fid => {
+        const d = document.createElement('div');
+        d.className = 'metric-row clickable';
+        d.innerHTML = `<span class="metric-label">${fid}</span><span class="badge badge-red">0 refs</span>`;
+        d.onclick = () => { const n = cy.getElementById(fid); if (n.length) cy.animate({ center: { eles: n }, zoom: 1.5 }, { duration: 400 }); };
+        ul.appendChild(d);
+    });
 
-    // Auto-fit after layout settles (with timeout fallback for small graphs)
-    _cAutoFit();
+    // --- Coupling ---
+    const cl = document.getElementById('coupling-list');
+    cl.innerHTML = '';
+    const coupling = data.coupling || [];
+    if (!coupling.length) cl.innerHTML = '<div class="metric-row"><span class="metric-label">No cross-directory edges</span></div>';
+    else coupling.forEach(c => {
+        const d = document.createElement('div');
+        d.className = 'metric-row';
+        d.innerHTML = `<span class="metric-label">${c.dir1} ↔ ${c.dir2}</span><span class="badge ${c.score > 0.3 ? 'badge-red' : c.score > 0.1 ? 'badge-yellow' : 'badge-green'}">${c.cross_edges} (${c.score})</span>`;
+        cl.appendChild(d);
+    });
+
+    // Run post-render hooks (registered by other modules)
+    _postRenderHooks.forEach(fn => { try { fn(data); } catch(e) { console.warn('Post-render hook error:', e); } });
+}
+
+// --- Upload & Loading ---
+function handleZipSelect(e) { const f = e.target.files[0]; if (!f) return; currentUploadedFile = f; uploadZip(); e.target.value = ''; }
+
+function updateGraph() { if (currentMode === 'upload' && currentUploadedFile) uploadZip(); else loadGraph(); }
+
+function uploadZip() {
+    if (!currentUploadedFile) return;
+    currentMode = 'upload';
+    const fd = new FormData(); fd.append('file', currentUploadedFile);
+    for (const [k, v] of Object.entries(getFilterValues())) fd.append(k, v);
+    document.getElementById('loading').classList.add('active');
+    fetch('/api/upload', { method: 'POST', headers: _csrfHeaders(), body: fd })
+        .then(r => r.json()).then(d => {
+            if (d.error) { showToast('Error: ' + d.error, 5000); document.getElementById('loading').classList.remove('active'); }
+            else { currentUploadToken = d.upload_token || null; renderGraph(d); showDetectedLanguages(d.detected); showDepthWarnings(d); }
+        }).catch(err => { console.error('uploadZip error:', err); showToast('Upload failed.', 5000); document.getElementById('loading').classList.remove('active'); });
+}
+
+function getFilterValues() {
+    const m = document.querySelector('input[name="langMode"]:checked').value;
+    const common = { hide_system: document.getElementById('hideSystemHeaders').checked, hide_isolated: document.getElementById('hideIsolated').checked, filter_dir: document.getElementById('filterDirInput').value };
+    if (m === 'auto') return { mode: 'auto', ...common };
+    return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust', show_cs: m === 'cs', show_swift: m === 'swift', show_ruby: m === 'ruby' };
+}
+
+function showDetectedLanguages(det) {
+    const el = document.getElementById('detectedLangs');
+    if (!det) { el.style.display = 'none'; return; }
+    const langs = [];
+    if (det.has_c) langs.push('C'); if (det.has_h) langs.push('Headers'); if (det.has_cpp) langs.push('C++');
+    if (det.has_js) langs.push('JS/TS'); if (det.has_py) langs.push('Python'); if (det.has_java) langs.push('Java');
+    if (det.has_go) langs.push('Go'); if (det.has_rust) langs.push('Rust'); if (det.has_cs) langs.push('C#');
+    if (det.has_swift) langs.push('Swift'); if (det.has_ruby) langs.push('Ruby');
+    el.textContent = langs.length ? 'Detected: ' + langs.join(', ') : 'No supported files detected';
+    el.style.display = '';
 }
 
 // Alias for backward compat
@@ -3835,928 +3419,12 @@ function _layoutStrip(items, rects, x, y, w, h) {
             if (isHoriz) {
                 _layoutStrip(remaining, rects, x + stripSize, y, w - stripSize, h);
             } else {
-                _layoutStrip(remaining, rects, x, y + stripSize, w, h - stripSize);
+                renderGraph(d);
+                showDetectedLanguages(d.detected);
+                showDepthWarnings(d);
             }
-            return;
-        }
-    }
-
-    // All items in one strip
-    _placeStrip(stripItems, rects, x, y, isHoriz, isHoriz ? w : h, isHoriz ? h : w);
+        }).catch(err => { console.error('loadGraph error:', err); document.getElementById('loading').classList.remove('active'); });
 }
 
-function _placeStrip(items, rects, x, y, isHoriz, stripLen, crossLen) {
-    var totalArea = items.reduce(function(s, it) { return s + it.area; }, 0);
-    var offset = 0;
-
-    items.forEach(function(it) {
-        var ratio = it.area / totalArea;
-        var len = ratio * crossLen;
-
-        if (isHoriz) {
-            it.x = x; it.y = y + offset; it.w = stripLen; it.h = len;
-        } else {
-            it.x = x + offset; it.y = y; it.w = len; it.h = stripLen;
-        }
-        rects.push(it);
-        offset += len;
-    });
-}
-
-function _worstAspect(items, stripSum, sideLen, totalArea, mainLen) {
-    var stripRealLen = (stripSum / totalArea) * mainLen;
-    if (stripRealLen <= 0) return Infinity;
-    var worst = 0;
-    items.forEach(function(it) {
-        var itemLen = (it.area / stripSum) * sideLen;
-        if (itemLen <= 0) return;
-        var aspect = Math.max(stripRealLen / itemLen, itemLen / stripRealLen);
-        if (aspect > worst) worst = aspect;
-    });
-    return worst;
-}
-
-// --- Render Treemap ---
-function renderTreemap() {
-    if (!currentGraphData || !currentGraphData.nodes.length) return;
-
-    var container = document.getElementById('treemapContainer');
-    container.innerHTML = '';
-    var rect = container.getBoundingClientRect();
-    var W = rect.width;
-    var H = rect.height;
-    if (W <= 0 || H <= 0) return;
-
-    var metric = document.getElementById('treemapMetric').value;
-
-    // Build metrics
-    var inDeg = {};
-    var outDeg = {};
-    currentGraphData.nodes.forEach(function(n) { inDeg[n.data.id] = 0; outDeg[n.data.id] = 0; });
-    currentGraphData.edges.forEach(function(e) {
-        if (inDeg[e.data.target] !== undefined) inDeg[e.data.target]++;
-        if (outDeg[e.data.source] !== undefined) outDeg[e.data.source]++;
-    });
-
-    // Group files by directory
-    var dirGroups = {};
-    currentGraphData.nodes.forEach(function(n) {
-        var id = n.data.id;
-        var dir = id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.';
-        if (!dirGroups[dir]) dirGroups[dir] = { files: [], color: n.data.color };
-
-        var inb = inDeg[id] || 0;
-        var outb = outDeg[id] || 0;
-        var sizeVal;
-        switch (metric) {
-            case 'inbound':   sizeVal = inb; break;
-            case 'outbound':  sizeVal = outb; break;
-            case 'impact':    sizeVal = n.data.impact || 0; break;
-            case 'depth':     sizeVal = n.data.depth || 0; break;
-            case 'stability': sizeVal = parseFloat(n.data.stability) || 0; break;
-            default:          sizeVal = inb + outb; break;
-        }
-        dirGroups[dir].files.push({
-            id: id,
-            dir: dir,
-            value: Math.max(sizeVal, 0.3),
-            sizeValue: sizeVal,
-            inbound: inb,
-            outbound: outb,
-            impact: n.data.impact || 0,
-            stability: n.data.stability || 0,
-            color: n.data.color
-        });
-    });
-
-    // Sort dirs by total value
-    var dirNames = Object.keys(dirGroups).sort(function(a, b) {
-        var sumA = dirGroups[a].files.reduce(function(s, f) { return s + f.value; }, 0);
-        var sumB = dirGroups[b].files.reduce(function(s, f) { return s + f.value; }, 0);
-        return sumB - sumA;
-    });
-
-    // Top-level items: one per directory
-    var topItems = dirNames.map(function(dir) {
-        return {
-            dir: dir,
-            value: dirGroups[dir].files.reduce(function(s, f) { return s + f.value; }, 0),
-            color: dirGroups[dir].color,
-            files: dirGroups[dir].files.sort(function(a, b) { return b.value - a.value; })
-        };
-    });
-
-    // Layout directories
-    var pad = 2;
-    var dirRects = _squarify(topItems, pad, pad, W - pad * 2, H - pad * 2);
-
-    // For each directory, sub-layout files
-    dirRects.forEach(function(dr) {
-        // Directory group container
-        var groupEl = document.createElement('div');
-        groupEl.className = 'tm-group';
-        groupEl.style.cssText = 'left:' + dr.x + 'px;top:' + dr.y + 'px;width:' + dr.w + 'px;height:' + dr.h + 'px;';
-
-        var headerH = 18;
-        if (dr.w > 40 && dr.h > 20) {
-            var label = document.createElement('div');
-            label.className = 'tm-group-label';
-            label.textContent = dr.dir;
-            label.style.background = 'linear-gradient(to bottom, ' + _adjustColor(dr.color, -30) + ', transparent)';
-            groupEl.appendChild(label);
-        }
-
-        container.appendChild(groupEl);
-
-        // Sub-layout files
-        var innerPad = 1;
-        var innerY = dr.y + headerH;
-        var innerH = dr.h - headerH;
-        if (innerH < 4) return;
-
-        var fileRects = _squarify(dr.files, dr.x + innerPad, innerY + innerPad, dr.w - innerPad * 2, innerH - innerPad * 2);
-
-        fileRects.forEach(function(fr) {
-            var cell = document.createElement('div');
-            cell.className = 'tm-cell';
-            cell.style.cssText = 'left:' + fr.x + 'px;top:' + fr.y + 'px;width:' + fr.w + 'px;height:' + fr.h + 'px;background:' + fr.color + ';';
-
-            // Label if large enough
-            if (fr.w > 50 && fr.h > 24) {
-                var fname = fr.id.includes('/') ? fr.id.substring(fr.id.lastIndexOf('/') + 1) : fr.id;
-                var lbl = document.createElement('div');
-                lbl.className = 'tm-cell-label';
-                lbl.textContent = fname;
-                cell.appendChild(lbl);
-
-                if (fr.h > 38) {
-                    var val = document.createElement('div');
-                    val.className = 'tm-cell-value';
-                    val.textContent = metric === 'stability' ? parseFloat(fr.sizeValue).toFixed(2) : fr.sizeValue;
-                    cell.appendChild(val);
-                }
-            }
-
-            // Tooltip
-            cell.addEventListener('mouseenter', function(e) { _tmShowTooltip(e, fr); });
-            cell.addEventListener('mousemove', function(e) { _positionTooltip(e); });
-            cell.addEventListener('mouseleave', _tmHideTooltip);
-
-            // Click: switch to graph and zoom to node
-            cell.addEventListener('click', function() {
-                switchView('graph');
-                document.getElementById('viewGraph').checked = true;
-                setTimeout(function() {
-                    if (cy) {
-                        var node = cy.getElementById(fr.id);
-                        if (node.length) {
-                            highlightPaths(fr.id);
-                            showBlastRadius(fr.id);
-                            cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 400 });
-                        }
-                    }
-                }, 100);
-            });
-
-            container.appendChild(cell);
-        });
-    });
-}
-
-function _adjustColor(hex, amount) {
-    hex = hex.replace('#', '');
-    var num = parseInt(hex, 16);
-    var r = Math.min(255, Math.max(0, ((num >> 16) & 0xff) + amount));
-    var g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amount));
-    var b = Math.min(255, Math.max(0, (num & 0xff) + amount));
-    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-}
-
-// Re-render views on resize
-window.addEventListener('resize', function() {
-    if (_currentView === 'treemap') renderTreemap();
-    if (_currentView === 'matrix') renderMatrix();
-});
-
-// ================================================================
-// MATRIX VIEW
-// ================================================================
-function renderMatrix() {
-    var container = document.getElementById('matrixContainer');
-    container.innerHTML = '';
-    if (!currentGraphData || !currentGraphData.nodes.length) return;
-
-    var nodes = currentGraphData.nodes.slice();
-    var edges = currentGraphData.edges;
-
-    // Build adjacency set: source -> Set(target)
-    var adj = {};
-    edges.forEach(function(e) {
-        var s = e.data.source, t = e.data.target;
-        if (!adj[s]) adj[s] = new Set();
-        adj[s].add(t);
-    });
-
-    // Sort nodes by directory then filename for cluster visibility
-    nodes.sort(function(a, b) {
-        var aId = a.data.id, bId = b.data.id;
-        var aDir = aId.includes('/') ? aId.substring(0, aId.lastIndexOf('/')) : '';
-        var bDir = bId.includes('/') ? bId.substring(0, bId.lastIndexOf('/')) : '';
-        if (aDir !== bDir) return aDir.localeCompare(bDir);
-        return aId.localeCompare(bId);
-    });
-
-    var ids = nodes.map(function(n) { return n.data.id; });
-    var colorMap = {};
-    nodes.forEach(function(n) { colorMap[n.data.id] = n.data.color; });
-
-    // Pre-compute directory boundaries for separator lines
-    var dirs = ids.map(function(id) {
-        return id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.';
-    });
-    var dirBoundaries = new Set();
-    for (var d = 1; d < dirs.length; d++) {
-        if (dirs[d] !== dirs[d - 1]) dirBoundaries.add(d);
-    }
-
-    // Build short labels (filename only, disambiguate if needed)
-    var shortLabels = {};
-    var nameCount = {};
-    ids.forEach(function(id) {
-        var name = id.includes('/') ? id.substring(id.lastIndexOf('/') + 1) : id;
-        nameCount[name] = (nameCount[name] || 0) + 1;
-    });
-    ids.forEach(function(id) {
-        var name = id.includes('/') ? id.substring(id.lastIndexOf('/') + 1) : id;
-        shortLabels[id] = nameCount[name] > 1 ? id : name;
-    });
-
-    var n = ids.length;
-
-    // ---- Wrapper layout ----
-    var wrapper = document.createElement('div');
-    wrapper.className = 'matrix-wrapper';
-
-    // ---- Summary stats bar ----
-    var stats = document.createElement('div');
-    stats.className = 'matrix-stats';
-    var edgeCount = edges.length;
-    var maxPossible = n * (n - 1);
-    var density = maxPossible > 0 ? (edgeCount / maxPossible * 100).toFixed(1) : '0';
-    stats.innerHTML =
-        '<span class="matrix-stat">' + n + ' files</span>' +
-        '<span class="matrix-stat-sep"></span>' +
-        '<span class="matrix-stat">' + edgeCount + ' dependencies</span>' +
-        '<span class="matrix-stat-sep"></span>' +
-        '<span class="matrix-stat">Density: ' + density + '%</span>' +
-        '<span class="matrix-stat-sep"></span>' +
-        '<span class="matrix-stat matrix-stat-hint">' +
-            '<svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="var(--primary)" opacity="0.85"/></svg>' +
-            ' Colored cell = row file imports column file' +
-        '</span>' +
-        '<span class="matrix-stat-sep"></span>' +
-        '<span class="matrix-stat matrix-stat-hint">Click a cell to jump to that edge in the graph</span>';
-    wrapper.appendChild(stats);
-
-    // ---- Scrollable grid area ----
-    var scrollArea = document.createElement('div');
-    scrollArea.className = 'matrix-scroll';
-
-    // Generous cell size — the grid scrolls, so don't over-shrink
-    var cellSize = n <= 20 ? 32 : n <= 50 ? 26 : 20;
-
-    var gridW = n * cellSize;
-    var gridH = n * cellSize;
-    var headerH = Math.min(160, Math.max(80, cellSize * 4));
-
-    // Create canvas for the grid (much faster than DOM for large matrices)
-    var canvas = document.createElement('canvas');
-    var dpr = window.devicePixelRatio || 1;
-    canvas.width = gridW * dpr;
-    canvas.height = gridH * dpr;
-    canvas.className = 'matrix-canvas';
-    canvas.style.width = gridW + 'px';
-    canvas.style.height = gridH + 'px';
-
-    var ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-
-    // Draw cells
-    for (var row = 0; row < n; row++) {
-        for (var col = 0; col < n; col++) {
-            var x = col * cellSize;
-            var y = row * cellSize;
-
-            if (row === col) {
-                ctx.fillStyle = getCssVar('--bg-sunken');
-                ctx.fillRect(x, y, cellSize, cellSize);
-            } else if (adj[ids[row]] && adj[ids[row]].has(ids[col])) {
-                var color = colorMap[ids[row]] || '#6366f1';
-                ctx.fillStyle = color;
-                ctx.globalAlpha = 0.85;
-                ctx.fillRect(x, y, cellSize, cellSize);
-                ctx.globalAlpha = 1;
-            }
-        }
-    }
-
-    // Draw directory boundary lines
-    ctx.strokeStyle = getCssVar('--primary');
-    ctx.globalAlpha = 0.25;
-    ctx.lineWidth = 1;
-    dirBoundaries.forEach(function(idx) {
-        var pos = idx * cellSize;
-        ctx.beginPath();
-        ctx.moveTo(pos, 0); ctx.lineTo(pos, gridH);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, pos); ctx.lineTo(gridW, pos);
-        ctx.stroke();
-    });
-    ctx.globalAlpha = 1;
-
-    // Draw subtle grid lines
-    ctx.strokeStyle = getCssVar('--border');
-    ctx.globalAlpha = 0.3;
-    ctx.lineWidth = 0.5;
-    for (var i = 0; i <= n; i++) {
-        var p = i * cellSize;
-        ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, gridH); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(gridW, p); ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-
-    // ---- Row labels (left side) ----
-    var rowLabels = document.createElement('div');
-    rowLabels.className = 'matrix-row-labels';
-    rowLabels.style.height = gridH + 'px';
-    for (var r = 0; r < n; r++) {
-        var rl = document.createElement('div');
-        rl.className = 'matrix-label matrix-row-label';
-        rl.style.height = cellSize + 'px';
-        rl.style.lineHeight = cellSize + 'px';
-        if (dirBoundaries.has(r)) rl.classList.add('matrix-label-boundary');
-        var dot = document.createElement('span');
-        dot.className = 'matrix-label-dot';
-        dot.style.background = colorMap[ids[r]] || '#6366f1';
-        rl.appendChild(dot);
-        var span = document.createElement('span');
-        span.className = 'matrix-label-text';
-        span.textContent = shortLabels[ids[r]];
-        span.title = ids[r];
-        rl.appendChild(span);
-        rowLabels.appendChild(rl);
-    }
-
-    // ---- Column labels (top) ----
-    var colLabels = document.createElement('div');
-    colLabels.className = 'matrix-col-labels';
-    colLabels.style.width = gridW + 'px';
-    colLabels.style.height = headerH + 'px';
-    for (var c = 0; c < n; c++) {
-        var cl = document.createElement('div');
-        cl.className = 'matrix-label matrix-col-label';
-        cl.style.width = cellSize + 'px';
-        cl.style.left = (c * cellSize) + 'px';
-        cl.style.height = headerH + 'px';
-        if (dirBoundaries.has(c)) cl.classList.add('matrix-label-boundary');
-        var cspan = document.createElement('span');
-        cspan.className = 'matrix-label-text';
-        cspan.textContent = shortLabels[ids[c]];
-        cspan.title = ids[c];
-        cl.appendChild(cspan);
-        colLabels.appendChild(cl);
-    }
-
-    // ---- Assemble grid layout ----
-    var corner = document.createElement('div');
-    corner.className = 'matrix-corner';
-    corner.style.height = headerH + 'px';
-    corner.innerHTML = '<span class="matrix-corner-label">← imports →</span>';
-
-    var topRow = document.createElement('div');
-    topRow.className = 'matrix-top-row';
-    topRow.appendChild(corner);
-    topRow.appendChild(colLabels);
-
-    var bodyRow = document.createElement('div');
-    bodyRow.className = 'matrix-body-row';
-    bodyRow.appendChild(rowLabels);
-
-    var canvasWrap = document.createElement('div');
-    canvasWrap.className = 'matrix-canvas-wrap';
-    canvasWrap.appendChild(canvas);
-    bodyRow.appendChild(canvasWrap);
-
-    scrollArea.appendChild(topRow);
-    scrollArea.appendChild(bodyRow);
-    wrapper.appendChild(scrollArea);
-
-    // ---- Hover tooltip & crosshair ----
-    var tip = document.createElement('div');
-    tip.className = 'matrix-tip';
-    wrapper.appendChild(tip);
-
-    var hRow = document.createElement('div');
-    hRow.className = 'matrix-highlight-row';
-    canvasWrap.appendChild(hRow);
-    var hCol = document.createElement('div');
-    hCol.className = 'matrix-highlight-col';
-    canvasWrap.appendChild(hCol);
-
-    canvas.addEventListener('mousemove', function(e) {
-        var rect = canvas.getBoundingClientRect();
-        var mx = e.clientX - rect.left;
-        var my = e.clientY - rect.top;
-        var col = Math.floor(mx / cellSize);
-        var row = Math.floor(my / cellSize);
-        if (row < 0 || row >= n || col < 0 || col >= n) {
-            tip.style.display = 'none';
-            hRow.style.display = 'none';
-            hCol.style.display = 'none';
-            clearLabelHighlights();
-            return;
-        }
-
-        hRow.style.display = 'block';
-        hRow.style.top = (row * cellSize) + 'px';
-        hRow.style.height = cellSize + 'px';
-        hCol.style.display = 'block';
-        hCol.style.left = (col * cellSize) + 'px';
-        hCol.style.width = cellSize + 'px';
-
-        highlightLabels(row, col);
-
-        var source = ids[row], target = ids[col];
-        var hasDep = adj[source] && adj[source].has(target);
-        var hasReverse = adj[target] && adj[target].has(source);
-
-        var html = '<div class="matrix-tip-files">' +
-            '<span class="matrix-tip-source">' + _escapeHtml(shortLabels[source]) + '</span>' +
-            '<span class="matrix-tip-arrow">' + (hasDep ? '→' : '·') + '</span>' +
-            '<span class="matrix-tip-target">' + _escapeHtml(shortLabels[target]) + '</span></div>';
-
-        if (row === col) {
-            html += '<div class="matrix-tip-status">Self (diagonal)</div>';
-        } else if (hasDep && hasReverse) {
-            html += '<div class="matrix-tip-status matrix-tip-mutual">Mutual dependency</div>';
-        } else if (hasDep) {
-            html += '<div class="matrix-tip-status matrix-tip-yes">Depends on</div>';
-        } else {
-            html += '<div class="matrix-tip-status matrix-tip-no">No dependency</div>';
-        }
-
-        tip.innerHTML = html;
-        tip.style.display = 'block';
-
-        var wrapRect = wrapper.getBoundingClientRect();
-        var tx = e.clientX - wrapRect.left + 14;
-        var ty = e.clientY - wrapRect.top + 14;
-        if (tx + 200 > wrapRect.width) tx = e.clientX - wrapRect.left - 200;
-        if (ty + 60 > wrapRect.height) ty = e.clientY - wrapRect.top - 60;
-        tip.style.left = tx + 'px';
-        tip.style.top = ty + 'px';
-    });
-
-    canvas.addEventListener('mouseleave', function() {
-        tip.style.display = 'none';
-        hRow.style.display = 'none';
-        hCol.style.display = 'none';
-        clearLabelHighlights();
-    });
-
-    // Click a cell → switch to graph and focus that edge
-    canvas.addEventListener('click', function(e) {
-        var rect = canvas.getBoundingClientRect();
-        var col = Math.floor((e.clientX - rect.left) / cellSize);
-        var row = Math.floor((e.clientY - rect.top) / cellSize);
-        if (row < 0 || row >= n || col < 0 || col >= n) return;
-        var source = ids[row], target = ids[col];
-        var hasDep = adj[source] && adj[source].has(target);
-        if (hasDep && cy) {
-            document.getElementById('viewGraph').checked = true;
-            switchView('graph');
-            var srcNode = cy.getElementById(source);
-            var tgtNode = cy.getElementById(target);
-            if (srcNode.length && tgtNode.length) {
-                cy.animate({ fit: { eles: srcNode.union(tgtNode), padding: 80 } }, { duration: 400 });
-                setTimeout(function() {
-                    highlightPaths(source);
-                }, 450);
-            }
-        }
-    });
-
-    function highlightLabels(row, col) {
-        var rlc = rowLabels.children;
-        var clc = colLabels.children;
-        for (var i = 0; i < n; i++) {
-            rlc[i].classList.toggle('matrix-label-active', i === row);
-            clc[i].classList.toggle('matrix-label-active', i === col);
-        }
-    }
-
-    function clearLabelHighlights() {
-        var rlc = rowLabels.children;
-        var clc = colLabels.children;
-        for (var i = 0; i < n; i++) {
-            rlc[i].classList.remove('matrix-label-active');
-            clc[i].classList.remove('matrix-label-active');
-        }
-    }
-
-    container.appendChild(wrapper);
-}
-
-function getCssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
-
-// ================================================================
-// INSIGHTS MODAL
-// ================================================================
-let _insightsData = null;
-
-function openInsights() {
-    if (!currentGraphData || !currentGraphData.nodes.length) {
-        showToast('Load a graph first to see insights');
-        return;
-    }
-    _insightsData = computeInsights();
-    renderInsightsModal(_insightsData);
-    document.getElementById('insightsModal').classList.add('open');
-}
-
-function closeInsights() {
-    document.getElementById('insightsModal').classList.remove('open');
-}
-
-function computeInsights() {
-    var data = currentGraphData;
-    var nodes = data.nodes;
-    var edges = data.edges;
-    var n = nodes.length;
-
-    // ---- Degree maps ----
-    var inDeg = {}, outDeg = {};
-    nodes.forEach(function(nd) { inDeg[nd.data.id] = 0; outDeg[nd.data.id] = 0; });
-    edges.forEach(function(e) {
-        if (inDeg[e.data.target] !== undefined) inDeg[e.data.target]++;
-        if (outDeg[e.data.source] !== undefined) outDeg[e.data.source]++;
-    });
-
-    // ---- Overview ----
-    var maxPossible = n * (n - 1);
-    var density = maxPossible > 0 ? +(edges.length / maxPossible * 100).toFixed(1) : 0;
-
-    var dirSet = new Set();
-    nodes.forEach(function(nd) {
-        var id = nd.data.id;
-        dirSet.add(id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.');
-    });
-
-    var overview = {
-        files: n,
-        edges: edges.length,
-        directories: dirSet.size,
-        density: density
-    };
-
-    // ---- Cycles ----
-    var cycles = data.cycles || [];
-    var filesInCycles = new Set();
-    cycles.forEach(function(c) { c.forEach(function(f) { filesInCycles.add(f); }); });
-
-    // ---- God files ----
-    var maxC = 0;
-    nodes.forEach(function(nd) { maxC = Math.max(maxC, inDeg[nd.data.id]); });
-    var godT = Math.max(10, maxC * 0.5);
-    var godFiles = [];
-    nodes.forEach(function(nd) {
-        var c = inDeg[nd.data.id];
-        if (c >= godT && c > 0) godFiles.push({ id: nd.data.id, inbound: c });
-    });
-    godFiles.sort(function(a, b) { return b.inbound - a.inbound; });
-
-    // ---- Unused / orphan files ----
-    var unusedFiles = [];
-    nodes.forEach(function(nd) {
-        if (inDeg[nd.data.id] === 0) unusedFiles.push(nd.data.id);
-    });
-
-    // ---- High fan-out (files importing many things) ----
-    var sorted_out = nodes.map(function(nd) { return { id: nd.data.id, out: outDeg[nd.data.id] }; })
-        .sort(function(a, b) { return b.out - a.out; });
-    var fanOutThreshold = Math.max(8, sorted_out.length > 0 ? sorted_out[0].out * 0.4 : 0);
-    var highFanOut = sorted_out.filter(function(f) { return f.out >= fanOutThreshold && f.out > 0; });
-
-    // ---- Hub files (high in AND high out) ----
-    var hubs = [];
-    nodes.forEach(function(nd) {
-        var i = inDeg[nd.data.id], o = outDeg[nd.data.id];
-        if (i >= 5 && o >= 5) hubs.push({ id: nd.data.id, inbound: i, outbound: o, total: i + o });
-    });
-    hubs.sort(function(a, b) { return b.total - a.total; });
-
-    // ---- Deep chains ----
-    var deepFiles = [];
-    nodes.forEach(function(nd) {
-        var d = nd.data.depth || 0;
-        if (d >= 5) deepFiles.push({ id: nd.data.id, depth: d });
-    });
-    deepFiles.sort(function(a, b) { return b.depth - a.depth; });
-
-    // ---- High-impact files ----
-    var highImpact = [];
-    nodes.forEach(function(nd) {
-        var imp = nd.data.impact || 0;
-        if (imp >= 5) highImpact.push({ id: nd.data.id, impact: imp, pct: +(imp / n * 100).toFixed(1) });
-    });
-    highImpact.sort(function(a, b) { return b.impact - a.impact; });
-
-    // ---- Unstable files that are heavily depended on ----
-    var unstableCore = [];
-    nodes.forEach(function(nd) {
-        var s = parseFloat(nd.data.stability) || 0;
-        var i = inDeg[nd.data.id];
-        if (s > 0.7 && i >= 3) unstableCore.push({ id: nd.data.id, stability: s, inbound: i });
-    });
-    unstableCore.sort(function(a, b) { return b.inbound - a.inbound; });
-
-    // ---- Coupling ----
-    var coupling = (data.coupling || []).filter(function(c) { return c.score > 0.1; });
-
-    // ---- Health score (0-100) ----
-    var score = 100;
-    // Penalize cycles heavily
-    score -= Math.min(30, cycles.length * 10);
-    // Penalize god files
-    score -= Math.min(15, godFiles.length * 5);
-    // Penalize high coupling
-    var highCoupling = coupling.filter(function(c) { return c.score > 0.3; });
-    score -= Math.min(15, highCoupling.length * 5);
-    // Penalize many unused files (relative)
-    if (n > 0) score -= Math.min(10, Math.round(unusedFiles.length / n * 30));
-    // Penalize unstable core files
-    score -= Math.min(10, unstableCore.length * 3);
-    // Penalize deep chains
-    score -= Math.min(10, deepFiles.length * 2);
-    // Penalize hub files
-    score -= Math.min(10, hubs.length * 3);
-    score = Math.max(0, Math.min(100, score));
-
-    return {
-        overview: overview,
-        score: score,
-        cycles: { count: cycles.length, files: Array.from(filesInCycles), chains: cycles },
-        godFiles: godFiles,
-        unusedFiles: unusedFiles,
-        highFanOut: highFanOut.slice(0, 10),
-        hubs: hubs.slice(0, 10),
-        deepFiles: deepFiles.slice(0, 10),
-        highImpact: highImpact.slice(0, 10),
-        unstableCore: unstableCore.slice(0, 10),
-        coupling: coupling
-    };
-}
-
-function renderInsightsModal(ins) {
-    var body = document.getElementById('insightsBody');
-    body.innerHTML = '';
-
-    // ---- Health score + overview ----
-    var scoreColor = ins.score >= 80 ? 'var(--success)' : ins.score >= 50 ? 'var(--warning)' : 'var(--danger)';
-    var scoreLabel = ins.score >= 80 ? 'Healthy' : ins.score >= 50 ? 'Needs Attention' : 'At Risk';
-
-    body.innerHTML += '<div class="ins-score-row">' +
-        '<div class="ins-score-ring" style="--score-color:' + scoreColor + ';--score-pct:' + ins.score + '">' +
-            '<svg viewBox="0 0 36 36"><path class="ins-score-bg" d="M18 2.0845a15.9155 15.9155 0 1 1 0 31.831 15.9155 15.9155 0 1 1 0-31.831"/>' +
-            '<path class="ins-score-arc" stroke="' + scoreColor + '" stroke-dasharray="' + ins.score + ', 100" d="M18 2.0845a15.9155 15.9155 0 1 1 0 31.831 15.9155 15.9155 0 1 1 0-31.831"/></svg>' +
-            '<span class="ins-score-num">' + ins.score + '</span>' +
-        '</div>' +
-        '<div class="ins-score-info">' +
-            '<div class="ins-score-label" style="color:' + scoreColor + '">' + scoreLabel + '</div>' +
-            '<div class="ins-overview-stats">' +
-                stat(ins.overview.files, 'files') +
-                stat(ins.overview.edges, 'dependencies') +
-                stat(ins.overview.directories, 'directories') +
-                stat(ins.overview.density + '%', 'density') +
-            '</div>' +
-        '</div>' +
-    '</div>';
-
-    // ---- Issue sections ----
-    var issues = [];
-
-    if (ins.cycles.count > 0) {
-        issues.push(section('danger', 'Circular Dependencies',
-            ins.cycles.count + ' cycle' + (ins.cycles.count > 1 ? 's' : '') + ' involving ' + ins.cycles.files.length + ' files',
-            'Circular imports make code hard to reason about, test, and refactor. Break cycles by extracting shared logic into a separate module.',
-            fileList(ins.cycles.files)));
-    }
-
-    if (ins.godFiles.length > 0) {
-        issues.push(section('warning', 'God Files',
-            ins.godFiles.length + ' file' + (ins.godFiles.length > 1 ? 's' : '') + ' with very high inbound dependencies',
-            'These files are imported by a large portion of the codebase. Changes to them have wide blast radius. Consider splitting into smaller, focused modules.',
-            fileListWithBadge(ins.godFiles, function(f) { return f.inbound + ' refs'; }, 'badge-orange')));
-    }
-
-    if (ins.hubs.length > 0) {
-        issues.push(section('warning', 'Hub Files',
-            ins.hubs.length + ' file' + (ins.hubs.length > 1 ? 's' : '') + ' with high inbound AND outbound',
-            'Hub files are both heavily depended on and depend on many things themselves. They\'re the hardest files to refactor safely.',
-            fileListWithBadge(ins.hubs, function(f) { return 'in:' + f.inbound + ' out:' + f.outbound; }, 'badge-orange')));
-    }
-
-    if (ins.unstableCore.length > 0) {
-        issues.push(section('warning', 'Unstable Core Files',
-            ins.unstableCore.length + ' heavily-imported file' + (ins.unstableCore.length > 1 ? 's' : '') + ' with high instability',
-            'These files are depended on by many others but also import many things themselves (instability > 0.7). A change in their dependencies ripples outward. Stabilize them by reducing their outbound imports.',
-            fileListWithBadge(ins.unstableCore, function(f) { return 'I=' + f.stability + ' · ' + f.inbound + ' refs'; }, 'badge-red')));
-    }
-
-    if (ins.coupling.length > 0) {
-        var highC = ins.coupling.filter(function(c) { return c.score > 0.3; });
-        var medC = ins.coupling.filter(function(c) { return c.score <= 0.3; });
-        var couplingHtml = '';
-        ins.coupling.forEach(function(c) {
-            var color = c.score > 0.3 ? 'badge-red' : 'badge-yellow';
-            couplingHtml += '<div class="ins-file-row"><span class="ins-file-name">' + _escapeHtml(c.dir1) + ' ↔ ' + _escapeHtml(c.dir2) + '</span>' +
-                '<span class="ins-badge ' + color + '">' + c.cross_edges + ' edges · ' + c.score + '</span></div>';
-        });
-        issues.push(section(highC.length > 0 ? 'warning' : 'info', 'Directory Coupling',
-            ins.coupling.length + ' cross-directory relationship' + (ins.coupling.length > 1 ? 's' : '') + ' above 10%',
-            'High coupling between directories suggests they may belong together, or that an interface boundary should be introduced.',
-            couplingHtml));
-    }
-
-    if (ins.highImpact.length > 0) {
-        issues.push(section('info', 'High-Impact Files',
-            ins.highImpact.length + ' file' + (ins.highImpact.length > 1 ? 's' : '') + ' affecting 5+ others transitively',
-            'Changing these files can trigger a cascade through the dependency graph. Prioritize test coverage and careful review for these.',
-            fileListWithBadge(ins.highImpact, function(f) { return f.impact + ' files (' + f.pct + '%)'; }, 'badge-blue')));
-    }
-
-    if (ins.highFanOut.length > 0) {
-        issues.push(section('info', 'High Fan-Out',
-            ins.highFanOut.length + ' file' + (ins.highFanOut.length > 1 ? 's' : '') + ' importing many dependencies',
-            'Files that import a lot of things tend to break more often. Consider whether they\'re doing too much and could be split.',
-            fileListWithBadge(ins.highFanOut, function(f) { return f.out + ' imports'; }, 'badge-blue')));
-    }
-
-    if (ins.deepFiles.length > 0) {
-        issues.push(section('info', 'Deep Dependency Chains',
-            ins.deepFiles.length + ' file' + (ins.deepFiles.length > 1 ? 's' : '') + ' with import chains 5+ deep',
-            'Long transitive chains slow down understanding and make debugging harder. Look for opportunities to flatten the hierarchy.',
-            fileListWithBadge(ins.deepFiles, function(f) { return 'depth ' + f.depth; }, 'badge-blue')));
-    }
-
-    if (ins.unusedFiles.length > 0) {
-        issues.push(section('info', 'Unused Files',
-            ins.unusedFiles.length + ' file' + (ins.unusedFiles.length > 1 ? 's' : '') + ' with zero inbound references',
-            'These files are never imported. Some may be entry points (main, index) which is normal, but others could be dead code worth removing.',
-            fileList(ins.unusedFiles.slice(0, 15), ins.unusedFiles.length > 15 ? '...and ' + (ins.unusedFiles.length - 15) + ' more' : '')));
-    }
-
-    if (issues.length === 0) {
-        body.innerHTML += '<div class="ins-empty">No issues found — looking clean!</div>';
-    } else {
-        body.innerHTML += issues.join('');
-    }
-
-    // ---- Helper functions ----
-    function stat(value, label) {
-        return '<div class="ins-stat"><span class="ins-stat-val">' + value + '</span><span class="ins-stat-label">' + label + '</span></div>';
-    }
-
-    function section(severity, title, subtitle, advice, content) {
-        var icon;
-        if (severity === 'danger') icon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
-        else if (severity === 'warning') icon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
-        else icon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>';
-
-        return '<div class="ins-section ins-' + severity + '">' +
-            '<div class="ins-section-header">' +
-                '<div class="ins-section-icon">' + icon + '</div>' +
-                '<div class="ins-section-title">' +
-                    '<div class="ins-section-name">' + title + '</div>' +
-                    '<div class="ins-section-sub">' + subtitle + '</div>' +
-                '</div>' +
-            '</div>' +
-            '<div class="ins-section-advice">' + advice + '</div>' +
-            '<div class="ins-section-content">' + content + '</div>' +
-        '</div>';
-    }
-
-    function fileList(files, suffix) {
-        var html = '';
-        files.forEach(function(f) {
-            html += '<div class="ins-file-row"><span class="ins-file-name">' + _escapeHtml(f) + '</span></div>';
-        });
-        if (suffix) html += '<div class="ins-file-row ins-file-more">' + suffix + '</div>';
-        return html;
-    }
-
-    function fileListWithBadge(files, badgeFn, badgeClass) {
-        var html = '';
-        files.forEach(function(f) {
-            html += '<div class="ins-file-row"><span class="ins-file-name">' + _escapeHtml(f.id) + '</span>' +
-                '<span class="ins-badge ' + badgeClass + '">' + badgeFn(f) + '</span></div>';
-        });
-        return html;
-    }
-}
-
-// ---- Export ----
-function exportInsights(format) {
-    if (!_insightsData) return;
-    var content, filename, mime;
-
-    if (format === 'json') {
-        content = JSON.stringify(_insightsData, null, 2);
-        filename = 'depgraph-insights.json';
-        mime = 'application/json';
-    } else {
-        content = buildInsightsMarkdown(_insightsData);
-        filename = 'depgraph-insights.md';
-        mime = 'text/markdown';
-    }
-
-    var blob = new Blob([content], { type: mime });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    showToast('Exported ' + filename);
-}
-
-function buildInsightsMarkdown(ins) {
-    var md = '# DepGraph — Project Insights\n\n';
-    md += '**Health Score: ' + ins.score + '/100**\n\n';
-    md += '| Metric | Value |\n|--------|-------|\n';
-    md += '| Files | ' + ins.overview.files + ' |\n';
-    md += '| Dependencies | ' + ins.overview.edges + ' |\n';
-    md += '| Directories | ' + ins.overview.directories + ' |\n';
-    md += '| Density | ' + ins.overview.density + '% |\n\n';
-
-    if (ins.cycles.count > 0) {
-        md += '## Circular Dependencies\n\n';
-        md += ins.cycles.count + ' cycle(s) involving ' + ins.cycles.files.length + ' files:\n\n';
-        ins.cycles.files.forEach(function(f) { md += '- `' + f + '`\n'; });
-        md += '\n';
-    }
-
-    if (ins.godFiles.length > 0) {
-        md += '## God Files\n\n';
-        ins.godFiles.forEach(function(f) { md += '- `' + f.id + '` — ' + f.inbound + ' inbound refs\n'; });
-        md += '\n';
-    }
-
-    if (ins.hubs.length > 0) {
-        md += '## Hub Files\n\n';
-        ins.hubs.forEach(function(f) { md += '- `' + f.id + '` — in:' + f.inbound + ' out:' + f.outbound + '\n'; });
-        md += '\n';
-    }
-
-    if (ins.unstableCore.length > 0) {
-        md += '## Unstable Core Files\n\n';
-        ins.unstableCore.forEach(function(f) { md += '- `' + f.id + '` — instability=' + f.stability + ', ' + f.inbound + ' refs\n'; });
-        md += '\n';
-    }
-
-    if (ins.coupling.length > 0) {
-        md += '## Directory Coupling\n\n';
-        ins.coupling.forEach(function(c) { md += '- `' + c.dir1 + '` ↔ `' + c.dir2 + '` — ' + c.cross_edges + ' edges, score=' + c.score + '\n'; });
-        md += '\n';
-    }
-
-    if (ins.highImpact.length > 0) {
-        md += '## High-Impact Files\n\n';
-        ins.highImpact.forEach(function(f) { md += '- `' + f.id + '` — affects ' + f.impact + ' files (' + f.pct + '%)\n'; });
-        md += '\n';
-    }
-
-    if (ins.highFanOut.length > 0) {
-        md += '## High Fan-Out\n\n';
-        ins.highFanOut.forEach(function(f) { md += '- `' + f.id + '` — ' + f.out + ' imports\n'; });
-        md += '\n';
-    }
-
-    if (ins.deepFiles.length > 0) {
-        md += '## Deep Dependency Chains\n\n';
-        ins.deepFiles.forEach(function(f) { md += '- `' + f.id + '` — depth ' + f.depth + '\n'; });
-        md += '\n';
-    }
-
-    if (ins.unusedFiles.length > 0) {
-        md += '## Unused Files\n\n';
-        ins.unusedFiles.forEach(function(f) { md += '- `' + f + '`\n'; });
-        md += '\n';
-    }
-
-    md += '\n---\n*Generated by DepGraph*\n';
-    return md;
-}
-
+// --- Init ---
+window.addEventListener('DOMContentLoaded', () => _applyDevMode());
