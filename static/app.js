@@ -52,6 +52,92 @@ function _handleApiError(err, fallbackMsg = 'Something went wrong.') {
 }
 
 // ============================================================
+// COLOR MODE — risk vs language
+// ============================================================
+
+const RISK_PALETTE = {
+    critical: '#ef4444',
+    high:     '#f97316',
+    warning:  '#eab308',
+    normal:   '#3b82f6',
+    entry:    '#22c55e',
+    system:   '#6b7280',
+};
+const RISK_LABELS = {
+    critical: 'Critical / God file',
+    high:     'High influence',
+    warning:  'High dependency',
+    normal:   'Normal',
+    entry:    'Entry point / leaf',
+    system:   'System / external',
+};
+
+let _colorMode = 'risk';  // 'risk' or 'directory'
+
+function changeColorMode(mode) {
+    _colorMode = mode;
+    if (!cy || !currentGraphData) return;
+
+    // Only swap colors — sizes stay the same so the graph doesn't jump
+    cy.batch(() => {
+        cy.nodes().forEach(n => {
+            if (mode === 'risk') {
+                const riskColor = n.data('risk_color') || RISK_PALETTE[n.data('risk')] || RISK_PALETTE.normal;
+                n.data('color', riskColor);
+            } else {
+                n.data('color', n.data('dir_color') || n.data('color'));
+            }
+        });
+    });
+
+    // Update the legend
+    buildColorKey(currentGraphData.nodes);
+}
+
+function buildColorKey(nodes) {
+    const list = document.getElementById('folderKeyList');
+    const keyEl = document.getElementById('folderColorKey');
+    list.innerHTML = '';
+
+    if (_colorMode === 'risk') {
+        // Risk legend
+        const riskCounts = {};
+        nodes.forEach(n => {
+            const r = n.data.risk || 'normal';
+            riskCounts[r] = (riskCounts[r] || 0) + 1;
+        });
+        const order = ['critical', 'high', 'warning', 'normal', 'entry', 'system'];
+        order.forEach(r => {
+            const cnt = riskCounts[r];
+            if (!cnt) return;
+            const entry = document.createElement('div');
+            entry.className = 'folder-key-entry';
+            entry.innerHTML = `<span class="folder-key-dot" style="background:${RISK_PALETTE[r]};"></span> ${RISK_LABELS[r]} (${cnt})`;
+            list.appendChild(entry);
+        });
+        keyEl.style.display = order.some(r => riskCounts[r]) ? 'flex' : 'none';
+    } else {
+        // Directory legend — group by folder
+        const dirMap = {};
+        nodes.forEach(n => {
+            const id = n.data ? n.data.id : n.id;
+            const color = n.data ? (n.data.dir_color || n.data.color) : '#6b7280';
+            const dir = id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.';
+            if (!dirMap[dir]) dirMap[dir] = { color, count: 0 };
+            dirMap[dir].count++;
+        });
+        const dirs = Object.keys(dirMap).sort();
+        dirs.forEach(dir => {
+            const entry = document.createElement('div');
+            entry.className = 'folder-key-entry';
+            entry.innerHTML = `<span class="folder-key-dot" style="background:${dirMap[dir].color};"></span> ${dir} (${dirMap[dir].count})`;
+            list.appendChild(entry);
+        });
+        keyEl.style.display = dirs.length ? 'flex' : 'none';
+    }
+}
+
+// ============================================================
 // MAIN RENDER — with virtual scrolling for large file lists
 // ============================================================
 
@@ -104,10 +190,19 @@ function renderGraph(data) {
     _compound.active = false;
     _compound.raw = null;
     _compound.collapsed = new Set();
-    const elements = [
-        ...data.nodes.map(n => ({ group: 'nodes', data: { ...n.data, label: n.data.id } })),
-        ...data.edges,
-    ];
+
+    // Enrich node data: store original language color, apply risk if active
+    const enrichedNodes = data.nodes.map(n => {
+        const d = { ...n.data, label: n.data.id };
+        // dir_color comes from the server; fall back to the original assigned color
+        if (!d.dir_color) d.dir_color = d.color;
+        if (_colorMode === 'risk') {
+            d.color = d.risk_color || RISK_PALETTE[d.risk] || RISK_PALETTE.normal;
+        }
+        return { group: 'nodes', data: d };
+    });
+
+    const elements = [...enrichedNodes, ...data.edges];
     _cInitCy(elements, _normalStyles());
     _cBindNormalHandlers();
     // Escape handled by global shortcut system below
@@ -120,46 +215,52 @@ function renderGraph(data) {
     const pdRadio = document.getElementById(_compound.active ? 'pdViewDirs' : 'pdViewFiles');
     if (pdRadio) pdRadio.checked = true;
 
-    // Show graph status bar, path hint, and folder color key
+    // Show graph status bar, path hint, and color legend
     if (data.nodes && data.nodes.length) {
         document.getElementById('graphStatusBar').style.display = 'flex';
         document.getElementById('pathHint').style.display = 'block';
-        if (!_compound.active) buildFolderColorKey(data.nodes);
+        if (!_compound.active) buildColorKey(data.nodes);
         updatePathDatalist();
     }
 
-    // --- Ref list (virtual-scrolled) ---
+    // --- Ref list (grouped by directory, collapsible) ---
     const refList = document.getElementById('ref-list');
     refList.innerHTML = '';
+    const nodeMap = {};
+    data.nodes.forEach(n => { nodeMap[n.data.id] = n.data; });
     const inDeg = {};
     data.nodes.forEach(n => inDeg[n.data.id] = 0);
     data.edges.forEach(e => { if (inDeg[e.data.target] !== undefined) inDeg[e.data.target]++; });
-    const sorted = data.nodes.map(n => ({ id: n.data.id, count: inDeg[n.data.id] })).sort((a, b) => b.count - a.count);
-    const maxC = sorted.length ? sorted[0].count : 0;
-    const godT = Math.max(10, maxC * 0.5);
+    const sorted = data.nodes.map(n => ({ id: n.data.id, count: inDeg[n.data.id], risk: n.data.risk || 'normal' })).sort((a, b) => b.count - a.count);
     document.getElementById('nodeCountBadge').textContent = sorted.length;
 
-    // Track per-item checkbox state so virtual re-renders preserve toggles
+    // Track per-item checkbox state across re-renders
     const _refChecked = {};
     sorted.forEach(item => { _refChecked[item.id] = true; });
 
-    const ROW_H = 33;       // approximate height of a .list-row in px
-    const BUFFER = 10;      // extra rows rendered above/below viewport
-    const VIRTUAL_THRESHOLD = 300; // only virtualise when list is large
+    // Risk → CSS class mapping for file list
+    const _riskCssMap = { critical: 'god', high: 'god', warning: 'orphan', entry: 'orphan' };
 
     function _buildRefRow(item) {
-        const isGod = item.count >= godT && item.count > 0;
-        const isOrphan = item.count === 0;
+        const riskCls = _riskCssMap[item.risk] || '';
         const div = document.createElement('div');
-        div.className = 'list-row';
+        div.className = 'list-row ref-dir-file-row';
         const left = document.createElement('div');
         left.className = 'list-row-left';
         const cb = document.createElement('input');
         cb.type = 'checkbox'; cb.checked = _refChecked[item.id] !== false; cb.title = 'Toggle visibility';
         left.appendChild(cb);
+        // Risk dot
+        const riskDot = document.createElement('span');
+        riskDot.style.cssText = 'display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;flex-shrink:0;background:' + (RISK_PALETTE[item.risk] || RISK_PALETTE.normal);
+        riskDot.title = item.risk;
+        left.appendChild(riskDot);
         const name = document.createElement('span');
-        name.className = 'file-name' + (isGod ? ' god' : isOrphan ? ' orphan' : '');
-        name.textContent = item.id;
+        name.className = 'file-name' + (riskCls ? ' ' + riskCls : '');
+        // Show only the file name (directory is in the group header)
+        const baseName = item.id.includes('/') ? item.id.split('/').pop() : item.id;
+        name.textContent = baseName;
+        name.title = item.id;
         left.appendChild(name);
         const pill = document.createElement('span');
         pill.className = 'count-pill';
@@ -171,47 +272,89 @@ function renderGraph(data) {
         return div;
     }
 
-    if (sorted.length <= VIRTUAL_THRESHOLD) {
-        // Small list — render everything directly (no overhead)
-        sorted.forEach(item => refList.appendChild(_buildRefRow(item)));
-    } else {
-        // Virtual scrolling for large lists
-        refList.style.position = 'relative';
-        refList.style.overflow = 'auto';
-        if (!refList.style.maxHeight) refList.style.maxHeight = '60vh';
+    // Group items by directory
+    const dirGroups = {};
+    sorted.forEach(item => {
+        const lastSlash = item.id.lastIndexOf('/');
+        const dir = lastSlash >= 0 ? item.id.substring(0, lastSlash) : '.';
+        if (!dirGroups[dir]) dirGroups[dir] = [];
+        dirGroups[dir].push(item);
+    });
 
-        const spacer = document.createElement('div');
-        spacer.style.height = (sorted.length * ROW_H) + 'px';
-        spacer.style.position = 'relative';
-        refList.appendChild(spacer);
+    // Sort directories: by total refs descending, then alphabetically
+    const dirOrder = Object.keys(dirGroups).sort((a, b) => {
+        const sumA = dirGroups[a].reduce((s, i) => s + i.count, 0);
+        const sumB = dirGroups[b].reduce((s, i) => s + i.count, 0);
+        return sumB - sumA || a.localeCompare(b);
+    });
 
-        const viewport = document.createElement('div');
-        viewport.style.position = 'absolute';
-        viewport.style.left = '0';
-        viewport.style.right = '0';
-        viewport.style.willChange = 'transform';
-        spacer.appendChild(viewport);
+    // Persist collapsed state across graph reloads
+    if (!window._refDirCollapsed) window._refDirCollapsed = {};
 
-        let _lastStart = -1, _lastEnd = -1;
+    // Collapse/expand all toolbar
+    const refToolbar = document.createElement('div');
+    refToolbar.className = 'ref-dir-toolbar';
+    const collapseBtn = document.createElement('button');
+    collapseBtn.className = 'btn btn-ghost ref-dir-toggle-all';
+    collapseBtn.title = 'Collapse all directories';
+    collapseBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg> Collapse all';
+    collapseBtn.onclick = function() {
+        dirOrder.forEach(function(d) { window._refDirCollapsed[d] = true; });
+        document.querySelectorAll('.ref-dir-header').forEach(function(h) { h.classList.add('collapsed'); if (h.nextElementSibling && h.nextElementSibling.classList.contains('ref-dir-body')) h.nextElementSibling.style.display = 'none'; });
+    };
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'btn btn-ghost ref-dir-toggle-all';
+    expandBtn.title = 'Expand all directories';
+    expandBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg> Expand all';
+    expandBtn.onclick = function() {
+        dirOrder.forEach(function(d) { window._refDirCollapsed[d] = false; });
+        document.querySelectorAll('.ref-dir-header').forEach(function(h) { h.classList.remove('collapsed'); if (h.nextElementSibling && h.nextElementSibling.classList.contains('ref-dir-body')) h.nextElementSibling.style.display = ''; });
+    };
+    refToolbar.appendChild(collapseBtn);
+    refToolbar.appendChild(expandBtn);
+    refList.appendChild(refToolbar);
 
-        function _renderVisibleRefRows() {
-            const scrollTop = refList.scrollTop;
-            const viewH = refList.clientHeight;
-            const start = Math.max(0, Math.floor(scrollTop / ROW_H) - BUFFER);
-            const end = Math.min(sorted.length, Math.ceil((scrollTop + viewH) / ROW_H) + BUFFER);
-            if (start === _lastStart && end === _lastEnd) return;
-            _lastStart = start;
-            _lastEnd = end;
-            viewport.style.transform = 'translateY(' + (start * ROW_H) + 'px)';
-            viewport.innerHTML = '';
-            for (let i = start; i < end; i++) {
-                viewport.appendChild(_buildRefRow(sorted[i]));
-            }
-        }
+    dirOrder.forEach(function(dir) {
+        const items = dirGroups[dir];
+        const totalRefs = items.reduce(function(s, i) { return s + i.count; }, 0);
+        const isCollapsed = window._refDirCollapsed[dir] === true;
 
-        _renderVisibleRefRows();
-        refList.addEventListener('scroll', _renderVisibleRefRows, { passive: true });
-    }
+        // Directory group header
+        const header = document.createElement('div');
+        header.className = 'ref-dir-header' + (isCollapsed ? ' collapsed' : '');
+        header.dataset.dir = dir;
+
+        const headerLeft = document.createElement('div');
+        headerLeft.className = 'ref-dir-header-left';
+        headerLeft.innerHTML = '<svg class="ref-dir-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+            + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5;flex-shrink:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+            + '<span class="ref-dir-name">' + dir + '</span>';
+        header.appendChild(headerLeft);
+
+        const headerRight = document.createElement('div');
+        headerRight.className = 'ref-dir-header-right';
+        headerRight.innerHTML = '<span class="ref-dir-file-count">' + items.length + ' file' + (items.length !== 1 ? 's' : '') + '</span>'
+            + '<span class="count-pill">' + totalRefs + '</span>';
+        header.appendChild(headerRight);
+
+        header.onclick = function() {
+            var dirKey = this.dataset.dir;
+            var body = this.nextElementSibling;
+            var nowCollapsed = !this.classList.contains('collapsed');
+            this.classList.toggle('collapsed', nowCollapsed);
+            window._refDirCollapsed[dirKey] = nowCollapsed;
+            if (body && body.classList.contains('ref-dir-body')) body.style.display = nowCollapsed ? 'none' : '';
+        };
+
+        refList.appendChild(header);
+
+        // Directory group body (file rows)
+        var body = document.createElement('div');
+        body.className = 'ref-dir-body';
+        body.style.display = isCollapsed ? 'none' : '';
+        items.forEach(function(item) { body.appendChild(_buildRefRow(item)); });
+        refList.appendChild(body);
+    });
 
     // --- Unused (virtual-scrolled for large lists) ---
     const ul = document.getElementById('unused-list');
@@ -328,11 +471,15 @@ function getFilterValues() {
 function showDetectedLanguages(det) {
     const el = document.getElementById('detectedLangs');
     if (!det) { el.style.display = 'none'; return; }
-    const langs = [];
-    if (det.has_c) langs.push('C'); if (det.has_h) langs.push('Headers'); if (det.has_cpp) langs.push('C++');
-    if (det.has_js) langs.push('JS/TS'); if (det.has_py) langs.push('Python'); if (det.has_java) langs.push('Java');
-    if (det.has_go) langs.push('Go'); if (det.has_rust) langs.push('Rust'); if (det.has_cs) langs.push('C#');
-    if (det.has_swift) langs.push('Swift'); if (det.has_ruby) langs.push('Ruby');
+    const langMap = [
+        ['has_c', 'C'], ['has_h', 'Headers'], ['has_cpp', 'C++'],
+        ['has_js', 'JS/TS'], ['has_py', 'Python'], ['has_java', 'Java'],
+        ['has_go', 'Go'], ['has_rust', 'Rust'], ['has_cs', 'C#'],
+        ['has_swift', 'Swift'], ['has_ruby', 'Ruby'],
+        ['has_kotlin', 'Kotlin'], ['has_scala', 'Scala'],
+        ['has_php', 'PHP'], ['has_dart', 'Dart'], ['has_elixir', 'Elixir'],
+    ];
+    const langs = langMap.filter(([k]) => det[k]).map(([, v]) => v);
     el.textContent = langs.length ? 'Detected: ' + langs.join(', ') : 'No supported files detected';
     el.style.display = '';
 }

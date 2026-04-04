@@ -67,11 +67,10 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
 _csrf_token = os.environ.get('CSRF_SECRET') or secrets.token_hex(32)
 
 # Base directory that the server is allowed to scan. Set DEPGRAPH_BASE_DIR
-# environment variable to restrict access; defaults to the parent of the
-# current working directory so that sibling project directories (e.g.
-# ../C/retro-gaming-project) remain accessible.
+# environment variable to restrict access; defaults to the current working
+# directory.
 _ALLOWED_BASE_DIR = os.path.abspath(
-    os.environ.get('DEPGRAPH_BASE_DIR', os.path.dirname(os.getcwd()))
+    os.environ.get('DEPGRAPH_BASE_DIR', os.getcwd())
 )
 
 # Simple rate-limiter: per-IP, max N requests in a sliding window.
@@ -460,15 +459,30 @@ def upload_files():
         if saved_path.endswith('.zip'):
             _safe_extract_zip(saved_path, temp_dir)
 
-        detected = detect_languages(temp_dir)
+        # If a ZIP extracted into a single meaningful root directory,
+        # use that as the scan root so node IDs don't include the
+        # wrapper directory.  Filter out the ZIP file itself, hidden
+        # entries, and common archive artifacts (__MACOSX, etc.).
+        scan_dir = temp_dir
+        _zip_noise = {'__MACOSX', '__pycache__', '.git', '.svn', '.hg'}
+        zip_name = secure_filename(file.filename)
+        entries = [e for e in os.listdir(temp_dir)
+                   if not e.startswith('.')
+                   and e != zip_name
+                   and e not in _zip_noise]
+        if (len(entries) == 1
+                and os.path.isdir(os.path.join(temp_dir, entries[0]))):
+            scan_dir = os.path.join(temp_dir, entries[0])
+
+        detected = detect_languages(scan_dir)
         filters = parse_filters(request.form, detected=detected)
-        result = build_graph(temp_dir, **filters)
+        result = build_graph(scan_dir, **filters)
         result["detected"] = detected
         # Return an opaque token — never expose the real filesystem path
         result["upload_token"] = upload_token
 
-        # Persist the session to disk so all workers can resolve it
-        _save_upload_session(upload_token, temp_dir)
+        # Persist scan_dir so file previews resolve correctly
+        _save_upload_session(upload_token, scan_dir)
         # Opportunistically clean up expired sessions
         _cleanup_expired_sessions()
 

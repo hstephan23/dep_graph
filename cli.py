@@ -46,7 +46,17 @@ def _magenta(t): return _c("35", t)
 # ---------------------------------------------------------------------------
 
 def _format_tree(result, directory):
-    """Print a coloured dependency tree to stdout."""
+    """Print a coloured dependency tree to stdout.
+
+    Node colours follow the risk classification so your eye goes straight
+    to problems:
+    * red = critical (god files, cycles, extreme inbound)
+    * orange = high influence
+    * yellow = high dependency (over-coupled)
+    * cyan/blue = normal
+    * green = entry point / leaf
+    * dim = system / external
+    """
     nodes = {n["data"]["id"]: n["data"] for n in result["nodes"]}
     adj = {}
     for e in result["edges"]:
@@ -61,8 +71,17 @@ def _format_tree(result, directory):
     all_targets = {e["data"]["target"] for e in result["edges"]}
     roots = sorted(n for n in nodes if n not in all_targets)
     if not roots:
-        # Everything is in a cycle or has inbound edges — pick highest impact
         roots = sorted(nodes, key=lambda n: nodes[n].get("impact", 0), reverse=True)[:5]
+
+    # Summarise languages & risk breakdown
+    lang_counts = {}
+    risk_counts = {}
+    for nd in nodes.values():
+        lang = nd.get("language")
+        if lang:
+            lang_counts[lang] = lang_counts.get(lang, 0) + 1
+        risk = nd.get("risk", "normal")
+        risk_counts[risk] = risk_counts.get(risk, 0) + 1
 
     # Header
     dir_name = os.path.basename(os.path.abspath(directory))
@@ -71,10 +90,38 @@ def _format_tree(result, directory):
     print()
     print(f"  {_bold('DepGraph')}  {_dim('·')}  {dir_name}")
     print(f"  {_dim(f'{node_count} files  ·  {edge_count} dependencies')}")
+    if lang_counts:
+        lang_summary = ", ".join(f"{lang} ({cnt})" for lang, cnt in
+                                 sorted(lang_counts.items(), key=lambda x: -x[1]))
+        print(f"  {_dim('Languages:')} {lang_summary}")
+
+    # Risk summary line
+    risk_parts = []
+    for rk, color_fn in [("critical", _red), ("high", _yellow),
+                          ("warning", _yellow), ("entry", _green)]:
+        cnt = risk_counts.get(rk, 0)
+        if cnt:
+            risk_parts.append(color_fn(f"{cnt} {rk}"))
+    normal_cnt = risk_counts.get("normal", 0)
+    if normal_cnt:
+        risk_parts.append(_dim(f"{normal_cnt} normal"))
+    if risk_parts:
+        print(f"  {_dim('Health:')} {', '.join(risk_parts)}")
+
     if result.get("has_cycles"):
         cycle_count = len(result.get("cycles", []))
         print(f"  {_red(f'⚠  {cycle_count} circular dependency group(s) detected')}")
     print()
+
+    # Colour helpers per risk level
+    _risk_label_fn = {
+        "critical": _red,
+        "high":     _yellow,
+        "warning":  _yellow,
+        "normal":   _cyan,
+        "entry":    _green,
+        "system":   _dim,
+    }
 
     # Print tree
     visited = set()
@@ -86,20 +133,27 @@ def _format_tree(result, directory):
         connector = "└── " if is_last else "├── "
         extension = "    " if is_last else "│   "
 
-        # Format node label
-        label = node_id
         data = nodes.get(node_id, {})
-        in_deg = data.get("impact", 0)
+        risk = data.get("risk", "normal")
+        in_deg = data.get("in_degree", 0)
+        out_deg = data.get("out_degree", 0)
         d = data.get("depth", 0)
+        color_fn = _risk_label_fn.get(risk, _cyan)
+        label = color_fn(node_id)
 
+        # Contextual badges
         badges = []
-        if node_id in cycle_set:
-            label = _red(node_id)
-            badges.append(_red("cycle"))
-        elif in_deg >= 5:
-            label = _yellow(node_id)
-        else:
-            label = _cyan(node_id)
+        if risk == "critical":
+            if node_id in cycle_set:
+                badges.append(_red("cycle"))
+            if in_deg >= 5:
+                badges.append(_red(f"in:{in_deg}"))
+        elif risk == "high":
+            badges.append(_yellow(f"in:{in_deg}"))
+        elif risk == "warning":
+            badges.append(_yellow(f"out:{out_deg}"))
+        elif risk == "entry":
+            badges.append(_green("entry"))
 
         if d >= 5:
             badges.append(_yellow(f"depth:{d}"))
@@ -142,6 +196,9 @@ def _format_tree(result, directory):
             edge_count = c["cross_edges"]
             print(f"  {bar}  {c['dir1']} ↔ {c['dir2']}  {_dim(f'({edge_count} edges)')}")
 
+    # Legend
+    print()
+    print(f"  {_dim('Legend:')} {_red('● critical')}  {_yellow('● high/warning')}  {_cyan('● normal')}  {_green('● entry')}  {_dim('● system')}")
     print()
 
 
@@ -150,26 +207,120 @@ def _format_json(result):
     return json.dumps(result, indent=2)
 
 
-def _format_dot(result):
-    """Return a Graphviz DOT representation."""
+def _format_dot(result, color_by="risk"):
+    """Return a Graphviz DOT representation.
+
+    *color_by* controls the colour scheme:
+    * ``"risk"`` (default) — red/orange/yellow/blue/green by importance
+    * ``"directory"`` — per-directory colours
+    """
+    from graph import RISK_COLORS, RISK_LABELS
+
     lines = [
         'digraph DependencyGraph {',
-        '  node [shape=box, style=filled, fontname="Inter"];',
+        '  graph [bgcolor="transparent", pad=0.5];',
+        '  node [shape=box, style="filled,rounded", fontname="Inter", fontsize=10, margin="0.15,0.08"];',
+        '  edge [arrowsize=0.7, color="#64748b"];',
         '  rankdir=LR;',
+        '',
     ]
+
+    # Group nodes by directory for subgraph clustering
+    dir_nodes = {}
     for n in result["nodes"]:
         nid = n["data"]["id"]
-        color = n["data"].get("color", "#ccc")
-        lines.append(f'  "{nid}" [fillcolor="{color}"];')
+        parts = nid.rsplit("/", 1)
+        folder = parts[0] if len(parts) > 1 else "(root)"
+        dir_nodes.setdefault(folder, []).append(n)
+
+    def _node_attrs(n):
+        """Build DOT attribute string for one node."""
+        nd = n["data"]
+        nid = nd["id"]
+        in_deg = nd.get("in_degree", 0)
+        out_deg = nd.get("out_degree", 0)
+        risk = nd.get("risk", "normal")
+        lang = nd.get("language") or "?"
+        node_size = nd.get("node_size", 35)
+
+        if color_by == "directory":
+            fill = nd.get("dir_color", nd.get("color", "#e2e8f0"))
+        else:
+            fill = nd.get("risk_color", RISK_COLORS.get(risk, "#3b82f6"))
+
+        # Scale width/height proportionally to node_size
+        w = round(node_size / 35, 2)
+        h = round(node_size / 70, 2)
+
+        border = "#ef4444" if risk == "critical" else "#94a3b8"
+        penwidth = "2.5" if risk == "critical" else "1"
+        fontcolor = "#ffffff" if risk == "critical" else "#1e293b"
+        tooltip = f'{nid} [{lang}] risk:{risk} in:{in_deg} out:{out_deg}'
+        return (f'fillcolor="{fill}", color="{border}", penwidth={penwidth}, '
+                f'fontcolor="{fontcolor}", width={w}, height={h}, '
+                f'tooltip="{tooltip}"')
+
+    # Emit directory subgraphs (only when >1 directory)
+    if len(dir_nodes) > 1:
+        for i, (folder, graph_nodes) in enumerate(sorted(dir_nodes.items())):
+            safe_label = folder.replace('"', '\\"')
+            lines.append(f'  subgraph cluster_{i} {{')
+            lines.append(f'    label="{safe_label}";')
+            lines.append(f'    style=dashed; color="#94a3b8"; fontname="Inter"; fontsize=9;')
+            for n in graph_nodes:
+                nid = n["data"]["id"]
+                lines.append(f'    "{nid}" [{_node_attrs(n)}];')
+            lines.append('  }')
+            lines.append('')
+    else:
+        for n in result["nodes"]:
+            nid = n["data"]["id"]
+            lines.append(f'  "{nid}" [{_node_attrs(n)}];')
+
+    # Edges
     for e in result["edges"]:
         src = e["data"]["source"]
         tgt = e["data"]["target"]
         is_cycle = "classes" in e and "cycle" in e.get("classes", "")
         if is_cycle:
-            lines.append(f'  "{src}" -> "{tgt}" [color="red", penwidth=2];')
+            lines.append(f'  "{src}" -> "{tgt}" [color="#ef4444", penwidth=2, style=bold];')
         else:
-            color = e["data"].get("color", "#94a3b8")
+            color = e["data"].get("color", "#64748b")
             lines.append(f'  "{src}" -> "{tgt}" [color="{color}"];')
+
+    # Legend
+    lines.append('')
+    lines.append('  subgraph cluster_legend {')
+    if color_by == "directory":
+        dir_colors = {}
+        for n in result["nodes"]:
+            nid = n["data"]["id"]
+            parts = nid.rsplit("/", 1)
+            folder = parts[0] if len(parts) > 1 else "."
+            if folder not in dir_colors:
+                dir_colors[folder] = n["data"].get("dir_color", n["data"].get("color", "#e2e8f0"))
+        lines.append('    label="Directories"; style=solid; color="#334155"; fontname="Inter"; fontsize=10;')
+        lines.append('    node [shape=plaintext, style=""];')
+        legend_parts = []
+        for folder in sorted(dir_colors):
+            c = dir_colors[folder]
+            legend_parts.append(f'<TR><TD BGCOLOR="{c}" WIDTH="12" HEIGHT="12"> </TD><TD ALIGN="LEFT"> {folder}</TD></TR>')
+        html = '<TABLE BORDER="0" CELLSPACING="2">' + ''.join(legend_parts) + '</TABLE>'
+        lines.append(f'    legend [label=<{html}>];')
+    else:
+        risks_used = {n["data"].get("risk", "normal") for n in result["nodes"]}
+        lines.append('    label="Risk level"; style=solid; color="#334155"; fontname="Inter"; fontsize=10;')
+        lines.append('    node [shape=plaintext, style=""];')
+        legend_parts = []
+        for risk in ["critical", "high", "warning", "normal", "entry", "system"]:
+            if risk in risks_used:
+                c = RISK_COLORS[risk]
+                label = RISK_LABELS[risk]
+                legend_parts.append(f'<TR><TD BGCOLOR="{c}" WIDTH="12" HEIGHT="12"> </TD><TD ALIGN="LEFT"> {label}</TD></TR>')
+        html = '<TABLE BORDER="0" CELLSPACING="2">' + ''.join(legend_parts) + '</TABLE>'
+        lines.append(f'    legend [label=<{html}>];')
+    lines.append('  }')
+
     lines.append("}")
     return "\n".join(lines)
 
@@ -269,15 +420,55 @@ def _format_diff(old_result, new_result):
     return "\n".join(lines)
 
 
-def _format_mermaid(result):
-    """Return a Mermaid flowchart."""
+def _format_mermaid(result, color_by="risk"):
+    """Return a Mermaid flowchart.
+
+    *color_by* controls the colour scheme (``"risk"`` or ``"directory"``).
+    """
+    from graph import RISK_COLORS, RISK_LABELS
+
     lines = ["graph LR"]
-    # Sanitise IDs for Mermaid (replace slashes, dots)
+
+    # Sanitise IDs for Mermaid (replace slashes, dots, hyphens)
     def _mid(s):
         return s.replace("/", "_").replace(".", "_").replace("-", "_")
+
+    # Group nodes by directory for subgraph support
+    dir_nodes = {}
     for n in result["nodes"]:
         nid = n["data"]["id"]
-        lines.append(f'  {_mid(nid)}["{nid}"]')
+        parts = nid.rsplit("/", 1)
+        folder = parts[0] if len(parts) > 1 else "(root)"
+        dir_nodes.setdefault(folder, []).append(n)
+
+    cycle_nodes = set()
+    for scc in result.get("cycles", []):
+        if len(scc) > 1:
+            cycle_nodes.update(scc)
+
+    # Emit nodes grouped into subgraphs when >1 directory
+    if len(dir_nodes) > 1:
+        for folder, folder_nodes in sorted(dir_nodes.items()):
+            safe_folder = folder.replace('"', "'")
+            lines.append(f'  subgraph {_mid(folder)}["{safe_folder}"]')
+            for n in folder_nodes:
+                nid = n["data"]["id"]
+                mid = _mid(nid)
+                if nid in cycle_nodes:
+                    lines.append(f'    {mid}["{nid} ⟳"]')
+                else:
+                    lines.append(f'    {mid}["{nid}"]')
+            lines.append("  end")
+    else:
+        for n in result["nodes"]:
+            nid = n["data"]["id"]
+            mid = _mid(nid)
+            if nid in cycle_nodes:
+                lines.append(f'  {mid}["{nid} ⟳"]')
+            else:
+                lines.append(f'  {mid}["{nid}"]')
+
+    # Edges
     for e in result["edges"]:
         src = _mid(e["data"]["source"])
         tgt = _mid(e["data"]["target"])
@@ -286,6 +477,45 @@ def _format_mermaid(result):
             lines.append(f"  {src} -.->|cycle| {tgt}")
         else:
             lines.append(f"  {src} --> {tgt}")
+
+    # Style definitions
+    lines.append("")
+    if color_by == "directory":
+        dir_classes = {}
+        dir_colors = {}
+        for n in result["nodes"]:
+            nid = n["data"]["id"]
+            parts = nid.rsplit("/", 1)
+            folder = parts[0] if len(parts) > 1 else "root"
+            safe_folder = folder.replace("/", "_").replace(".", "_").replace("-", "_")
+            dir_classes.setdefault(safe_folder, []).append(_mid(nid))
+            if safe_folder not in dir_colors:
+                dir_colors[safe_folder] = n["data"].get("dir_color", n["data"].get("color", "#e2e8f0"))
+        for key, mids in sorted(dir_classes.items()):
+            color = dir_colors[key]
+            lines.append(f"  classDef dir_{key} fill:{color},stroke:#475569,color:#1e293b")
+            lines.append(f"  class {','.join(mids)} dir_{key}")
+        # Cycle nodes override
+        if cycle_nodes:
+            cycle_mids = [_mid(nid) for nid in cycle_nodes]
+            lines.append("  classDef cycleNode fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b")
+            lines.append(f"  class {','.join(cycle_mids)} cycleNode")
+    else:
+        # Risk-based colouring
+        risk_classes = {}
+        for n in result["nodes"]:
+            risk = n["data"].get("risk", "normal")
+            risk_classes.setdefault(risk, []).append(_mid(n["data"]["id"]))
+        for risk in ["critical", "high", "warning", "normal", "entry", "system"]:
+            mids = risk_classes.get(risk)
+            if mids:
+                c = RISK_COLORS[risk]
+                # critical gets white text, others dark
+                fc = "#ffffff" if risk == "critical" else "#1e293b"
+                sw = "2px" if risk == "critical" else "1px"
+                lines.append(f"  classDef risk_{risk} fill:{c},stroke:#475569,stroke-width:{sw},color:{fc}")
+                lines.append(f"  class {','.join(mids)} risk_{risk}")
+
     return "\n".join(lines)
 
 
@@ -334,6 +564,11 @@ def main():
                         help="hide files with no dependencies")
     parser.add_argument("--filter-dir", default="",
                         help="only show files under this subdirectory")
+
+    # Colour mode
+    parser.add_argument("--color-by", default="risk",
+                        choices=["risk", "directory"],
+                        help="color scheme: risk (default, by importance) or directory")
 
     # Output file
     parser.add_argument("-o", "--output", metavar="FILE",
@@ -404,7 +639,7 @@ def main():
     # --serve: start the Flask web UI
     if args.serve:
         os.environ.setdefault("FLASK_DEBUG", "true")
-        os.environ["DEPGRAPH_BASE_DIR"] = os.path.dirname(directory)
+        os.environ["DEPGRAPH_BASE_DIR"] = directory
         from app import app
         url = f"http://localhost:{args.port}"
         print(f"Starting DepGraph web UI at {_bold(url)}")
@@ -483,14 +718,15 @@ def main():
         sys.exit(1)
 
     # Format output
+    color_by = args.color_by
     if args.json:
         output = _format_json(result)
     elif args.dot:
-        output = _format_dot(result)
+        output = _format_dot(result, color_by=color_by)
     elif args.mermaid:
-        output = _format_mermaid(result)
+        output = _format_mermaid(result, color_by=color_by)
     else:
-        # Default: terminal tree
+        # Default: terminal tree (always uses risk colours)
         _format_tree(result, directory)
         return
 

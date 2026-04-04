@@ -293,16 +293,25 @@ export class MetricsTreeProvider implements vscode.TreeDataProvider<MetricItem> 
     }
 
     if (!element) {
-      // Sort by impact descending — highest impact files first
+      // Sort by risk severity, then impact descending
+      const riskOrder: Record<string, number> = { critical: 0, high: 1, warning: 2, normal: 3, entry: 4, system: 5 };
       return this.graph.nodes
         .slice()
-        .sort((a, b) => b.data.impact - a.data.impact)
-        .map(n => ({
-          kind: 'file' as const,
-          label: n.data.id,
-          fileId: n.data.id,
-          description: `impact: ${n.data.impact}`,
-        }));
+        .sort((a, b) => {
+          const ra = riskOrder[a.data.risk] ?? 3;
+          const rb = riskOrder[b.data.risk] ?? 3;
+          if (ra !== rb) { return ra - rb; }
+          return b.data.impact - a.data.impact;
+        })
+        .map(n => {
+          const riskIcon = n.data.risk === 'critical' ? '🔴' : n.data.risk === 'high' ? '🟠' : n.data.risk === 'warning' ? '🟡' : n.data.risk === 'entry' ? '🟢' : '';
+          return {
+            kind: 'file' as const,
+            label: n.data.id,
+            fileId: n.data.id,
+            description: `${riskIcon} ${n.data.risk_label ?? n.data.risk}  ·  impact: ${n.data.impact}`,
+          };
+        });
     }
 
     if (element.kind === 'file' && element.fileId) {
@@ -312,10 +321,14 @@ export class MetricsTreeProvider implements vscode.TreeDataProvider<MetricItem> 
       const config = getConfig();
       const depthFlag = d.depth > config.maxDepthWarning ? ' ⚠️' : '';
       return [
+        { kind: 'metric', label: 'Risk', description: d.risk_label ?? d.risk },
+        { kind: 'metric', label: 'Inbound', description: String(d.in_degree ?? 0) },
+        { kind: 'metric', label: 'Outbound', description: String(d.out_degree ?? 0) },
         { kind: 'metric', label: 'Depth', description: `${d.depth}${depthFlag}` },
         { kind: 'metric', label: 'Impact', description: String(d.impact) },
         { kind: 'metric', label: 'Stability', description: d.stability.toFixed(2) },
         { kind: 'metric', label: 'Reach %', description: `${d.reach_pct.toFixed(1)}%` },
+        { kind: 'metric', label: 'Language', description: d.language ?? 'unknown' },
       ];
     }
 

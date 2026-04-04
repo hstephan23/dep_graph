@@ -1342,39 +1342,24 @@ body.sidebar-hidden .query-terminal {
     max-width: 220px;
 }
 
-.folder-key-toggle {
+.folder-key-header {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.35rem 0.65rem;
-    background: none;
-    border: none;
+    padding: 0.35rem 0.65rem 0.15rem;
     color: var(--text-muted);
     font-size: 0.7rem;
-    cursor: pointer;
+    font-weight: 600;
     width: 100%;
-    transition: color var(--transition);
-}
-.folder-key-toggle:hover { color: var(--text); }
-
-.folder-key-chevron {
-    margin-left: auto;
-    transition: transform 0.2s ease;
-}
-.folder-color-key.open .folder-key-chevron {
-    transform: rotate(180deg);
 }
 
 .folder-key-list {
-    display: none;
+    display: flex;
     flex-direction: column;
     gap: 1px;
     padding: 0 0.5rem 0.4rem;
     max-height: 180px;
     overflow-y: auto;
-}
-.folder-color-key.open .folder-key-list {
-    display: flex;
 }
 
 .folder-key-entry {
@@ -2887,6 +2872,77 @@ body.sidebar-hidden .query-terminal {
 .badge-purple {
     background: rgba(168, 85, 247, 0.12);
     color: #a855f7;
+}
+
+/* Refs panel — directory grouping */
+.ref-dir-toolbar {
+    display: flex;
+    gap: 0.35rem;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+.ref-dir-toggle-all {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.5rem !important;
+    font-size: 0.65rem !important;
+    color: var(--text-muted);
+}
+.ref-dir-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.65rem;
+    cursor: pointer;
+    user-select: none;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+    gap: 0.5rem;
+}
+.ref-dir-header:hover {
+    background: var(--primary-soft);
+}
+.ref-dir-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    overflow: hidden;
+}
+.ref-dir-chevron {
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+    color: var(--text-muted);
+}
+.ref-dir-header.collapsed .ref-dir-chevron {
+    transform: rotate(-90deg);
+}
+.ref-dir-name {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ref-dir-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+.ref-dir-file-count {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.ref-dir-body {
+    /* Indent file rows under their directory header */
+}
+.ref-dir-file-row {
+    padding-left: 1.8rem !important;
 }
 
 /* Thin vertical divider between tab groups in the same row */

@@ -70,22 +70,48 @@ const Tour = (() => {
             placement: 'left',
         },
         {
-            target: '.graph-status-bar',
+            target: '#folderColorKey',
             label: 'Legend',
-            desc: 'Once a graph is loaded, a legend appears here along the bottom-left showing the color key: upstream (blue), downstream (orange), selected (yellow), and cycle edges (red).',
+            desc: 'Two legends live here. The color key (top) shows node risk levels — red for critical, green for entry points. The status bar (bottom) shows edge and selection colors when you interact with the graph.',
             placement: 'top',
             before() {
+                // Force-show the color legend
+                const key = document.getElementById('folderColorKey');
+                if (key) key.style.display = 'flex';
+
+                // Force-show the edge/selection status bar
                 const bar = document.getElementById('graphStatusBar');
-                if (bar && getComputedStyle(bar).display === 'none') {
-                    bar.style.display = 'flex';
-                    bar.dataset.tourRevealed = 'true';
+                if (bar) bar.style.display = 'flex';
+
+                // If the legend list is empty (no graph loaded), populate
+                // with the risk palette so the user sees something useful
+                const list = document.getElementById('folderKeyList');
+                if (list && list.children.length === 0) {
+                    const palette = [
+                        ['#ef4444', 'Critical / God file'],
+                        ['#f97316', 'High influence'],
+                        ['#eab308', 'High dependency'],
+                        ['#3b82f6', 'Normal'],
+                        ['#22c55e', 'Entry point / leaf'],
+                        ['#6b7280', 'System / external'],
+                    ];
+                    palette.forEach(function(p) {
+                        const entry = document.createElement('div');
+                        entry.className = 'folder-key-entry';
+                        entry.innerHTML = '<span class="folder-key-dot" style="background:' + p[0] + ';"></span> ' + p[1];
+                        list.appendChild(entry);
+                    });
                 }
             },
             after() {
-                const bar = document.getElementById('graphStatusBar');
-                if (bar && bar.dataset.tourRevealed) {
-                    bar.style.display = '';
-                    delete bar.dataset.tourRevealed;
+                // If no graph is loaded, hide both legends when leaving this step
+                const hasGraph = typeof currentGraphData !== 'undefined' && currentGraphData
+                    && currentGraphData.nodes && currentGraphData.nodes.length;
+                if (!hasGraph) {
+                    const key = document.getElementById('folderColorKey');
+                    if (key) key.style.display = 'none';
+                    const bar = document.getElementById('graphStatusBar');
+                    if (bar) bar.style.display = 'none';
                 }
             },
         },

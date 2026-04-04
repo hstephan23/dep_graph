@@ -30,6 +30,15 @@ export interface GraphNode {
     impact: number;
     stability: number;
     reach_pct: number;
+    in_degree: number;
+    out_degree: number;
+    language: string | null;
+    in_cycle: boolean;
+    risk: 'critical' | 'high' | 'warning' | 'normal' | 'entry' | 'system';
+    risk_color: string;
+    risk_label: string;
+    node_size: number;
+    dir_color: string;
     [key: string]: unknown;
   };
 }
