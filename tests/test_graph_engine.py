@@ -383,7 +383,8 @@ class TestDetectLanguages:
         detected = detect_languages(test_files_dir)
         expected_keys = {
             "has_c", "has_h", "has_cpp", "has_js", "has_py", "has_java",
-            "has_go", "has_rust", "has_cs", "has_swift", "has_ruby"
+            "has_go", "has_rust", "has_cs", "has_swift", "has_ruby",
+            "has_kotlin", "has_scala", "has_php", "has_dart", "has_elixir"
         }
         assert set(detected.keys()) == expected_keys
 
