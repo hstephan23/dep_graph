@@ -783,6 +783,230 @@ def simulate_removal():
     })
 
 
+@app.route('/api/simulate-merge', methods=['POST'])
+def simulate_merge():
+    """Simulate merging two files or splitting one file and report impact.
+
+    Merge expects: {
+        "graph": { ...graph payload... },
+        "merge": [{"nodes": ["a", "b"], "merged_id": "a"}]  # merge b into a
+    }
+    Split expects: {
+        "graph": { ...graph payload... },
+        "split": [{"node": "a", "into": [
+            {"id": "a_part1", "outbound": ["dep1"], "inbound": ["imp1"]},
+            {"id": "a_part2", "outbound": ["dep2"], "inbound": ["imp2"]}
+        ]}]
+    }
+    """
+    body, err = _get_json_body()
+    if err:
+        return err
+    graph = body.get('graph', {})
+    merges = body.get('merge', [])
+    splits = body.get('split', [])
+
+    orig_nodes = graph.get('nodes', [])
+    orig_edges = graph.get('edges', [])
+
+    if not merges and not splits:
+        return jsonify({"error": "Specify merge or split operations"}), 400
+
+    # --- Build original adjacency ---
+    orig_node_ids = {n['data']['id'] for n in orig_nodes}
+    orig_node_map = {n['data']['id']: n for n in orig_nodes}
+    orig_adj = {nid: [] for nid in orig_node_ids}
+    orig_rev = {nid: [] for nid in orig_node_ids}
+    for e in orig_edges:
+        s, t = e['data']['source'], e['data']['target']
+        if s in orig_adj:
+            orig_adj[s].append(t)
+        if t in orig_rev:
+            orig_rev[t].append(s)
+
+    # --- Build new graph applying merges then splits ---
+    new_node_ids = set(orig_node_ids)
+    # Track edge set as (source, target)
+    edge_set = set()
+    for e in orig_edges:
+        edge_set.add((e['data']['source'], e['data']['target']))
+
+    merge_descriptions = []
+    for m in merges:
+        nodes = m.get('nodes', [])
+        merged_id = m.get('merged_id', nodes[0] if nodes else '')
+        if len(nodes) < 2:
+            continue
+        removed = [n for n in nodes if n != merged_id]
+        if merged_id not in new_node_ids:
+            continue
+        missing = [n for n in removed if n not in new_node_ids]
+        if missing:
+            continue
+
+        merge_descriptions.append({
+            "merged_into": merged_id,
+            "absorbed": removed,
+        })
+
+        # Redirect all edges from/to removed nodes → merged_id
+        new_edges = set()
+        remove_edges = set()
+        for (s, t) in list(edge_set):
+            new_s, new_t = s, t
+            if s in removed:
+                new_s = merged_id
+            if t in removed:
+                new_t = merged_id
+            if s in removed or t in removed:
+                remove_edges.add((s, t))
+                # Don't add self-loops
+                if new_s != new_t:
+                    new_edges.add((new_s, new_t))
+
+        edge_set -= remove_edges
+        edge_set |= new_edges
+
+        # Remove absorbed nodes
+        for n in removed:
+            new_node_ids.discard(n)
+
+    split_descriptions = []
+    for sp in splits:
+        node = sp.get('node', '')
+        into = sp.get('into', [])
+        if not node or len(into) < 2 or node not in new_node_ids:
+            continue
+
+        part_ids = [p['id'] for p in into]
+        split_descriptions.append({
+            "original": node,
+            "parts": part_ids,
+        })
+
+        # Remove original node
+        new_node_ids.discard(node)
+        # Add part nodes
+        for p in into:
+            new_node_ids.add(p['id'])
+
+        # Remove all edges touching original node
+        old_outbound = set()
+        old_inbound = set()
+        remove_edges = set()
+        for (s, t) in list(edge_set):
+            if s == node:
+                old_outbound.add(t)
+                remove_edges.add((s, t))
+            if t == node:
+                old_inbound.add(s)
+                remove_edges.add((s, t))
+        edge_set -= remove_edges
+
+        # Add edges per part assignment
+        for p in into:
+            pid = p['id']
+            for dep in p.get('outbound', []):
+                if dep in new_node_ids and dep != pid:
+                    edge_set.add((pid, dep))
+            for imp in p.get('inbound', []):
+                if imp in new_node_ids and imp != pid:
+                    edge_set.add((imp, pid))
+            # Check for inter-part edges
+            if p.get('depends_on'):
+                for other_pid in p['depends_on']:
+                    if other_pid in new_node_ids and other_pid != pid:
+                        edge_set.add((pid, other_pid))
+
+    # --- Build new adjacency ---
+    new_adj = {nid: [] for nid in new_node_ids}
+    new_rev = {nid: [] for nid in new_node_ids}
+    new_edge_count = 0
+    for (s, t) in edge_set:
+        if s in new_adj and t in new_adj:
+            new_adj[s].append(t)
+            new_rev[t].append(s)
+            new_edge_count += 1
+
+    # --- Broken imports (edges that pointed to removed nodes) ---
+    broken_imports = []
+    for (s, t) in edge_set:
+        if s not in new_node_ids:
+            broken_imports.append({"file": s, "missing_dep": t, "reason": "source_removed"})
+        elif t not in new_node_ids:
+            broken_imports.append({"file": s, "missing_dep": t, "reason": "target_removed"})
+
+    # --- Orphaned files ---
+    newly_orphaned = []
+    for nid in new_node_ids:
+        had_inbound = len(orig_rev.get(nid, [])) > 0
+        now_inbound = len(new_rev.get(nid, []))
+        if had_inbound and now_inbound == 0:
+            newly_orphaned.append(nid)
+
+    # --- Cycle analysis ---
+    orig_sccs = find_sccs(orig_adj)
+    orig_cycles = [scc for scc in orig_sccs if len(scc) > 1]
+    new_sccs = find_sccs(new_adj)
+    new_cycles = [scc for scc in new_sccs if len(scc) > 1]
+
+    orig_cycle_sets = [frozenset(c) for c in orig_cycles]
+    new_cycle_sets = [frozenset(c) for c in new_cycles]
+
+    resolved_cycles = [sorted(list(c)) for c in orig_cycle_sets if c not in new_cycle_sets]
+    new_introduced_cycles = [sorted(list(c)) for c in new_cycle_sets if c not in orig_cycle_sets]
+
+    # --- Impact changes ---
+    impact_changes = []
+    for nid in new_node_ids:
+        orig_imp = 0
+        if nid in orig_node_map:
+            orig_imp = orig_node_map[nid]['data'].get('impact', 0)
+
+        visited = set()
+        q = [nid]
+        while q:
+            cur = q.pop(0)
+            for dep in new_rev.get(cur, []):
+                if dep not in visited and dep != nid:
+                    visited.add(dep)
+                    q.append(dep)
+        new_imp = len(visited)
+
+        if orig_imp != new_imp:
+            impact_changes.append({
+                "file": nid,
+                "old_impact": orig_imp,
+                "new_impact": new_imp,
+                "delta": new_imp - orig_imp,
+            })
+
+    impact_changes.sort(key=lambda x: abs(x['delta']), reverse=True)
+
+    return jsonify({
+        "merge_descriptions": merge_descriptions,
+        "split_descriptions": split_descriptions,
+        "broken_imports": broken_imports,
+        "newly_orphaned": sorted(newly_orphaned),
+        "resolved_cycles": resolved_cycles,
+        "new_cycles": new_introduced_cycles,
+        "impact_changes": impact_changes[:30],
+        "stats": {
+            "operation": "merge" if merges else "split",
+            "merges": len(merge_descriptions),
+            "splits": len(split_descriptions),
+            "original_node_count": len(orig_node_ids),
+            "new_node_count": len(new_node_ids),
+            "original_edge_count": len(orig_edges),
+            "new_edge_count": new_edge_count,
+            "broken_import_count": len(broken_imports),
+            "orphaned_count": len(newly_orphaned),
+            "cycles_resolved": len(resolved_cycles),
+            "cycles_introduced": len(new_introduced_cycles),
+        },
+    })
+
+
 @app.route('/api/story', methods=['POST'])
 def generate_story():
     """Generate a guided narrative walkthrough of the dependency graph."""

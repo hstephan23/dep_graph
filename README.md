@@ -1,6 +1,6 @@
 # DepGraph
 
-DepGraph is a lightweight tool for exploring source file dependencies as an interactive graph. It scans source trees or uploaded archives, builds a dependency graph, highlights circular dependencies, and provides deep analysis tools — all in a browser UI or from the command line.
+DepGraph is a lightweight tool for exploring source file dependencies as an interactive graph. It scans source trees or uploaded archives, builds a dependency graph, highlights circular dependencies, and provides deep analysis tools — in a browser UI, from the command line, or directly inside VS Code.
 
 ## Supported Languages
 
@@ -35,7 +35,7 @@ Language detection is automatic — DepGraph scans the target directory and enab
 - **Cycle detection** — Tarjan's SCC algorithm highlights circular dependencies with red edges and a warning banner
 - **Blast radius** — select a file to see its direct and transitive dependents, with impact percentage and depth-stratified drill-down
 - **Path finder** — find the shortest dependency path between any two files
-- **Refactor simulator** — model file moves or deletions and preview how the graph would change
+- **Refactor simulator** — model file or dependency removals and preview what breaks, or use merge/split simulation to model combining two files into one or splitting a large file into parts, with full impact analysis
 - **Story mode** — a generated multi-step walkthrough of the dependency structure covering hotspots, coupling, cycles, and metrics
 - **Unused file detection** — identifies files with zero inbound references
 - **Project insights** — a health dashboard scoring the graph on cycles, god files, coupling, fan-out, hub files, deep chains, and unstable core files, with export to JSON or Markdown
@@ -77,21 +77,43 @@ Press `?` in the UI to see all shortcuts. Highlights include: `1`/`2`/`3` for la
 
 ```
 DepGraph/
-├── app.py           — Flask server, API routes, upload handling, security
-├── graph.py         — core graph engine (build_graph, detect_languages, find_sccs)
-├── parsers.py       — language-specific import resolution for all 9 languages
-├── cli.py           — CLI entry point (depgraph command)
-├── pyproject.toml   — package config (pip install .)
-├── requirements.txt — Flask, Gunicorn, Werkzeug
-├── render.yaml      — Render deployment config
-├── action.yml       — GitHub Action definition
+├── app.py              — Flask server, API routes, upload handling, security
+├── graph.py            — core graph engine (build_graph, detect_languages, find_sccs)
+├── parsers.py          — language-specific import resolution for all 9 languages
+├── cli.py              — CLI entry point (depgraph command)
+├── pyproject.toml      — package config (pip install .)
+├── requirements.txt    — Flask, Gunicorn, Werkzeug
+├── render.yaml         — Render deployment config
+├── action.yml          — GitHub Action definition
 ├── static/
-│   ├── index.html   — single-page frontend
-│   ├── app.js       — all frontend logic (~270 functions)
-│   ├── style.css    — UI styles with light/dark theme
-│   └── tour.js      — guided tour system
-├── tests/           — sample source trees for each supported language
-└── examples/        — example outputs (Mermaid diagram)
+│   ├── index.html      — single-page frontend
+│   ├── app.js          — core frontend logic and UI wiring
+│   ├── graph-core.js   — Cytoscape instance, layouts, and node/edge styling
+│   ├── simulation.js   — refactor simulator (removal, merge, split)
+│   ├── analysis.js     — dependency rules and depth warnings
+│   ├── story.js        — story mode walkthrough
+│   ├── tools.js        — path finder, blast radius, query tools
+│   ├── views.js        — treemap, matrix, and graph view switching
+│   ├── ui.js           — sidebar panels, refs, unused files, directory collapsing
+│   ├── query.js        — mini query language parser and execution
+│   ├── exports.js      — JSON, PNG, DOT, Mermaid export
+│   ├── timeline.js     — diff/timeline view for snapshot comparison
+│   ├── state.js        — shared global state and helpers
+│   ├── tour.js         — guided tour system
+│   └── style.css       — UI styles with light/dark theme
+├── vscode-extension/
+│   ├── package.json    — extension manifest (commands, views, settings)
+│   └── src/
+│       ├── extension.ts  — activation, command registration, file watchers
+│       ├── engine.ts     — spawns DepGraph CLI, caches graph data
+│       ├── sidebar.ts    — tree views (dependencies, cycles, metrics)
+│       ├── commands.ts   — command implementations (graph, cycles, blast radius, export)
+│       ├── webview.ts    — interactive Cytoscape.js graph in a VS Code panel
+│       ├── codeLens.ts   — inline dependency counts and metrics above files
+│       ├── diagnostics.ts — cycle, depth, and high-impact warnings in Problems panel
+│       └── config.ts     — reads workspace settings
+├── tests/              — sample source trees for each supported language
+└── examples/           — example outputs (Mermaid diagram)
 ```
 
 The backend is split into three modules: `app.py` handles Flask routing and security, `graph.py` handles graph construction and cycle detection, and `parsers.py` handles language-specific import resolution. The CLI imports `graph.py` directly without requiring Flask.
@@ -194,6 +216,45 @@ jobs:
 
 Change `branches: [master]` to match your default branch name. The workflow checks out the base branch into a temporary worktree, runs `depgraph --diff` to compare dependencies, and posts a collapsible Markdown comment on the PR. If there are no dependency changes, it stays silent. Previous DepGraph comments are replaced on each push to keep the PR clean.
 
+## VS Code Extension
+
+DepGraph includes a VS Code extension that brings dependency analysis directly into the editor. It uses the DepGraph CLI under the hood, so `pip install .` is a prerequisite.
+
+### Commands
+
+Open the command palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and search for "DepGraph":
+
+- **Show Dependency Graph** — opens an interactive Cytoscape.js graph in a webview panel with force, hierarchy, and concentric layouts, search, and right-click context menu
+- **Find Dependency Cycles** — lists detected cycles in a quick-pick menu
+- **Show Dependents / Dependencies** — quick-pick lists of files that import or are imported by the current file
+- **Blast Radius** — highlights all transitive dependents of the current file
+- **Export as JSON / DOT / Mermaid** — writes graph data to file
+
+### Sidebar Views
+
+Three tree views appear in the Explorer sidebar under a DepGraph section:
+
+- **Dependencies** — files sorted by depth, expandable to show imports and imported-by lists
+- **Cycles** — detected circular dependencies with member files
+- **File Metrics** — files sorted by impact with per-file depth, stability, and reach percentage
+
+### CodeLens & Diagnostics
+
+Inline CodeLens annotations show inbound/outbound counts, depth, impact, and stability above each file. The extension also reports cycle membership, excessive depth, and high-impact files as warnings in the Problems panel.
+
+### Settings
+
+Configure under `depgraph.*` in VS Code settings:
+
+- `pythonPath` — path to the Python interpreter (default: `python3`)
+- `language` — force a language mode or use `auto` detection (default: `auto`)
+- `hideExternal` — hide system/external imports (default: `true`)
+- `hideIsolated` — hide files with no dependencies (default: `false`)
+- `maxDepthWarning` — depth threshold for diagnostic warnings (default: `8`)
+- `autoRefresh` — automatically refresh the graph when files change (default: `true`)
+
+The extension activates automatically when the workspace contains supported source files.
+
 ## Web UI
 
 Start the web server directly:
@@ -218,7 +279,7 @@ The sidebar has ten panels organized in three groups:
 
 **Inspect:** Refs (reference counts and cycle list), Analysis (directory coupling and per-node metrics like depth, impact, stability), Unused (zero-inbound files), Blast Radius (transitive impact of a selected file).
 
-**Tools:** Layers (architectural layer violations), Rules (custom forbidden/required dependency patterns), Path Finder (shortest path between two files), Diff (compare two graph snapshots), Simulate (model file removals and preview impact).
+**Tools:** Layers (architectural layer violations), Rules (custom forbidden/required dependency patterns), Path Finder (shortest path between two files), Diff (compare two graph snapshots), Simulate (model file removals and preview impact, plus merge/split what-if analysis).
 
 **More:** Story Mode (generated walkthrough of the dependency structure).
 
@@ -236,6 +297,7 @@ All graph endpoints return JSON with `nodes`, `edges`, `has_cycles`, `cycles`, `
 | `/api/layers` | POST | Check for architectural layering violations |
 | `/api/rules` | POST | Check custom dependency rule violations |
 | `/api/simulate` | POST | Preview impact of node/edge removal |
+| `/api/simulate-merge` | POST | Preview impact of merging or splitting files |
 | `/api/story` | POST | Generate a story-mode walkthrough |
 | `/api/config` | GET | Expose configuration flags to the frontend |
 | `/api/csrf-token` | GET | Get CSRF token for write operations |

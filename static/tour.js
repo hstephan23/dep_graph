@@ -72,14 +72,38 @@ const Tour = (() => {
         {
             target: '.graph-status-bar',
             label: 'Legend',
-            desc: 'Color key: upstream (blue), downstream (orange), selected (yellow), and cycle edges (red).',
+            desc: 'Once a graph is loaded, a legend appears here along the bottom-left showing the color key: upstream (blue), downstream (orange), selected (yellow), and cycle edges (red).',
             placement: 'top',
+            before() {
+                const bar = document.getElementById('graphStatusBar');
+                if (bar && getComputedStyle(bar).display === 'none') {
+                    bar.style.display = 'flex';
+                    bar.dataset.tourRevealed = 'true';
+                }
+            },
+            after() {
+                const bar = document.getElementById('graphStatusBar');
+                if (bar && bar.dataset.tourRevealed) {
+                    bar.style.display = '';
+                    delete bar.dataset.tourRevealed;
+                }
+            },
         },
         {
             target: '#themeToggle',
             label: 'Theme',
             desc: 'Toggle light and dark mode. Your preference is saved automatically.',
             placement: 'bottom-end',
+        },
+        {
+            target: '#panel-simulate',
+            label: 'Refactor Simulator',
+            desc: 'Model refactoring before you commit. Remove files or edges to check what breaks, or use Merge/Split to simulate combining two files into one or splitting a large file into parts \u2014 with full impact analysis.',
+            placement: 'left',
+            before() {
+                const tab = document.querySelector('.sidebar-tab[data-panel="panel-simulate"]');
+                if (tab) switchTab(tab);
+            },
         },
     ];
 
@@ -141,9 +165,21 @@ const Tour = (() => {
         document.body.appendChild(overlayEl);
     }
 
+    let prevStep = -1;
+
     // ---- Render current step ----
     function renderStep() {
+        // Clean up previous step if it had an after-action
+        if (prevStep >= 0 && prevStep !== current && steps[prevStep].after) {
+            steps[prevStep].after();
+        }
+        prevStep = current;
+
         const step = steps[current];
+
+        // Run optional before-action (e.g. open a panel)
+        if (step.before) step.before();
+
         const target = document.querySelector(step.target);
 
         // Update text
@@ -295,6 +331,9 @@ const Tour = (() => {
 
     function close() {
         if (!isOpen) return;
+        // Clean up current step's after-action
+        if (prevStep >= 0 && steps[prevStep].after) steps[prevStep].after();
+        prevStep = -1;
         isOpen = false;
         overlayEl.classList.add('closing');
         setTimeout(() => {
