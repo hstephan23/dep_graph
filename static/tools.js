@@ -525,7 +525,7 @@ function clearFoundPath() {
 function checkLayers() {
     const input = document.getElementById('layerInput').value.trim();
     if (!input || !currentGraphData) return;
-    fetch('/api/layers', {
+    _fetchWithTimeout('/api/layers', {
         method: 'POST', headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
         body: JSON.stringify({ layers: input.split(',').map(s => s.trim()).filter(Boolean), graph: currentGraphData }),
     }).then(r => r.json()).then(data => {
@@ -549,7 +549,7 @@ function checkLayers() {
             };
             list.appendChild(div);
         });
-    }).catch(() => showToast('Error: Failed to check layers', 4000));
+    }).catch(err => _handleApiError(err, 'Failed to check layers.'));
 }
 
 // --- Diff ---
@@ -557,32 +557,176 @@ function loadDiff() {
     const dir2 = document.getElementById('diffDirInput').value.trim();
     if (!dir2 || !currentGraphData) return;
     const filters = getFilterValues();
-    fetch('/api/graph?' + new URLSearchParams({ dir: dir2, ...filters }))
+    _fetchWithTimeout('/api/graph?' + new URLSearchParams({ dir: dir2, ...filters }))
         .then(r => r.json()).then(ng => {
-            if (ng.error) { showToast('Error: ' + ng.error); return; }
-            fetch('/api/diff', { method: 'POST', headers: { 'Content-Type': 'application/json', ..._csrfHeaders() }, body: JSON.stringify({ old: currentGraphData, new: ng }) })
+            if (ng.error) { showToast('Error: ' + (ng.suggestion || ng.error)); return; }
+            _fetchWithTimeout('/api/diff', { method: 'POST', headers: { 'Content-Type': 'application/json', ..._csrfHeaders() }, body: JSON.stringify({ old: currentGraphData, new: ng }) })
                 .then(r => r.json()).then(renderDiff)
-                .catch(() => showToast('Error: Diff comparison failed', 4000));
-        }).catch(() => showToast('Error: Failed to load second directory', 4000));
+                .catch(err => _handleApiError(err, 'Diff comparison failed.'));
+        }).catch(err => _handleApiError(err, 'Failed to load second directory.'));
+}
+
+// Track diff state so we can exit gracefully
+let _diffActive = false;
+let _diffData = null;
+
+function _diffStyles() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const outline = dark ? '#0e1019' : '#f1f5f9';
+    return [
+        { selector: 'node[diff="added"]', style: {
+            'background-color': '#22c55e', label: 'data(id)',
+            width: ele => (ele.data('size') || 80) * 1.1, height: ele => (ele.data('size') || 80) * 1.1,
+            color: '#fff', 'text-outline-color': '#166534', 'text-outline-width': 2,
+            'font-size': '14px', 'text-valign': 'center', 'text-halign': 'center',
+            'border-width': 3, 'border-color': '#16a34a', 'border-style': 'solid',
+        }},
+        { selector: 'node[diff="removed"]', style: {
+            'background-color': '#ef4444', 'background-opacity': 0.5, label: 'data(id)',
+            width: 'data(size)', height: 'data(size)',
+            color: '#fca5a5', 'text-outline-color': '#7f1d1d', 'text-outline-width': 2,
+            'font-size': '14px', 'text-valign': 'center', 'text-halign': 'center',
+            'border-width': 3, 'border-color': '#dc2626', 'border-style': 'dashed',
+        }},
+        { selector: 'node[diff="unchanged"]', style: {
+            'background-color': dark ? '#334155' : '#94a3b8', 'background-opacity': 0.4, label: 'data(id)',
+            width: 'data(size)', height: 'data(size)',
+            color: dark ? '#64748b' : '#94a3b8', 'text-outline-color': outline, 'text-outline-width': 2,
+            'font-size': '12px', 'text-valign': 'center', 'text-halign': 'center',
+            'border-width': 0,
+        }},
+        { selector: 'edge[diff="added"]', style: {
+            width: 5, 'line-color': '#22c55e', 'line-style': 'solid',
+            'target-arrow-color': '#22c55e', 'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier', opacity: 1,
+        }},
+        { selector: 'edge[diff="removed"]', style: {
+            width: 4, 'line-color': '#ef4444', 'line-style': 'dashed',
+            'target-arrow-color': '#ef4444', 'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier', opacity: 0.6,
+        }},
+        { selector: 'edge[diff="unchanged"]', style: {
+            width: 2, 'line-color': dark ? '#334155' : '#cbd5e1', 'line-style': 'solid',
+            'target-arrow-color': dark ? '#334155' : '#cbd5e1', 'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier', opacity: 0.25,
+        }},
+        { selector: '.diff-hidden', style: { display: 'none' } },
+    ];
 }
 
 function renderDiff(diff) {
+    _diffActive = true;
+    _diffData = diff;
+    diff.nodes.forEach(n => { n.data.size = n.data.size || 80; n.data.label = n.data.id; });
+
+    const cyContainer = document.getElementById('cy');
+    const overlay = document.getElementById('loading');
+    cyContainer.style.visibility = 'hidden';
+    overlay.classList.add('active');
+
     if (cy) cy.destroy();
-    diff.nodes.forEach(n => { n.data.color = n.data.diff === 'added' ? '#22c55e' : n.data.diff === 'removed' ? '#ef4444' : '#94a3b8'; n.data.size = n.data.size || 80; });
-    diff.edges.forEach(e => { e.data.color = e.data.diff === 'added' ? '#22c55e' : e.data.diff === 'removed' ? '#ef4444' : '#cbd5e1'; });
     cy = cytoscape({
-        container: document.getElementById('cy'),
+        container: cyContainer,
         elements: [...diff.nodes, ...diff.edges],
-        style: [
-            { selector: 'node', style: { width: 'data(size)', height: 'data(size)', 'background-color': 'data(color)', label: 'data(id)', color: '#fff', 'text-outline-color': 'data(color)', 'text-outline-width': 2, 'font-size': '14px', 'text-valign': 'center', 'text-halign': 'center' } },
-            { selector: 'edge', style: { width: 3, 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier' } },
-        ],
-        layout: getLayoutConfig(),
+        style: _diffStyles(),
+        layout: { name: 'preset' },
     });
-    const a = diff.nodes.filter(n => n.data.diff === 'added').length, r = diff.nodes.filter(n => n.data.diff === 'removed').length;
-    const ae = diff.edges.filter(e => e.data.diff === 'added').length, re = diff.edges.filter(e => e.data.diff === 'removed').length;
-    document.getElementById('diff-summary').innerHTML = `<div class="diff-summary"><span class="diff-added">+${a} nodes, +${ae} edges</span><span class="diff-removed">-${r} nodes, -${re} edges</span></div>`;
-    showToast('Diff loaded');
+
+    const layoutCfg = { ...getLayoutConfig(), fit: true, animate: false };
+    const layout = cy.layout(layoutCfg);
+    let revealed = false;
+    const reveal = () => {
+        if (revealed) return;
+        revealed = true;
+        cy.fit(80);
+        cyContainer.style.visibility = '';
+        overlay.classList.remove('active');
+    };
+    layout.one('layoutstop', reveal);
+    setTimeout(reveal, 3000);
+    layout.run();
+
+    cy.on('tap', 'node', e => {
+        const node = e.target;
+        cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 300 });
+    });
+
+    const addedN = diff.nodes.filter(n => n.data.diff === 'added');
+    const removedN = diff.nodes.filter(n => n.data.diff === 'removed');
+    const unchangedN = diff.nodes.filter(n => n.data.diff === 'unchanged');
+    const addedE = diff.edges.filter(e => e.data.diff === 'added').length;
+    const removedE = diff.edges.filter(e => e.data.diff === 'removed').length;
+
+    document.getElementById('diff-stats').innerHTML =
+        `<div class="diff-stat-row">`
+        + `<div class="diff-stat diff-stat-added"><span class="diff-stat-num">+${addedN.length}</span><span class="diff-stat-label">files</span></div>`
+        + `<div class="diff-stat diff-stat-removed"><span class="diff-stat-num">-${removedN.length}</span><span class="diff-stat-label">files</span></div>`
+        + `<div class="diff-stat diff-stat-edge"><span class="diff-stat-num">+${addedE}</span><span class="diff-stat-label">edges</span></div>`
+        + `<div class="diff-stat diff-stat-edge-rm"><span class="diff-stat-num">-${removedE}</span><span class="diff-stat-label">edges</span></div>`
+        + `</div>`
+        + `<div class="diff-total">${diff.nodes.length} files total &middot; ${unchangedN.length} unchanged</div>`;
+
+    const fileList = document.getElementById('diff-file-list');
+    fileList.innerHTML = '';
+    const changes = [...addedN.map(n => ({ id: n.data.id, type: 'added' })),
+                     ...removedN.map(n => ({ id: n.data.id, type: 'removed' }))];
+    changes.sort((a, b) => a.id.localeCompare(b.id));
+
+    if (!changes.length) {
+        fileList.innerHTML = '<div class="panel-hint" style="font-size:0.72rem;">No file changes — only edge differences.</div>';
+    } else {
+        changes.forEach(c => {
+            const row = document.createElement('div');
+            row.className = 'diff-file-row';
+            row.innerHTML = `<span class="diff-file-icon ${c.type === 'added' ? 'diff-icon-added' : 'diff-icon-removed'}">${c.type === 'added' ? '+' : '\u2212'}</span>`
+                + `<span class="diff-file-name">${c.id}</span>`;
+            row.onclick = () => {
+                const n = cy.getElementById(c.id);
+                if (n.length) cy.animate({ center: { eles: n }, zoom: 1.8 }, { duration: 300 });
+            };
+            fileList.appendChild(row);
+        });
+    }
+
+    document.getElementById('diff-results').style.display = '';
+    document.getElementById('diffBanner').style.display = 'flex';
+    document.getElementById('diffShowAdded').checked = true;
+    document.getElementById('diffShowRemoved').checked = true;
+    document.getElementById('diffShowUnchanged').checked = true;
+
+    showToast(`Diff loaded: +${addedN.length} / -${removedN.length} files`);
+}
+
+function diffApplyFilters() {
+    if (!cy || !_diffActive) return;
+    const showAdded = document.getElementById('diffShowAdded').checked;
+    const showRemoved = document.getElementById('diffShowRemoved').checked;
+    const showUnchanged = document.getElementById('diffShowUnchanged').checked;
+
+    cy.batch(() => {
+        cy.nodes().forEach(n => {
+            const d = n.data('diff');
+            const hide = (d === 'added' && !showAdded) || (d === 'removed' && !showRemoved) || (d === 'unchanged' && !showUnchanged);
+            if (hide) n.addClass('diff-hidden'); else n.removeClass('diff-hidden');
+        });
+        cy.edges().forEach(e => {
+            const d = e.data('diff');
+            const hide = (d === 'added' && !showAdded) || (d === 'removed' && !showRemoved) || (d === 'unchanged' && !showUnchanged);
+            const srcHidden = e.source().hasClass('diff-hidden');
+            const tgtHidden = e.target().hasClass('diff-hidden');
+            if (hide || srcHidden || tgtHidden) e.addClass('diff-hidden'); else e.removeClass('diff-hidden');
+        });
+    });
+}
+
+function exitDiffMode() {
+    _diffActive = false;
+    _diffData = null;
+    document.getElementById('diff-results').style.display = 'none';
+    document.getElementById('diffBanner').style.display = 'none';
+    if (currentGraphData) {
+        renderGraph(currentGraphData);
+    }
 }
 
 // --- Search ---

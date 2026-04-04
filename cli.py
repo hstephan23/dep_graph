@@ -311,7 +311,8 @@ def main():
     parser.add_argument("--lang", "-l", default="auto",
                         choices=["auto", "c", "cpp", "js", "py", "python",
                                  "java", "go", "rust", "cs", "csharp",
-                                 "swift", "ruby"],
+                                 "swift", "ruby", "kotlin", "scala",
+                                 "php", "dart", "elixir"],
                         help="language mode (default: auto-detect)")
 
     # Output format (mutually exclusive)
@@ -377,6 +378,11 @@ def main():
             "show_cs": merged.get("has_cs", False),
             "show_swift": merged.get("has_swift", False),
             "show_ruby": merged.get("has_ruby", False),
+            "show_kotlin": merged.get("has_kotlin", False),
+            "show_scala": merged.get("has_scala", False),
+            "show_php": merged.get("has_php", False),
+            "show_dart": merged.get("has_dart", False),
+            "show_elixir": merged.get("has_elixir", False),
             "hide_isolated": args.hide_isolated,
             "filter_dir": args.filter_dir,
         }
@@ -430,6 +436,11 @@ def main():
         show_cs = detected["has_cs"]
         show_swift = detected.get("has_swift", False)
         show_ruby = detected.get("has_ruby", False)
+        show_kotlin = detected.get("has_kotlin", False)
+        show_scala = detected.get("has_scala", False)
+        show_php = detected.get("has_php", False)
+        show_dart = detected.get("has_dart", False)
+        show_elixir = detected.get("has_elixir", False)
     else:
         show_c = lang == "c"
         show_h = lang in ("c", "cpp")
@@ -442,6 +453,11 @@ def main():
         show_cs = lang == "cs"
         show_swift = lang == "swift"
         show_ruby = lang == "ruby"
+        show_kotlin = lang == "kotlin"
+        show_scala = lang == "scala"
+        show_php = lang == "php"
+        show_dart = lang == "dart"
+        show_elixir = lang == "elixir"
 
     # Build graph
     result = _build_graph(
@@ -451,6 +467,8 @@ def main():
         show_js=show_js, show_py=show_py, show_java=show_java,
         show_go=show_go, show_rust=show_rust, show_cs=show_cs,
         show_swift=show_swift, show_ruby=show_ruby,
+        show_kotlin=show_kotlin, show_scala=show_scala,
+        show_php=show_php, show_dart=show_dart, show_elixir=show_elixir,
         hide_isolated=args.hide_isolated,
         filter_dir=args.filter_dir,
     )

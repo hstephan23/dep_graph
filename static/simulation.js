@@ -122,7 +122,7 @@ function runSimulation() {
     const resultsEl = document.getElementById('sim-results');
     resultsEl.innerHTML = '<div class="panel-hint" style="opacity:0.6;">Running simulation...</div>';
 
-    fetch('/api/simulate', {
+    _fetchWithTimeout('/api/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
         body: JSON.stringify({
@@ -138,7 +138,7 @@ function runSimulation() {
         highlightSimResults(data);
         showToast('Simulation complete \u2014 ' + data.stats.broken_import_count + ' broken import' + (data.stats.broken_import_count !== 1 ? 's' : ''));
     })
-    .catch(() => { showToast('Error: Simulation failed', 4000); resultsEl.innerHTML = ''; });
+    .catch(err => { _handleApiError(err, 'Simulation failed.'); resultsEl.innerHTML = ''; });
 }
 
 function renderSimResults(data) {

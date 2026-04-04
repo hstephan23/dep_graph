@@ -24,7 +24,7 @@ function storyLoad() {
     var contentEl = document.getElementById('story-content');
     contentEl.innerHTML = '<div class="panel-hint" style="opacity:0.6;">Generating story...</div>';
 
-    fetch('/api/story', {
+    _fetchWithTimeout('/api/story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
         body: JSON.stringify({ graph: currentGraphData }),

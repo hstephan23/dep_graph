@@ -8,6 +8,22 @@ permissions:
   pull-requests: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install DepGraph
+        run: pip install .
+
+      - name: Run tests
+        run: pytest tests/ -v
+
   depgraph:
     runs-on: ubuntu-latest
     steps:

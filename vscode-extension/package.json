@@ -1,0 +1,184 @@
+{
+  "name": "depgraph",
+  "displayName": "DepGraph",
+  "description": "Visualize and analyze source file dependencies directly in VS Code",
+  "version": "0.1.0",
+  "publisher": "depgraph",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.py",
+    "workspaceContains:**/*.js",
+    "workspaceContains:**/*.ts",
+    "workspaceContains:**/*.java",
+    "workspaceContains:**/*.go",
+    "workspaceContains:**/*.rs",
+    "workspaceContains:**/*.c",
+    "workspaceContains:**/*.cpp",
+    "workspaceContains:**/*.cs",
+    "workspaceContains:**/*.swift",
+    "workspaceContains:**/*.rb"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "depgraph.showGraph",
+        "title": "DepGraph: Show Dependency Graph",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "depgraph.findCycles",
+        "title": "DepGraph: Find Dependency Cycles"
+      },
+      {
+        "command": "depgraph.showDependents",
+        "title": "DepGraph: Show Dependents of Current File"
+      },
+      {
+        "command": "depgraph.showDependencies",
+        "title": "DepGraph: Show Dependencies of Current File"
+      },
+      {
+        "command": "depgraph.blastRadius",
+        "title": "DepGraph: Show Blast Radius of Current File"
+      },
+      {
+        "command": "depgraph.refresh",
+        "title": "DepGraph: Refresh Graph",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "depgraph.exportJSON",
+        "title": "DepGraph: Export Graph as JSON"
+      },
+      {
+        "command": "depgraph.exportDOT",
+        "title": "DepGraph: Export Graph as DOT"
+      },
+      {
+        "command": "depgraph.exportMermaid",
+        "title": "DepGraph: Export Graph as Mermaid"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "depgraph-sidebar",
+          "title": "DepGraph",
+          "icon": "$(type-hierarchy)"
+        }
+      ]
+    },
+    "views": {
+      "depgraph-sidebar": [
+        {
+          "id": "depgraph.dependencyTree",
+          "name": "Dependencies"
+        },
+        {
+          "id": "depgraph.cycles",
+          "name": "Cycles"
+        },
+        {
+          "id": "depgraph.metrics",
+          "name": "File Metrics"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "DepGraph",
+      "properties": {
+        "depgraph.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to Python interpreter with depgraph installed"
+        },
+        "depgraph.language": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "c",
+            "cpp",
+            "js",
+            "py",
+            "java",
+            "go",
+            "rust",
+            "cs",
+            "swift",
+            "ruby"
+          ],
+          "description": "Language mode for dependency analysis"
+        },
+        "depgraph.hideExternal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hide system/external imports from the graph"
+        },
+        "depgraph.hideIsolated": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hide files with no dependencies"
+        },
+        "depgraph.maxDepthWarning": {
+          "type": "number",
+          "default": 8,
+          "description": "Highlight files with dependency depth exceeding this threshold"
+        },
+        "depgraph.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh the graph when files change"
+        }
+      }
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "depgraph.showDependents",
+          "group": "depgraph"
+        },
+        {
+          "command": "depgraph.showDependencies",
+          "group": "depgraph"
+        },
+        {
+          "command": "depgraph.blastRadius",
+          "group": "depgraph"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "depgraph.refresh",
+          "when": "view == depgraph.dependencyTree",
+          "group": "navigation"
+        },
+        {
+          "command": "depgraph.showGraph",
+          "when": "view == depgraph.dependencyTree",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.3.0",
+    "typescript": "^5.3.0"
+  }
+}

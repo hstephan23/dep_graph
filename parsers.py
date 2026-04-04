@@ -74,6 +74,37 @@ RUBY_REQUIRE_RELATIVE_RE = re.compile(
     r'''^\s*require_relative\s+['"]([\w.\/\-]+)['"]''', re.MULTILINE
 )
 
+# Kotlin: import com.example.Foo or import com.example.Foo as Bar
+KOTLIN_IMPORT_RE = re.compile(
+    r'^import\s+([\w.*]+)(?:\s+as\s+\w+)?\s*$', re.MULTILINE
+)
+
+# Scala: import com.example.Foo, import com.example.{Foo, Bar}, import com.example._
+SCALA_IMPORT_RE = re.compile(
+    r'^import\s+([\w.*]+(?:\.\{[^}]+\})?)\s*$', re.MULTILINE
+)
+
+# PHP: use App\Models\User; require/include 'path'; namespace App\Models;
+PHP_USE_RE = re.compile(
+    r'^\s*use\s+([\w\\]+)(?:\s+as\s+\w+)?\s*;', re.MULTILINE
+)
+PHP_REQUIRE_RE = re.compile(
+    r'''^\s*(?:require_once|include_once|require|include)\s*[\(]?\s*['"]([\w.\/\-]+)['"]\s*[\)]?\s*;''', re.MULTILINE
+)
+PHP_NAMESPACE_RE = re.compile(
+    r'^\s*namespace\s+([\w\\]+)\s*;', re.MULTILINE
+)
+
+# Dart/Flutter: import 'package:foo/bar.dart'; import 'path/to/file.dart';
+DART_IMPORT_RE = re.compile(
+    r'''^\s*import\s+['"]([\w:\/.\-]+)['"]\s*(?:as\s+\w+\s*)?(?:show\s+[\w,\s]+)?(?:hide\s+[\w,\s]+)?;''', re.MULTILINE
+)
+
+# Elixir: alias MyApp.Models.User, import MyApp.Utils, use GenServer, require Logger
+ELIXIR_ALIAS_RE = re.compile(
+    r'^\s*(?:alias|import|use|require)\s+([\w.]+)', re.MULTILINE
+)
+
 
 # =========================================================================
 # File extension groups
@@ -90,6 +121,11 @@ RUST_EXTENSIONS = ('.rs',)
 CS_EXTENSIONS = ('.cs',)
 SWIFT_EXTENSIONS = ('.swift',)
 RUBY_EXTENSIONS = ('.rb',)
+KOTLIN_EXTENSIONS = ('.kt', '.kts')
+SCALA_EXTENSIONS = ('.scala', '.sc')
+PHP_EXTENSIONS = ('.php',)
+DART_EXTENSIONS = ('.dart',)
+ELIXIR_EXTENSIONS = ('.ex', '.exs')
 
 
 # =========================================================================
@@ -147,6 +183,37 @@ SWIFT_SYSTEM_MODULES = frozenset([
     'PassKit', 'Photos', 'QuartzCore', 'RealityKit', 'SafariServices',
     'SceneKit', 'Security', 'SpriteKit', 'StoreKit', 'SystemConfiguration',
     'UserNotifications', 'Vision', 'WatchKit', 'WebKit', 'WidgetKit',
+])
+
+KOTLIN_STDLIB_PREFIXES = (
+    'kotlin', 'java', 'javax', 'android', 'androidx', 'org.jetbrains',
+    'kotlinx',
+)
+
+SCALA_STDLIB_PREFIXES = (
+    'scala', 'java', 'javax', 'akka', 'play',
+)
+
+PHP_SYSTEM_PREFIXES = (
+    'Illuminate', 'Symfony', 'Psr', 'Doctrine', 'GuzzleHttp',
+    'Monolog', 'Carbon', 'PHPUnit', 'Composer',
+)
+
+DART_SYSTEM_PREFIXES = (
+    'dart:', 'package:flutter',
+)
+
+ELIXIR_STDLIB = frozenset([
+    'Kernel', 'Enum', 'List', 'Map', 'String', 'IO', 'File', 'Path',
+    'Agent', 'Task', 'GenServer', 'Supervisor', 'Application',
+    'Logger', 'Inspect', 'Protocol', 'Stream', 'Range', 'Regex',
+    'Tuple', 'Keyword', 'Access', 'Macro', 'Module', 'Process',
+    'Port', 'System', 'Code', 'ETS', 'Node', 'Atom', 'Integer',
+    'Float', 'Function', 'Exception', 'Collectable', 'Enumerable',
+    'MapSet', 'HashSet', 'HashDict', 'Set', 'Dict', 'Base',
+    'Bitwise', 'Record', 'URI', 'Calendar', 'Date', 'DateTime',
+    'Time', 'NaiveDateTime', 'Version', 'Behaviour', 'GenEvent',
+    'ExUnit', 'Mix', 'IEx', 'EEx', 'Plug', 'Phoenix', 'Ecto',
 ])
 
 RUBY_STDLIB = frozenset([
@@ -578,3 +645,269 @@ def resolve_ruby_require(req_path, source_file, directory, known_files,
         return req_path, True
 
     return candidate_rb, False
+
+
+def resolve_kotlin_import(import_path, directory, known_files):
+    """Resolve a Kotlin import to source files.
+
+    Returns ``(resolved_path, is_external)``.
+    Kotlin imports work like Java — dot-separated packages map to directories.
+    """
+    # Check for stdlib/system import
+    for prefix in KOTLIN_STDLIB_PREFIXES:
+        if import_path.startswith(prefix):
+            return import_path, True
+
+    is_wildcard = import_path.endswith('.*')
+    if is_wildcard:
+        pkg = import_path[:-2].replace('.', os.sep)
+        matches = [f for f in known_files
+                   if f.startswith(pkg + os.sep)
+                   and (f.endswith('.kt') or f.endswith('.kts'))
+                   and os.sep not in f[len(pkg) + 1:]]
+        if matches:
+            return matches[0], False
+        return import_path, True
+    else:
+        # com.example.Foo → com/example/Foo.kt
+        candidate = import_path.replace('.', os.sep) + '.kt'
+        if candidate in known_files:
+            return candidate, False
+        candidate_kts = import_path.replace('.', os.sep) + '.kts'
+        if candidate_kts in known_files:
+            return candidate_kts, False
+        # Try as a directory package (last segment is a class in a file)
+        parts = import_path.split('.')
+        if len(parts) >= 2:
+            parent_path = os.sep.join(parts[:-1]) + '.kt'
+            if parent_path in known_files:
+                return parent_path, False
+        return import_path, True
+
+
+def resolve_scala_import(import_path, directory, known_files):
+    """Resolve a Scala import to source files.
+
+    Returns ``(resolved_path, is_external)``.
+    Handles brace imports like ``com.example.{Foo, Bar}``.
+    """
+    # Strip brace imports: com.example.{Foo, Bar} → com.example
+    base_path = import_path
+    if '.{' in import_path:
+        base_path = import_path[:import_path.index('.{')]
+
+    # Check for stdlib/system import
+    for prefix in SCALA_STDLIB_PREFIXES:
+        if base_path.startswith(prefix):
+            return import_path, True
+
+    is_wildcard = base_path.endswith('._')
+    if is_wildcard:
+        base_path = base_path[:-2]
+
+    candidate = base_path.replace('.', os.sep) + '.scala'
+    if candidate in known_files:
+        return candidate, False
+    candidate_sc = base_path.replace('.', os.sep) + '.sc'
+    if candidate_sc in known_files:
+        return candidate_sc, False
+    # Try as directory (package object)
+    pkg_obj = os.path.join(base_path.replace('.', os.sep), 'package.scala')
+    if pkg_obj in known_files:
+        return pkg_obj, False
+    # Try parent path (class inside a file)
+    parts = base_path.split('.')
+    if len(parts) >= 2:
+        parent_path = os.sep.join(parts[:-1]) + '.scala'
+        if parent_path in known_files:
+            return parent_path, False
+    return import_path, True
+
+
+def build_php_namespace_map(directory, known_files):
+    """Pre-scan .php files to build a map of declared namespace → [file paths].
+
+    Returns ``(ns_map, class_map)`` where *ns_map* maps a full namespace string
+    to a sorted list of relative file paths and *class_map* maps
+    ``Namespace\\ClassName`` to the file path.
+    """
+    ns_map = {}
+    class_map = {}
+
+    for rel_path in known_files:
+        if not rel_path.endswith('.php'):
+            continue
+        full_path = os.path.join(directory, rel_path)
+        try:
+            with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+        except OSError:
+            continue
+
+        for m in PHP_NAMESPACE_RE.finditer(content):
+            ns = m.group(1)
+            ns_map.setdefault(ns, [])
+            if rel_path not in ns_map[ns]:
+                ns_map[ns].append(rel_path)
+
+            basename = os.path.splitext(os.path.basename(rel_path))[0]
+            class_key = ns + '\\' + basename
+            class_map[class_key] = rel_path
+
+    for ns in ns_map:
+        ns_map[ns] = sorted(ns_map[ns])
+
+    return ns_map, class_map
+
+
+def resolve_php_use(namespace, directory, known_files, ns_map=None,
+                    class_map=None):
+    """Resolve a PHP ``use`` statement to project file(s) if possible.
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # Check for framework/system namespace
+    for prefix in PHP_SYSTEM_PREFIXES:
+        if namespace.startswith(prefix):
+            return namespace, True
+
+    # Strategy 1: namespace/class map
+    if class_map and namespace in class_map:
+        return class_map[namespace], False
+
+    if ns_map:
+        if namespace in ns_map:
+            files = ns_map[namespace]
+            if files:
+                return files[0], False
+
+        prefix = namespace + '\\'
+        children = []
+        for ns, files in ns_map.items():
+            if ns.startswith(prefix) or ns == namespace:
+                children.extend(files)
+        if children:
+            return sorted(set(children))[0], False
+
+    # Strategy 2: path heuristics — convert backslashes to path separators
+    candidate = namespace.replace('\\', os.sep) + '.php'
+    if candidate in known_files:
+        return candidate, False
+
+    # Try mapping to directory structure (PSR-4 style)
+    parts = namespace.split('\\')
+    for start in range(len(parts)):
+        candidate = os.path.join(*parts[start:]) + '.php'
+        if candidate in known_files:
+            return candidate, False
+
+    return namespace, True
+
+
+def resolve_php_require(req_path, source_file, directory, known_files):
+    """Resolve a PHP require/include to a project file.
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    source_dir = os.path.dirname(source_file)
+    candidate = os.path.normpath(os.path.join(source_dir, req_path))
+
+    if candidate in known_files:
+        return candidate, False
+
+    # Try from project root
+    if req_path in known_files:
+        return req_path, False
+
+    return candidate, False
+
+
+def resolve_dart_import(import_path, source_file, directory, known_files):
+    """Resolve a Dart import to a project file.
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # dart:core, dart:async, etc.
+    if import_path.startswith('dart:'):
+        return import_path, True
+
+    # package: imports
+    if import_path.startswith('package:'):
+        # package:my_app/models/user.dart → lib/models/user.dart
+        # For external packages, treat as external
+        parts = import_path[len('package:'):].split('/', 1)
+        if len(parts) == 2:
+            pkg_name, rest = parts
+            # Check if it matches a local package (lib/ directory)
+            candidate = os.path.join('lib', rest)
+            if candidate in known_files:
+                return candidate, False
+        # Check system prefixes
+        for prefix in DART_SYSTEM_PREFIXES:
+            if import_path.startswith(prefix):
+                return import_path, True
+        return import_path, True
+
+    # Relative imports
+    source_dir = os.path.dirname(source_file)
+    candidate = os.path.normpath(os.path.join(source_dir, import_path))
+    if candidate in known_files:
+        return candidate, False
+
+    # Try from project root
+    if import_path in known_files:
+        return import_path, False
+
+    return candidate, False
+
+
+def resolve_elixir_module(module_name, source_file, directory, known_files):
+    """Resolve an Elixir module reference to a project file.
+
+    Elixir modules map to files via snake_case conversion:
+    ``MyApp.Models.User`` → ``lib/my_app/models/user.ex``
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    top_module = module_name.split('.')[0]
+    if top_module in ELIXIR_STDLIB:
+        return module_name, True
+
+    # Convert module path to snake_case file path
+    parts = module_name.split('.')
+    snake_parts = []
+    for part in parts:
+        # Convert CamelCase to snake_case
+        snake = ''
+        for i, ch in enumerate(part):
+            if ch.isupper() and i > 0 and part[i-1].islower():
+                snake += '_'
+            snake += ch.lower()
+        snake_parts.append(snake)
+
+    # Try lib/ prefix (standard Elixir project layout)
+    candidate = os.path.join('lib', *snake_parts) + '.ex'
+    if candidate in known_files:
+        return candidate, False
+
+    candidate_exs = os.path.join('lib', *snake_parts) + '.exs'
+    if candidate_exs in known_files:
+        return candidate_exs, False
+
+    # Try without lib/ prefix
+    candidate = os.path.join(*snake_parts) + '.ex'
+    if candidate in known_files:
+        return candidate, False
+
+    candidate_exs = os.path.join(*snake_parts) + '.exs'
+    if candidate_exs in known_files:
+        return candidate_exs, False
+
+    # Try just the last part (filename match)
+    base = snake_parts[-1]
+    for f in known_files:
+        fname = os.path.splitext(os.path.basename(f))[0]
+        if fname == base and (f.endswith('.ex') or f.endswith('.exs')):
+            return f, False
+
+    return module_name, True

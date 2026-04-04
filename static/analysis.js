@@ -61,7 +61,7 @@ function renderRulesList() {
 function checkRules() {
     if (!depRules.length) { showToast('Add at least one rule first'); return; }
     if (!currentGraphData) { showToast('Generate a graph first'); return; }
-    fetch('/api/rules', {
+    _fetchWithTimeout('/api/rules', {
         method: 'POST', headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
         body: JSON.stringify({ rules: depRules, graph: currentGraphData }),
     }).then(r => r.json()).then(data => {
@@ -70,7 +70,7 @@ function checkRules() {
         applyRuleBadges();
         if (!ruleViolations.length) showToast('No violations found!');
         else showToast(`Found ${ruleViolations.length} violation${ruleViolations.length > 1 ? 's' : ''}`);
-    }).catch(() => showToast('Error: Failed to check rules', 4000));
+    }).catch(err => _handleApiError(err, 'Failed to check rules.'));
 }
 
 function renderRuleViolations() {

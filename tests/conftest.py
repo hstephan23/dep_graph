@@ -76,3 +76,28 @@ def test_ruby_dir(fixtures_dir):
 @pytest.fixture
 def test_dir_dir(fixtures_dir):
     return os.path.join(fixtures_dir, "test_dir")
+
+
+@pytest.fixture
+def test_kotlin_dir(fixtures_dir):
+    return os.path.join(fixtures_dir, "test_kotlin")
+
+
+@pytest.fixture
+def test_scala_dir(fixtures_dir):
+    return os.path.join(fixtures_dir, "test_scala")
+
+
+@pytest.fixture
+def test_php_dir(fixtures_dir):
+    return os.path.join(fixtures_dir, "test_php")
+
+
+@pytest.fixture
+def test_dart_dir(fixtures_dir):
+    return os.path.join(fixtures_dir, "test_dart")
+
+
+@pytest.fixture
+def test_elixir_dir(fixtures_dir):
+    return os.path.join(fixtures_dir, "test_elixir")

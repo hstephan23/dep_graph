@@ -21,10 +21,17 @@ from parsers import (
     CS_USING_RE,
     SWIFT_IMPORT_RE,
     RUBY_REQUIRE_RE, RUBY_REQUIRE_RELATIVE_RE,
+    KOTLIN_IMPORT_RE,
+    SCALA_IMPORT_RE,
+    PHP_USE_RE, PHP_REQUIRE_RE,
+    DART_IMPORT_RE,
+    ELIXIR_ALIAS_RE,
     # Extension tuples
     C_EXTENSIONS, H_EXTENSIONS, CPP_EXTENSIONS, JS_EXTENSIONS,
     PY_EXTENSIONS, JAVA_EXTENSIONS, GO_EXTENSIONS, RUST_EXTENSIONS,
     CS_EXTENSIONS, SWIFT_EXTENSIONS, RUBY_EXTENSIONS,
+    KOTLIN_EXTENSIONS, SCALA_EXTENSIONS, PHP_EXTENSIONS,
+    DART_EXTENSIONS, ELIXIR_EXTENSIONS,
     # Helpers
     collapse_py_multiline_imports,
     # Resolution functions
@@ -34,6 +41,11 @@ from parsers import (
     build_cs_namespace_map, resolve_cs_using,
     resolve_swift_import,
     resolve_ruby_require,
+    resolve_kotlin_import,
+    resolve_scala_import,
+    build_php_namespace_map, resolve_php_use, resolve_php_require,
+    resolve_dart_import,
+    resolve_elixir_module,
     # Resolution cache
     ResolutionCache,
 )
@@ -77,7 +89,8 @@ def _should_skip_file(name):
 def _wanted_extension(filename, show_c, show_h, show_cpp, show_js=False,
                       show_py=False, show_java=False, show_go=False,
                       show_rust=False, show_cs=False, show_swift=False,
-                      show_ruby=False):
+                      show_ruby=False, show_kotlin=False, show_scala=False,
+                      show_php=False, show_dart=False, show_elixir=False):
     """Check whether a filename has an extension we want to include."""
     if filename.endswith(C_EXTENSIONS) and show_c:
         return True
@@ -101,13 +114,24 @@ def _wanted_extension(filename, show_c, show_h, show_cpp, show_js=False,
         return True
     if filename.endswith(RUBY_EXTENSIONS) and show_ruby:
         return True
+    if filename.endswith(KOTLIN_EXTENSIONS) and show_kotlin:
+        return True
+    if filename.endswith(SCALA_EXTENSIONS) and show_scala:
+        return True
+    if filename.endswith(PHP_EXTENSIONS) and show_php:
+        return True
+    if filename.endswith(DART_EXTENSIONS) and show_dart:
+        return True
+    if filename.endswith(ELIXIR_EXTENSIONS) and show_elixir:
+        return True
     return False
 
 
 def _include_target_excluded(filename, show_c, show_h, show_cpp, show_js=False,
                              show_py=False, show_java=False, show_go=False,
                              show_rust=False, show_cs=False, show_swift=False,
-                             show_ruby=False):
+                             show_ruby=False, show_kotlin=False, show_scala=False,
+                             show_php=False, show_dart=False, show_elixir=False):
     """Return True if an include/import target should be excluded."""
     if filename.endswith(C_EXTENSIONS) and not show_c:
         return True
@@ -130,6 +154,16 @@ def _include_target_excluded(filename, show_c, show_h, show_cpp, show_js=False,
     if filename.endswith(SWIFT_EXTENSIONS) and not show_swift:
         return True
     if filename.endswith(RUBY_EXTENSIONS) and not show_ruby:
+        return True
+    if filename.endswith(KOTLIN_EXTENSIONS) and not show_kotlin:
+        return True
+    if filename.endswith(SCALA_EXTENSIONS) and not show_scala:
+        return True
+    if filename.endswith(PHP_EXTENSIONS) and not show_php:
+        return True
+    if filename.endswith(DART_EXTENSIONS) and not show_dart:
+        return True
+    if filename.endswith(ELIXIR_EXTENSIONS) and not show_elixir:
         return True
     return False
 
@@ -213,7 +247,8 @@ def find_sccs(adj):
 def collect_source_files(directory, show_c, show_h, show_cpp, show_js=False,
                          show_py=False, show_java=False, show_go=False,
                          show_rust=False, show_cs=False, show_swift=False,
-                         show_ruby=False):
+                         show_ruby=False, show_kotlin=False, show_scala=False,
+                         show_php=False, show_dart=False, show_elixir=False):
     """Walk *directory* and return a list of source file paths to parse."""
     skip_dirs = set()
     if show_js:
@@ -229,6 +264,16 @@ def collect_source_files(directory, show_c, show_h, show_cpp, show_js=False,
         skip_dirs.update({'bin', 'obj', 'packages', '.vs'})
     if show_ruby:
         skip_dirs.update({'vendor', '.bundle'})
+    if show_kotlin:
+        skip_dirs.add('build')
+    if show_scala:
+        skip_dirs.update({'target', '.bsp', '.metals'})
+    if show_php:
+        skip_dirs.add('vendor')
+    if show_dart:
+        skip_dirs.update({'.dart_tool', 'build', '.pub-cache'})
+    if show_elixir:
+        skip_dirs.update({'_build', 'deps', '.elixir_ls'})
 
     result = []
     for root, dirs, files in os.walk(directory):
@@ -239,7 +284,9 @@ def collect_source_files(directory, show_c, show_h, show_cpp, show_js=False,
                 continue
             if _wanted_extension(fname, show_c, show_h, show_cpp, show_js,
                                  show_py, show_java, show_go, show_rust,
-                                 show_cs, show_swift, show_ruby):
+                                 show_cs, show_swift, show_ruby,
+                                 show_kotlin, show_scala, show_php,
+                                 show_dart, show_elixir):
                 result.append(os.path.join(root, fname))
     return result
 
@@ -252,6 +299,8 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                 show_cpp=True, show_js=False, show_py=False,
                 show_java=False, show_go=False, show_rust=False,
                 show_cs=False, show_swift=False, show_ruby=False,
+                show_kotlin=False, show_scala=False, show_php=False,
+                show_dart=False, show_elixir=False,
                 hide_isolated=False, filter_dir=""):
     """Parse source files and return the dependency graph as a dict.
 
@@ -265,7 +314,8 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
     files_to_parse = collect_source_files(
         directory, show_c, show_h, show_cpp, show_js,
         show_py, show_java, show_go, show_rust, show_cs,
-        show_swift, show_ruby,
+        show_swift, show_ruby, show_kotlin, show_scala,
+        show_php, show_dart, show_elixir,
     )
 
     # Build a set of known relative paths for import resolution
@@ -277,6 +327,11 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
     # Pre-scan C# namespace declarations for accurate resolution
     cs_ns_map, cs_class_map = (
         build_cs_namespace_map(directory, known_files) if show_cs else ({}, {})
+    )
+
+    # Pre-scan PHP namespace declarations for accurate resolution
+    php_ns_map, php_class_map = (
+        build_php_namespace_map(directory, known_files) if show_php else ({}, {})
     )
 
     # Per-build resolution cache — avoids re-resolving the same import string
@@ -310,6 +365,11 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         is_cs_file = filepath.endswith(CS_EXTENSIONS)
         is_swift_file = filepath.endswith(SWIFT_EXTENSIONS)
         is_ruby_file = filepath.endswith(RUBY_EXTENSIONS)
+        is_kotlin_file = filepath.endswith(KOTLIN_EXTENSIONS)
+        is_scala_file = filepath.endswith(SCALA_EXTENSIONS)
+        is_php_file = filepath.endswith(PHP_EXTENSIONS)
+        is_dart_file = filepath.endswith(DART_EXTENSIONS)
+        is_elixir_file = filepath.endswith(ELIXIR_EXTENSIONS)
 
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
@@ -524,6 +584,100 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                         req_path, filename, directory, known_files, relative=False
                     )
                     _cache.put('ruby', req_path, None, cached)
+                resolved, is_external = cached
+                if hide_system and is_external:
+                    continue
+                _add_edge(filename, resolved)
+            continue
+
+        # --- Kotlin imports ---
+        if is_kotlin_file:
+            for m in KOTLIN_IMPORT_RE.finditer(content):
+                import_path = m.group(1)
+                cached = _cache.get('kotlin', import_path)
+                if cached is None:
+                    cached = resolve_kotlin_import(
+                        import_path, directory, known_files
+                    )
+                    _cache.put('kotlin', import_path, None, cached)
+                resolved, is_external = cached
+                if hide_system and is_external:
+                    continue
+                _add_edge(filename, resolved)
+            continue
+
+        # --- Scala imports ---
+        if is_scala_file:
+            for m in SCALA_IMPORT_RE.finditer(content):
+                import_path = m.group(1)
+                cached = _cache.get('scala', import_path)
+                if cached is None:
+                    cached = resolve_scala_import(
+                        import_path, directory, known_files
+                    )
+                    _cache.put('scala', import_path, None, cached)
+                resolved, is_external = cached
+                if hide_system and is_external:
+                    continue
+                _add_edge(filename, resolved)
+            continue
+
+        # --- PHP imports ---
+        if is_php_file:
+            for m in PHP_USE_RE.finditer(content):
+                namespace = m.group(1)
+                cached = _cache.get('php_use', namespace)
+                if cached is None:
+                    cached = resolve_php_use(
+                        namespace, directory, known_files,
+                        ns_map=php_ns_map, class_map=php_class_map
+                    )
+                    _cache.put('php_use', namespace, None, cached)
+                resolved, is_external = cached
+                if hide_system and is_external:
+                    continue
+                if resolved != filename:
+                    _add_edge(filename, resolved)
+            for m in PHP_REQUIRE_RE.finditer(content):
+                req_path = m.group(1)
+                cached = _cache.get('php_req', req_path, filename)
+                if cached is None:
+                    cached = resolve_php_require(
+                        req_path, filename, directory, known_files
+                    )
+                    _cache.put('php_req', req_path, filename, cached)
+                resolved, is_external = cached
+                if hide_system and is_external:
+                    continue
+                _add_edge(filename, resolved)
+            continue
+
+        # --- Dart/Flutter imports ---
+        if is_dart_file:
+            for m in DART_IMPORT_RE.finditer(content):
+                import_path = m.group(1)
+                cached = _cache.get('dart', import_path, filename)
+                if cached is None:
+                    cached = resolve_dart_import(
+                        import_path, filename, directory, known_files
+                    )
+                    _cache.put('dart', import_path, filename, cached)
+                resolved, is_external = cached
+                if hide_system and is_external:
+                    continue
+                _add_edge(filename, resolved)
+            continue
+
+        # --- Elixir imports ---
+        if is_elixir_file:
+            for m in ELIXIR_ALIAS_RE.finditer(content):
+                module_name = m.group(1)
+                cached = _cache.get('elixir', module_name, filename)
+                if cached is None:
+                    cached = resolve_elixir_module(
+                        module_name, filename, directory, known_files
+                    )
+                    _cache.put('elixir', module_name, filename, cached)
                 resolved, is_external = cached
                 if hide_system and is_external:
                     continue
@@ -792,9 +946,13 @@ def detect_languages(directory):
         "has_c": False, "has_h": False, "has_cpp": False, "has_js": False,
         "has_py": False, "has_java": False, "has_go": False, "has_rust": False,
         "has_cs": False, "has_swift": False, "has_ruby": False,
+        "has_kotlin": False, "has_scala": False, "has_php": False,
+        "has_dart": False, "has_elixir": False,
     }
     skip_dirs = {'node_modules', '__pycache__', '.venv', 'venv', 'target',
-                 'vendor', 'bin', 'obj', 'packages', '.vs', '.bundle'}
+                 'vendor', 'bin', 'obj', 'packages', '.vs', '.bundle',
+                 'build', '.bsp', '.metals', '.dart_tool', '.pub-cache',
+                 '_build', 'deps', '.elixir_ls'}
     for root, dirs, files in os.walk(directory):
         dirs[:] = [d for d in dirs if not _should_skip_dir(d) and d not in skip_dirs]
         for fname in files:
@@ -822,6 +980,16 @@ def detect_languages(directory):
                 flags["has_swift"] = True
             if fname.endswith(RUBY_EXTENSIONS):
                 flags["has_ruby"] = True
+            if fname.endswith(KOTLIN_EXTENSIONS):
+                flags["has_kotlin"] = True
+            if fname.endswith(SCALA_EXTENSIONS):
+                flags["has_scala"] = True
+            if fname.endswith(PHP_EXTENSIONS):
+                flags["has_php"] = True
+            if fname.endswith(DART_EXTENSIONS):
+                flags["has_dart"] = True
+            if fname.endswith(ELIXIR_EXTENSIONS):
+                flags["has_elixir"] = True
             if all(flags.values()):
                 return flags
     return flags
@@ -848,10 +1016,16 @@ def parse_filters(source, detected=None):
         show_cs = detected["has_cs"]
         show_swift = detected["has_swift"]
         show_ruby = detected["has_ruby"]
+        show_kotlin = detected["has_kotlin"]
+        show_scala = detected["has_scala"]
+        show_php = detected["has_php"]
+        show_dart = detected["has_dart"]
+        show_elixir = detected["has_elixir"]
     elif mode == 'auto':
         show_c = show_h = show_cpp = show_js = True
         show_py = show_java = show_go = show_rust = show_cs = True
         show_swift = show_ruby = True
+        show_kotlin = show_scala = show_php = show_dart = show_elixir = True
     else:
         show_c = source.get('show_c', 'true').lower() == 'true'
         show_h = source.get('show_h', 'true').lower() == 'true'
@@ -864,6 +1038,11 @@ def parse_filters(source, detected=None):
         show_cs = source.get('show_cs', 'false').lower() == 'true'
         show_swift = source.get('show_swift', 'false').lower() == 'true'
         show_ruby = source.get('show_ruby', 'false').lower() == 'true'
+        show_kotlin = source.get('show_kotlin', 'false').lower() == 'true'
+        show_scala = source.get('show_scala', 'false').lower() == 'true'
+        show_php = source.get('show_php', 'false').lower() == 'true'
+        show_dart = source.get('show_dart', 'false').lower() == 'true'
+        show_elixir = source.get('show_elixir', 'false').lower() == 'true'
 
     return {
         "hide_system": source.get('hide_system', 'false').lower() == 'true',
@@ -878,6 +1057,11 @@ def parse_filters(source, detected=None):
         "show_cs": show_cs,
         "show_swift": show_swift,
         "show_ruby": show_ruby,
+        "show_kotlin": show_kotlin,
+        "show_scala": show_scala,
+        "show_php": show_php,
+        "show_dart": show_dart,
+        "show_elixir": show_elixir,
         "hide_isolated": source.get('hide_isolated', 'false').lower() == 'true',
         "filter_dir": source.get('filter_dir', ''),
     }

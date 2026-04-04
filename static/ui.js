@@ -112,7 +112,7 @@ function openPreview(fileId) {
     handle.classList.add('open');
     previewOpen = true;
 
-    fetch('/api/file?' + new URLSearchParams(_getFileParams(fileId)))
+    _fetchWithTimeout('/api/file?' + new URLSearchParams(_getFileParams(fileId)))
         .then(r => r.json())
         .then(data => {
             if (data.error) {
@@ -126,9 +126,9 @@ function openPreview(fileId) {
             codeEl.textContent = data.content;
             Prism.highlightElement(codeEl);
         })
-        .catch(() => {
+        .catch(err => {
             document.getElementById('previewMeta').textContent = '';
-            document.getElementById('previewCode').textContent = 'Failed to load file.';
+            document.getElementById('previewCode').textContent = err && err.message && err.message.startsWith('Request timed out') ? err.message : 'Failed to load file.';
         });
 }
 
@@ -548,6 +548,7 @@ const SHORTCUTS = [
     { section: 'Graph', items: [
         { keys: 'q',           desc: 'Toggle query terminal',          action: () => toggleQueryTerminal() },
         { keys: 'g',           desc: 'Generate graph',                 action: () => loadGraph() },
+        { keys: 'p',           desc: 'Timeline play / pause',          action: () => { if (typeof _timeline !== 'undefined' && _timeline.active) timelinePlayPause(); else timelineOpen(); } },
         { keys: '/',           desc: 'Focus search',                   action: (e) => { e.preventDefault(); document.getElementById('searchInput').focus(); } },
         { keys: 'd',           desc: 'Focus directory input',          action: () => document.getElementById('dirInput').focus() },
         { keys: 'f',           desc: 'Fit graph to viewport',          action: () => { if (cy) cy.fit(undefined, 50); } },
