@@ -1,0 +1,88 @@
+name: 'DepGraph Dependency Diff'
+description: 'Post a dependency diff comment on pull requests showing added/removed files and dependencies.'
+branding:
+  icon: 'git-pull-request'
+  color: 'purple'
+
+inputs:
+  path:
+    description: 'Path to the source directory to analyze (relative to repo root).'
+    required: false
+    default: '.'
+  lang:
+    description: 'Language mode: auto, c, cpp, js, py, java, go, rust, cs, swift, ruby.'
+    required: false
+    default: 'auto'
+  hide-external:
+    description: 'Hide system/stdlib imports.'
+    required: false
+    default: 'true'
+  hide-isolated:
+    description: 'Hide files with no dependencies.'
+    required: false
+    default: 'true'
+  github-token:
+    description: 'GitHub token for posting PR comments.'
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install DepGraph
+      shell: bash
+      run: pip install ${{ github.action_path }}
+
+    - name: Checkout base branch
+      shell: bash
+      run: |
+        git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+        git worktree add /tmp/depgraph-base FETCH_HEAD
+
+    - name: Run dependency diff
+      shell: bash
+      id: diff
+      run: |
+        FLAGS=""
+        if [ "${{ inputs.hide-external }}" = "true" ]; then FLAGS="$FLAGS --hide-external"; fi
+        if [ "${{ inputs.hide-isolated }}" = "true" ]; then FLAGS="$FLAGS --hide-isolated"; fi
+        if [ "${{ inputs.lang }}" != "auto" ]; then FLAGS="$FLAGS --lang ${{ inputs.lang }}"; fi
+
+        depgraph "${{ inputs.path }}" \
+          --diff "/tmp/depgraph-base/${{ inputs.path }}" \
+          $FLAGS \
+          -o /tmp/depgraph-diff.md
+
+        # Check if there are actual changes
+        if grep -q "No dependency changes detected" /tmp/depgraph-diff.md; then
+          echo "has_changes=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Comment on PR
+      if: steps.diff.outputs.has_changes == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        PR_NUMBER=${{ github.event.pull_request.number }}
+
+        # Delete any previous DepGraph comment to avoid clutter
+        COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
+          --jq '.[] | select(.body | startswith("## DepGraph")) | .id' 2>/dev/null | head -1)
+        if [ -n "$COMMENT_ID" ]; then
+          gh api repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -X DELETE 2>/dev/null || true
+        fi
+
+        gh pr comment "$PR_NUMBER" --body-file /tmp/depgraph-diff.md
+
+    - name: Cleanup worktree
+      if: always()
+      shell: bash
+      run: git worktree remove /tmp/depgraph-base --force 2>/dev/null || true

@@ -84,6 +84,7 @@ DepGraph/
 ├── pyproject.toml   — package config (pip install .)
 ├── requirements.txt — Flask, Gunicorn, Werkzeug
 ├── render.yaml      — Render deployment config
+├── action.yml       — GitHub Action definition
 ├── static/
 │   ├── index.html   — single-page frontend
 │   ├── app.js       — all frontend logic (~270 functions)
@@ -118,9 +119,52 @@ depgraph ./src --dot | dot -Tpng -o graph.png  # pipe to Graphviz for PNG
 depgraph ./src --mermaid                     # output Mermaid diagram
 depgraph ./src --serve                       # launch web UI and open browser
 depgraph ./src --serve --port 3000           # web UI on a custom port
+depgraph ./src --diff ./main-branch/src      # compare deps and output Markdown diff
+depgraph ./src --diff ./base -o diff.md      # write diff to file
 ```
 
 The terminal tree output includes colored badges for cycles and depth warnings, a coupling summary, and node/edge counts. Run `depgraph --help` for the full list of options.
+
+## GitHub Action
+
+DepGraph includes a GitHub Action that automatically comments a dependency diff on pull requests. When a PR changes import/include relationships, the action posts a summary of added/removed files and dependencies.
+
+### Setup
+
+Add this workflow to your repository at `.github/workflows/depgraph.yml`:
+
+```yaml
+name: Dependency Diff
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  depgraph:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: your-username/DepGraph@main
+        with:
+          path: '.'
+```
+
+### Inputs
+
+| Input | Default | Description |
+|---|---|---|
+| `path` | `.` | Path to the source directory to analyze |
+| `lang` | `auto` | Language mode (auto, c, cpp, js, py, java, go, rust, cs, swift, ruby) |
+| `hide-external` | `true` | Hide system/stdlib imports |
+| `hide-isolated` | `true` | Hide files with no dependencies |
+| `github-token` | `${{ github.token }}` | Token for posting PR comments |
+
+The action checks out the base branch into a temporary worktree, runs `depgraph --diff` to compare dependencies, and posts a collapsible Markdown comment on the PR. If there are no dependency changes, it stays silent. Previous DepGraph comments are replaced on each push to keep the PR clean.
 
 ## Web UI
 
