@@ -7,6 +7,7 @@ file, project directory, and set of known files) and returns a tuple of
 
 import os
 import re
+from functools import lru_cache
 
 # =========================================================================
 # Regex patterns
@@ -183,6 +184,48 @@ def collapse_py_multiline_imports(source: str) -> str:
         )
         return prefix + names
     return _PY_MULTILINE_IMPORT_RE.sub(_repl, source)
+
+
+# =========================================================================
+# Resolution cache
+# =========================================================================
+
+class ResolutionCache:
+    """Per-build cache for import resolution results.
+
+    Resolution functions are called thousands of times with the same arguments
+    during a single ``build_graph`` invocation (e.g. many files importing
+    ``react`` or ``os``).  This cache stores ``(resolver_name, import_path,
+    source_file) → result`` mappings and is discarded between builds so stale
+    results never leak across scans.
+
+    Usage::
+
+        cache = ResolutionCache()
+        # ... inside the build loop ...
+        result = cache.get('js', raw_path, filename)
+        if result is None:
+            result = resolve_js_import(raw_path, filename, directory, known_files)
+            cache.put('js', raw_path, filename, result)
+    """
+
+    __slots__ = ('_store',)
+
+    def __init__(self):
+        self._store = {}
+
+    def get(self, resolver, import_path, source_file=None):
+        return self._store.get((resolver, import_path, source_file))
+
+    def put(self, resolver, import_path, source_file, value):
+        self._store[(resolver, import_path, source_file)] = value
+
+    def clear(self):
+        self._store.clear()
+
+    @property
+    def size(self):
+        return len(self._store)
 
 
 # =========================================================================

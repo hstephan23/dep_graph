@@ -34,6 +34,8 @@ from parsers import (
     build_cs_namespace_map, resolve_cs_using,
     resolve_swift_import,
     resolve_ruby_require,
+    # Resolution cache
+    ResolutionCache,
 )
 
 
@@ -137,7 +139,11 @@ def _include_target_excluded(filename, show_c, show_h, show_cpp, show_js=False,
 # =========================================================================
 
 def find_sccs(adj):
-    """Compute SCCs using Tarjan's algorithm.
+    """Compute SCCs using an iterative version of Tarjan's algorithm.
+
+    The classic recursive formulation hits Python's default recursion limit
+    on graphs with long chains (>1 000 nodes).  This iterative version uses
+    an explicit call stack to avoid that.
 
     Parameters
     ----------
@@ -149,40 +155,53 @@ def find_sccs(adj):
     list[list[str]]
         Each inner list is one strongly connected component.
     """
-    index_counter = [0]
+    index_counter = 0
     stack = []
     indices = {}
     lowlinks = {}
     on_stack = set()
     sccs = []
 
-    def strongconnect(v):
-        indices[v] = index_counter[0]
-        lowlinks[v] = index_counter[0]
-        index_counter[0] += 1
-        stack.append(v)
-        on_stack.add(v)
-
-        for w in adj.get(v, []):
-            if w not in indices:
-                strongconnect(w)
-                lowlinks[v] = min(lowlinks[v], lowlinks[w])
-            elif w in on_stack:
-                lowlinks[v] = min(lowlinks[v], indices[w])
-
-        if lowlinks[v] == indices[v]:
-            scc = []
-            while True:
-                w = stack.pop()
-                on_stack.remove(w)
-                scc.append(w)
-                if w == v:
+    for root in adj:
+        if root in indices:
+            continue
+        # Each frame: (node, iterator_over_successors, phase)
+        # phase=False means we haven't initialised this node yet.
+        call_stack = [(root, iter(adj.get(root, [])), False)]
+        while call_stack:
+            v, children, initialised = call_stack[-1]
+            if not initialised:
+                indices[v] = index_counter
+                lowlinks[v] = index_counter
+                index_counter += 1
+                stack.append(v)
+                on_stack.add(v)
+                call_stack[-1] = (v, children, True)
+            # Advance to the next child
+            recurse = False
+            for w in children:
+                if w not in indices:
+                    call_stack.append((w, iter(adj.get(w, [])), False))
+                    recurse = True
                     break
-            sccs.append(scc)
-
-    for v in adj:
-        if v not in indices:
-            strongconnect(v)
+                elif w in on_stack:
+                    lowlinks[v] = min(lowlinks[v], indices[w])
+            if recurse:
+                continue
+            # All children processed — equivalent to returning from strongconnect
+            if lowlinks[v] == indices[v]:
+                scc = []
+                while True:
+                    w = stack.pop()
+                    on_stack.remove(w)
+                    scc.append(w)
+                    if w == v:
+                        break
+                sccs.append(scc)
+            call_stack.pop()
+            if call_stack:
+                parent = call_stack[-1][0]
+                lowlinks[parent] = min(lowlinks[parent], lowlinks[v])
 
     return sccs
 
@@ -260,6 +279,10 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         build_cs_namespace_map(directory, known_files) if show_cs else ({}, {})
     )
 
+    # Per-build resolution cache — avoids re-resolving the same import string
+    # thousands of times across different source files.
+    _cache = ResolutionCache()
+
     def _add_edge(source, target):
         edges.append({
             "data": {
@@ -303,16 +326,24 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                         if not name or name == '*':
                             continue
                         mod = from_path + name
-                        resolved, is_external = resolve_py_import(
-                            mod, filename, directory, known_files
-                        )
+                        cached = _cache.get('py', mod, filename)
+                        if cached is None:
+                            cached = resolve_py_import(
+                                mod, filename, directory, known_files
+                            )
+                            _cache.put('py', mod, filename, cached)
+                        resolved, is_external = cached
                         if hide_system and is_external:
                             continue
                         _add_edge(filename, resolved)
                 else:
-                    resolved, is_external = resolve_py_import(
-                        from_path, filename, directory, known_files
-                    )
+                    cached = _cache.get('py', from_path, filename)
+                    if cached is None:
+                        cached = resolve_py_import(
+                            from_path, filename, directory, known_files
+                        )
+                        _cache.put('py', from_path, filename, cached)
+                    resolved, is_external = cached
                     if hide_system and is_external:
                         continue
                     _add_edge(filename, resolved)
@@ -321,9 +352,13 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                     mod = mod.strip()
                     if not mod:
                         continue
-                    resolved, is_external = resolve_py_import(
-                        mod, filename, directory, known_files
-                    )
+                    cached = _cache.get('py', mod, filename)
+                    if cached is None:
+                        cached = resolve_py_import(
+                            mod, filename, directory, known_files
+                        )
+                        _cache.put('py', mod, filename, cached)
+                    resolved, is_external = cached
                     if hide_system and is_external:
                         continue
                     _add_edge(filename, resolved)
@@ -333,10 +368,13 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         if is_java_file:
             for m in JAVA_IMPORT_RE.finditer(content):
                 import_path = m.group(1)
-                resolved_list = resolve_java_import(
-                    import_path, directory, known_files
-                )
-                for resolved, is_external in resolved_list:
+                cached = _cache.get('java', import_path)
+                if cached is None:
+                    cached = resolve_java_import(
+                        import_path, directory, known_files
+                    )
+                    _cache.put('java', import_path, None, cached)
+                for resolved, is_external in cached:
                     if hide_system and is_external:
                         continue
                     _add_edge(filename, resolved)
@@ -348,17 +386,25 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                 if m.group(1) is not None:
                     for pm in GO_IMPORT_PATH_RE.finditer(m.group(1)):
                         imp = pm.group(1)
-                        resolved, is_external = resolve_go_import(
-                            imp, directory, known_files, go_module_path
-                        )
+                        cached = _cache.get('go', imp)
+                        if cached is None:
+                            cached = resolve_go_import(
+                                imp, directory, known_files, go_module_path
+                            )
+                            _cache.put('go', imp, None, cached)
+                        resolved, is_external = cached
                         if hide_system and is_external:
                             continue
                         _add_edge(filename, resolved)
                 else:
                     imp = m.group(2)
-                    resolved, is_external = resolve_go_import(
-                        imp, directory, known_files, go_module_path
-                    )
+                    cached = _cache.get('go', imp)
+                    if cached is None:
+                        cached = resolve_go_import(
+                            imp, directory, known_files, go_module_path
+                        )
+                        _cache.put('go', imp, None, cached)
+                    resolved, is_external = cached
                     if hide_system and is_external:
                         continue
                     _add_edge(filename, resolved)
@@ -368,9 +414,13 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         if is_rust_file:
             for m in RUST_MOD_RE.finditer(content):
                 mod_name = m.group(1)
-                resolved, is_external = resolve_rust_mod(
-                    mod_name, filename, directory, known_files
-                )
+                cached = _cache.get('rust_mod', mod_name, filename)
+                if cached is None:
+                    cached = resolve_rust_mod(
+                        mod_name, filename, directory, known_files
+                    )
+                    _cache.put('rust_mod', mod_name, filename, cached)
+                resolved, is_external = cached
                 _add_edge(filename, resolved)
             for m in RUST_USE_RE.finditer(content):
                 use_path = m.group(1).rstrip(':')
@@ -418,10 +468,14 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         if is_cs_file:
             for m in CS_USING_RE.finditer(content):
                 namespace = m.group(1)
-                resolved_list, is_external = resolve_cs_using(
-                    namespace, directory, known_files,
-                    ns_map=cs_ns_map, class_map=cs_class_map
-                )
+                cached = _cache.get('cs', namespace)
+                if cached is None:
+                    cached = resolve_cs_using(
+                        namespace, directory, known_files,
+                        ns_map=cs_ns_map, class_map=cs_class_map
+                    )
+                    _cache.put('cs', namespace, None, cached)
+                resolved_list, is_external = cached
                 if hide_system and is_external:
                     continue
                 for resolved in resolved_list:
@@ -433,9 +487,13 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         if is_swift_file:
             for m in SWIFT_IMPORT_RE.finditer(content):
                 module_name = m.group(1)
-                resolved, is_external = resolve_swift_import(
-                    module_name, filename, directory, known_files
-                )
+                cached = _cache.get('swift', module_name, filename)
+                if cached is None:
+                    cached = resolve_swift_import(
+                        module_name, filename, directory, known_files
+                    )
+                    _cache.put('swift', module_name, filename, cached)
+                resolved, is_external = cached
                 if hide_system and is_external:
                     continue
                 _add_edge(filename, resolved)
@@ -445,9 +503,13 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         if is_ruby_file:
             for m in RUBY_REQUIRE_RELATIVE_RE.finditer(content):
                 req_path = m.group(1)
-                resolved, is_external = resolve_ruby_require(
-                    req_path, filename, directory, known_files, relative=True
-                )
+                cached = _cache.get('ruby_rel', req_path, filename)
+                if cached is None:
+                    cached = resolve_ruby_require(
+                        req_path, filename, directory, known_files, relative=True
+                    )
+                    _cache.put('ruby_rel', req_path, filename, cached)
+                resolved, is_external = cached
                 if hide_system and is_external:
                     continue
                 _add_edge(filename, resolved)
@@ -456,9 +518,13 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                 line_text = content[max(0, content.rfind('\n', 0, m.start())+1):m.end()]
                 if 'require_relative' in line_text:
                     continue
-                resolved, is_external = resolve_ruby_require(
-                    req_path, filename, directory, known_files, relative=False
-                )
+                cached = _cache.get('ruby', req_path)
+                if cached is None:
+                    cached = resolve_ruby_require(
+                        req_path, filename, directory, known_files, relative=False
+                    )
+                    _cache.put('ruby', req_path, None, cached)
+                resolved, is_external = cached
                 if hide_system and is_external:
                     continue
                 _add_edge(filename, resolved)
@@ -490,9 +556,13 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                     continue
 
                 raw_path = match.group(1) or match.group(2)
-                resolved, is_external = resolve_js_import(
-                    raw_path, filename, directory, known_files
-                )
+                cached = _cache.get('js', raw_path, filename)
+                if cached is None:
+                    cached = resolve_js_import(
+                        raw_path, filename, directory, known_files
+                    )
+                    _cache.put('js', raw_path, filename, cached)
+                resolved, is_external = cached
 
                 if hide_system and is_external:
                     continue
@@ -550,23 +620,40 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
             out_degrees[src] += 1
 
     # --- Dependency depth (longest transitive dependency chain) ---
+    # Iterative post-order DFS avoids hitting Python's recursion limit on
+    # large graphs.  Each stack frame is (node_id, child_index, max_so_far).
     dep_depth = {}
-    def _compute_depth(node_id, visited):
-        if node_id in dep_depth:
-            return dep_depth[node_id]
-        if node_id in visited:
-            return 0  # cycle — break recursion
-        visited.add(node_id)
-        max_child = 0
-        for w in adj.get(node_id, []):
-            max_child = max(max_child, 1 + _compute_depth(w, visited))
-        visited.discard(node_id)
-        dep_depth[node_id] = max_child
-        return max_child
-
-    for nid in adj:
-        if nid not in dep_depth:
-            _compute_depth(nid, set())
+    for start in adj:
+        if start in dep_depth:
+            continue
+        dfs_stack = [(start, 0, 0)]
+        visiting = {start}
+        while dfs_stack:
+            node_id, child_idx, max_so_far = dfs_stack[-1]
+            children = adj.get(node_id, [])
+            advanced = False
+            while child_idx < len(children):
+                w = children[child_idx]
+                child_idx += 1
+                if w in visiting:
+                    continue  # cycle — skip
+                if w in dep_depth:
+                    max_so_far = max(max_so_far, 1 + dep_depth[w])
+                else:
+                    # Save progress and recurse into w
+                    dfs_stack[-1] = (node_id, child_idx, max_so_far)
+                    dfs_stack.append((w, 0, 0))
+                    visiting.add(w)
+                    advanced = True
+                    break
+            if not advanced:
+                # All children processed
+                dep_depth[node_id] = max_so_far
+                visiting.discard(node_id)
+                dfs_stack.pop()
+                if dfs_stack:
+                    pn, pi, pm = dfs_stack[-1]
+                    dfs_stack[-1] = (pn, pi, max(pm, 1 + max_so_far))
 
     for node in nodes:
         node["data"]["depth"] = dep_depth.get(node["data"]["id"], 0)
