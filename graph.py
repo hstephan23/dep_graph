@@ -857,11 +857,10 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                     if resolved:
                         cached = (resolved, False)
                     elif is_system:
-                        # System header not in project — always skip.
-                        # Unresolved angle-bracket includes (e.g. <stdlib.h>)
-                        # are standard library headers that don't belong as
-                        # nodes in a project dependency graph.
-                        continue
+                        # System header not in project — skip or show as external
+                        if hide_system:
+                            continue
+                        cached = (included, True)
                     else:
                         # Quoted include not found — use raw path as-is
                         cached = (included, False)

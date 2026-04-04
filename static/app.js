@@ -7,6 +7,23 @@
 //   exports.js
 // ============================================================
 
+// --- Demo graph state ---
+let _showingDemo = false;
+
+function loadDemoGraph() {
+    if (typeof DEMO_GRAPH_DATA === 'undefined') return;
+    _showingDemo = true;
+    renderGraph(DEMO_GRAPH_DATA);
+    const banner = document.getElementById('demoBanner');
+    if (banner) banner.style.display = 'flex';
+}
+
+function dismissDemo() {
+    _showingDemo = false;
+    const banner = document.getElementById('demoBanner');
+    if (banner) banner.style.display = 'none';
+}
+
 // --- Dev mode configuration ---
 async function _applyDevMode() {
     try {
@@ -16,9 +33,14 @@ async function _applyDevMode() {
             _devMode = !!data.dev_mode;
         }
     } catch (e) { /* Default to production */ }
+
+    // Always show the demo graph immediately as the landing state
+    loadDemoGraph();
+
     if (!_devMode) {
         document.querySelectorAll('.dev-only').forEach(el => el.style.display = 'none');
-        if (typeof loadGraph === 'function') loadGraph();
+        // In production mode, don't auto-load — the demo graph IS the landing page.
+        // The user will load a real project via Upload or the directory input.
     }
 }
 
@@ -143,6 +165,9 @@ function buildColorKey(nodes) {
 
 function renderGraph(data) {
     currentGraphData = data;
+
+    // If this is real data (not the demo), dismiss the demo banner
+    if (!data._isDemo) dismissDemo();
 
     // Reset to graph view when new data loads
     if (_currentView !== 'graph') {
@@ -486,21 +511,38 @@ function showDetectedLanguages(det) {
 
 function loadGraph() {
     currentMode = 'local';
+    // Hide demo banner when loading a real graph
+    dismissDemo();
     document.getElementById('loading').classList.add('active');
     _fetchWithTimeout('/api/graph?' + new URLSearchParams({ dir: document.getElementById('dirInput').value, ...getFilterValues() }))
         .then(r => r.json()).then(d => {
             if (d.error) {
                 showToast('Error: ' + (d.suggestion || d.error), 4000);
                 document.getElementById('loading').classList.remove('active');
+                // Fall back to demo graph if no real graph loaded yet
+                if (!currentGraphData) loadDemoGraph();
             } else {
                 renderGraph(d);
                 showDetectedLanguages(d.detected);
                 showDepthWarnings(d);
             }
-        }).catch(err => { _handleApiError(err, 'Failed to load graph.'); document.getElementById('loading').classList.remove('active'); });
+        }).catch(err => {
+            _handleApiError(err, 'Failed to load graph.');
+            document.getElementById('loading').classList.remove('active');
+            // Fall back to demo graph if no real graph loaded yet
+            if (!currentGraphData) loadDemoGraph();
+        });
 }
 
 // ============================================================
 // INIT
 // ============================================================
-window.addEventListener('DOMContentLoaded', () => _applyDevMode());
+window.addEventListener('DOMContentLoaded', () => {
+    // Dismiss splash after 3 seconds
+    const splash = document.getElementById('splash');
+    if (splash) {
+        setTimeout(() => splash.classList.add('fade-out'), 3000);
+        setTimeout(() => splash.remove(), 3500);
+    }
+    _applyDevMode();
+});

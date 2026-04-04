@@ -88,8 +88,8 @@ def _format_tree(result, directory):
     node_count = len(nodes)
     edge_count = len(result["edges"])
     print()
-    print(f"  {_bold('DepGraph')}  {_dim('·')}  {dir_name}")
-    print(f"  {_dim(f'{node_count} files  ·  {edge_count} dependencies')}")
+    print(f"  {_magenta('╺━━╸')} {_bold('DepGraph')}  {_dim('·')}  {dir_name}")
+    print(f"  {_magenta('○─○')}  {_dim(f'{node_count} files  ·  {edge_count} dependencies')}")
     if lang_counts:
         lang_summary = ", ".join(f"{lang} ({cnt})" for lang, cnt in
                                  sorted(lang_counts.items(), key=lambda x: -x[1]))
