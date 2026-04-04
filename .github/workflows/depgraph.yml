@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install DepGraph
-        run: pip install .
+        run: pip install ".[test]"
 
       - name: Run tests
         run: pytest tests/ -v

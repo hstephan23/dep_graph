@@ -221,6 +221,8 @@ body {
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-xs);
+    height: 30px;
+    align-items: center;
 }
 
 .toolbar-controls .pill-group label:hover {
@@ -243,8 +245,8 @@ body {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     box-shadow: var(--shadow-xs);
 }
 .toolbar-controls .toolbar-group .btn-icon:hover {
@@ -313,7 +315,7 @@ body {
 .input-wrap {
     display: flex;
     align-items: center;
-    height: 32px;
+    height: 30px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -482,6 +484,50 @@ body {
 /* Inside toolbar-group, pill-group should not double-up the background */
 .toolbar-group .pill-group {
     background: var(--bg-elevated);
+}
+
+/* Language button — fixed width so it doesn't shift on selection */
+.lang-summary {
+    font-size: 0.75rem;
+    width: 84px;
+    justify-content: space-between;
+}
+
+/* Language dropdown — compact override */
+details.dropdown.dropdown-lang .dropdown-body {
+    min-width: 0;
+    padding: 0.25rem;
+    gap: 1px;
+    flex-direction: column;
+    align-items: stretch;
+    width: min-content;
+}
+
+.lang-option {
+    background: none;
+    border: none;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.9rem;
+    width: auto;
+    font-weight: 500;
+    font-family: inherit;
+    color: var(--text-muted);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all var(--transition);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.lang-option:hover {
+    color: var(--text);
+    background: var(--bg);
+}
+
+.lang-option.active {
+    background: var(--primary);
+    color: white;
+    box-shadow: var(--shadow-xs);
 }
 
 .pill-group input[type="radio"] { display: none; }
@@ -4189,6 +4235,17 @@ body.sidebar-hidden .query-terminal {
 }
 
 [data-theme="dark"] .pill-group input:checked + label {
+    background: linear-gradient(135deg, #7c7fff, #8b8fff);
+    box-shadow: 0 2px 8px rgba(139, 143, 255, 0.3);
+}
+
+/* --- Language dropdown dark mode --- */
+[data-theme="dark"] .lang-option:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+}
+
+[data-theme="dark"] .lang-option.active {
     background: linear-gradient(135deg, #7c7fff, #8b8fff);
     box-shadow: 0 2px 8px rgba(139, 143, 255, 0.3);
 }

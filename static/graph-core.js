@@ -13,6 +13,15 @@
  * _runningLayout, etc.) are available from state.js which loads first.
  */
 
+// --- Register Cytoscape extensions ---
+// cytoscape-dagre may auto-register, but we call use() explicitly to be safe.
+// The UMD build exposes window.cytoscapeDagre.
+if (typeof cytoscapeDagre === 'function') {
+    try { cytoscape.use(cytoscapeDagre); } catch (_) { /* already registered */ }
+} else if (typeof window !== 'undefined' && typeof window.cytoscapeDagre === 'function') {
+    try { cytoscape.use(window.cytoscapeDagre); } catch (_) { /* already registered */ }
+}
+
 // --- Helpers ---
 
 function _cDir(fileId) {
@@ -675,13 +684,23 @@ function changeLayout(name) {
         const overlay = document.getElementById('loading');
         cyContainer.style.visibility = 'hidden';
         overlay.classList.add('active');
-        const layout = cy.layout(config);
-        layout.one('layoutstop', () => {
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
             if (cy) cy.fit(60);
             cyContainer.style.visibility = '';
             overlay.classList.remove('active');
-        });
-        layout.run();
+        };
+        try {
+            const layout = cy.layout(config);
+            layout.one('layoutstop', finish);
+            setTimeout(finish, 4000);   // safety fallback
+            layout.run();
+        } catch (e) {
+            console.warn('[DepGraph] Layout failed:', e);
+            finish();
+        }
     }
 }
 

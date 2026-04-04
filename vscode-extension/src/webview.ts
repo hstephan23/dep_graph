@@ -278,9 +278,9 @@ export class GraphWebviewProvider {
 <body>
   <div class="toolbar">
     <input class="search-input" id="search" type="text" placeholder="Search files... (/)">
-    <button id="btnForce" class="active" onclick="setLayout('cose')">Force</button>
-    <button id="btnHierarchy" onclick="setLayout('dagre')">Hierarchy</button>
-    <button id="btnConcentric" onclick="setLayout('concentric')">Concentric</button>
+    <button id="btnForce" class="active">Force</button>
+    <button id="btnHierarchy">Hierarchy</button>
+    <button id="btnConcentric">Concentric</button>
     <div class="spacer"></div>
     <div class="cycle-badge" id="cycleBadge">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
@@ -295,10 +295,10 @@ export class GraphWebviewProvider {
   </div>
   <div class="tooltip" id="tooltip"></div>
   <div class="context-menu" id="contextMenu">
-    <button onclick="ctxOpenFile()">Open File</button>
-    <button onclick="ctxShowDependents()">Show Dependents</button>
-    <button onclick="ctxShowDependencies()">Show Dependencies</button>
-    <button onclick="ctxBlastRadius()">Blast Radius</button>
+    <button id="ctxOpen">Open File</button>
+    <button id="ctxDependents">Show Dependents</button>
+    <button id="ctxDependencies">Show Dependencies</button>
+    <button id="ctxBlast">Blast Radius</button>
   </div>
 
   <script nonce="${nonce}">
@@ -307,6 +307,18 @@ export class GraphWebviewProvider {
     let graphData = null;
     let currentLayout = 'cose';
     let contextNodeId = null;
+
+    // Register cytoscape-dagre plugin for Hierarchy layout
+    const hasDagre = typeof dagre !== 'undefined';
+    const hasCytoscapeDagre = typeof cytoscapeDagre === 'function';
+    console.log('[DepGraph] Libraries:', {
+      cytoscape: typeof cytoscape !== 'undefined',
+      dagre: hasDagre,
+      cytoscapeDagre: hasCytoscapeDagre
+    });
+    if (hasCytoscapeDagre) {
+      try { cytoscape.use(cytoscapeDagre); } catch(_) {}
+    }
 
     // ── Message handling ──────────────────────────────────────────
     window.addEventListener('message', (event) => {
@@ -486,6 +498,32 @@ export class GraphWebviewProvider {
       });
     }
 
+    /** Run dagre manually: compute positions with dagre lib, apply as preset layout */
+    function runManualDagre() {
+      if (typeof dagre === 'undefined' || !cy) return false;
+      try {
+        const g = new dagre.graphlib.Graph();
+        g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 });
+        g.setDefaultEdgeLabel(() => ({}));
+        cy.nodes().forEach(n => {
+          g.setNode(n.id(), { width: n.width() || 40, height: n.height() || 40 });
+        });
+        cy.edges().forEach(e => {
+          g.setEdge(e.source().id(), e.target().id());
+        });
+        dagre.layout(g);
+        cy.nodes().forEach(n => {
+          const pos = g.node(n.id());
+          if (pos) n.position({ x: pos.x, y: pos.y });
+        });
+        cy.fit(60);
+        return true;
+      } catch (err) {
+        console.error('[DepGraph] Manual dagre failed:', err);
+        return false;
+      }
+    }
+
     function getLayoutConfig(name) {
       switch (name) {
         case 'dagre':
@@ -510,7 +548,24 @@ export class GraphWebviewProvider {
       if (name === 'cose') document.getElementById('btnForce').classList.add('active');
       if (name === 'dagre') document.getElementById('btnHierarchy').classList.add('active');
       if (name === 'concentric') document.getElementById('btnConcentric').classList.add('active');
-      if (cy) { cy.layout(getLayoutConfig(name)).run(); }
+      if (!cy) return;
+      try {
+        cy.layout(getLayoutConfig(name)).run();
+      } catch (err) {
+        console.error('[DepGraph] Layout "' + name + '" failed:', err);
+        // For dagre, try manual fallback using dagre lib directly
+        if (name === 'dagre') {
+          if (runManualDagre()) return;
+        }
+        // Fall back to cose if the requested layout isn't available
+        if (name !== 'cose') {
+          document.getElementById('stats').textContent += ' (layout "' + name + '" unavailable, using Force)';
+          currentLayout = 'cose';
+          document.querySelectorAll('.toolbar button').forEach(b => b.classList.remove('active'));
+          document.getElementById('btnForce').classList.add('active');
+          try { cy.layout(getLayoutConfig('cose')).run(); } catch(_) {}
+        }
+      }
     }
 
     // ── Search ────────────────────────────────────────────────────
@@ -543,19 +598,23 @@ export class GraphWebviewProvider {
       }
     });
 
-    // ── Context menu actions ──────────────────────────────────────
-    function ctxOpenFile() {
+    // ── Wire up button event listeners (no inline onclick — CSP blocks them) ──
+    document.getElementById('btnForce').addEventListener('click', () => setLayout('cose'));
+    document.getElementById('btnHierarchy').addEventListener('click', () => setLayout('dagre'));
+    document.getElementById('btnConcentric').addEventListener('click', () => setLayout('concentric'));
+
+    document.getElementById('ctxOpen').addEventListener('click', () => {
       if (contextNodeId) vscode.postMessage({ type: 'openFile', fileId: contextNodeId });
-    }
-    function ctxShowDependents() {
+    });
+    document.getElementById('ctxDependents').addEventListener('click', () => {
       if (contextNodeId) vscode.postMessage({ type: 'requestDependents', nodeId: contextNodeId });
-    }
-    function ctxShowDependencies() {
+    });
+    document.getElementById('ctxDependencies').addEventListener('click', () => {
       if (contextNodeId) vscode.postMessage({ type: 'requestDependencies', nodeId: contextNodeId });
-    }
-    function ctxBlastRadius() {
+    });
+    document.getElementById('ctxBlast').addEventListener('click', () => {
       if (contextNodeId) vscode.postMessage({ type: 'requestBlastRadius', nodeId: contextNodeId });
-    }
+    });
 
     // ── Tell extension we're ready ────────────────────────────────
     vscode.postMessage({ type: 'ready' });

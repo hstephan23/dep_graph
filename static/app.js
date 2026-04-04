@@ -307,11 +307,22 @@ function uploadZip() {
         }).catch(err => { _handleApiError(err, 'Upload failed.'); document.getElementById('loading').classList.remove('active'); });
 }
 
+let _selectedLang = 'auto';
+
+function selectLang(btn) {
+    _selectedLang = btn.dataset.lang;
+    document.querySelectorAll('.lang-option').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('langLabel').textContent = btn.textContent;
+    document.getElementById('langDropdown').removeAttribute('open');
+    updateGraph();
+}
+
 function getFilterValues() {
-    const m = document.querySelector('input[name="langMode"]:checked').value;
+    const m = _selectedLang;
     const common = { hide_system: document.getElementById('hideSystemHeaders').checked, hide_isolated: document.getElementById('hideIsolated').checked, filter_dir: document.getElementById('filterDirInput').value };
     if (m === 'auto') return { mode: 'auto', ...common };
-    return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust', show_cs: m === 'cs', show_swift: m === 'swift', show_ruby: m === 'ruby' };
+    return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust', show_cs: m === 'cs', show_swift: m === 'swift', show_ruby: m === 'ruby', show_kotlin: m === 'kotlin', show_scala: m === 'scala', show_php: m === 'php', show_dart: m === 'dart', show_elixir: m === 'elixir' };
 }
 
 function showDetectedLanguages(det) {

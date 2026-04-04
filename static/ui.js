@@ -27,6 +27,19 @@ function toggleTheme() {
 
 window.addEventListener('DOMContentLoaded', () => applyThemeIcon(document.documentElement.getAttribute('data-theme')));
 
+// --- Close dropdowns on mouseleave (with small delay to bridge the gap) ---
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('details.dropdown').forEach(dd => {
+        let closeTimer = null;
+        dd.addEventListener('mouseleave', () => {
+            closeTimer = setTimeout(() => { dd.removeAttribute('open'); }, 150);
+        });
+        dd.addEventListener('mouseenter', () => {
+            if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        });
+    });
+});
+
 // --- Collapsible Panel Sections ---
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.panel-header').forEach(header => {
