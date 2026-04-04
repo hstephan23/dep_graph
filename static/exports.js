@@ -19,9 +19,55 @@ function exportJSON() {
 
 function exportPNG() {
     if (!cy) return;
-    const a = document.createElement('a');
-    a.href = cy.png({ output: 'base64uri', bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(), full: true });
-    a.download = "dependency_graph.png"; document.body.appendChild(a); a.click(); a.remove();
+    const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    const graphDataUrl = cy.png({ output: 'base64uri', bg: bgColor, full: true });
+
+    // Draw the graph onto a canvas and add a logo watermark in the bottom-right
+    const img = new Image();
+    img.onload = function () {
+        const pad = 32;
+        const logoSize = 64;
+        const textHeight = 28;
+        const watermarkH = logoSize + pad * 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height + watermarkH;
+        const ctx = canvas.getContext('2d');
+
+        // Background
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Graph
+        ctx.drawImage(img, 0, 0);
+
+        // Watermark bar
+        const logo = new Image();
+        logo.onload = function () {
+            const y = img.height + pad;
+            ctx.globalAlpha = 0.7;
+            ctx.drawImage(logo, canvas.width - logoSize - pad, y, logoSize, logoSize);
+            ctx.globalAlpha = 0.6;
+            ctx.font = '700 ' + textHeight + 'px Inter, system-ui, sans-serif';
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#333';
+            ctx.textAlign = 'right';
+            ctx.fillText('DepGraph', canvas.width - logoSize - pad - 8, y + logoSize / 2 + textHeight / 3);
+            ctx.globalAlpha = 1;
+
+            const a = document.createElement('a');
+            a.href = canvas.toDataURL('image/png');
+            a.download = 'dependency_graph.png';
+            document.body.appendChild(a); a.click(); a.remove();
+        };
+        logo.onerror = function () {
+            // If logo fails to load, export without it
+            const a = document.createElement('a');
+            a.href = canvas.toDataURL('image/png');
+            a.download = 'dependency_graph.png';
+            document.body.appendChild(a); a.click(); a.remove();
+        };
+        logo.src = '/static/logo.png';
+    };
+    img.src = graphDataUrl;
 }
 
 function exportDOT() {

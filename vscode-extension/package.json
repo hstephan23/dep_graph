@@ -4,6 +4,7 @@
   "description": "Visualize and analyze source file dependencies directly in VS Code",
   "version": "0.1.0",
   "publisher": "depgraph",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
