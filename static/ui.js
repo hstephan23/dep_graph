@@ -57,8 +57,10 @@ function toggleSidebar() {
         _sidebarHidden = !_sidebarHidden;
         if (_sidebarHidden) {
             sidebar.setAttribute('style', 'display:none !important');
+            document.body.classList.add('sidebar-hidden');
         } else {
             sidebar.removeAttribute('style');
+            document.body.classList.remove('sidebar-hidden');
             // Force Cytoscape to resize into the reclaimed space
             if (typeof cy !== 'undefined' && cy) {
                 setTimeout(() => cy.resize(), 50);
@@ -105,7 +107,7 @@ function openPreview(fileId) {
     document.getElementById('previewCode').className = '';
 
     drawer.style.height = previewDrawerHeight + 'px';
-    handle.style.bottom = previewDrawerHeight + 'px';
+    handle.style.bottom = (previewDrawerHeight + 8) + 'px';
     drawer.classList.add('open');
     handle.classList.add('open');
     previewOpen = true;
@@ -156,7 +158,7 @@ function closePreview() {
         const delta = startY - e.clientY;
         previewDrawerHeight = Math.max(120, Math.min(window.innerHeight * 0.7, startH + delta));
         document.getElementById('previewDrawer').style.height = previewDrawerHeight + 'px';
-        handle.style.bottom = previewDrawerHeight + 'px';
+        handle.style.bottom = (previewDrawerHeight + 8) + 'px';
     });
 
     document.addEventListener('mouseup', () => {
