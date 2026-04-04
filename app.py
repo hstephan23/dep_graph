@@ -127,6 +127,17 @@ def index():
     return app.send_static_file('index.html')
 
 
+def _get_json_body():
+    """Parse request JSON, returning (body, None) on success or (None, error_response) on failure."""
+    try:
+        body = request.get_json(force=True)
+        if body is None:
+            return None, (jsonify({"error": "Invalid or empty JSON body."}), 400)
+        return body, None
+    except Exception:
+        return None, (jsonify({"error": "Malformed JSON in request body."}), 400)
+
+
 @app.route('/api/config')
 def get_config():
     """Expose non-sensitive configuration flags to the frontend."""
@@ -151,9 +162,8 @@ def get_file():
 
     # Determine the base directory: either from an upload token or a validated path
     if upload_token:
-        with _upload_lock:
-            abs_dir = _upload_sessions.get(upload_token)
-        if not abs_dir or not os.path.isdir(abs_dir):
+        abs_dir = _load_upload_session(upload_token)
+        if not abs_dir:
             return jsonify({"error": "Upload session expired or invalid."}), 404
     else:
         abs_dir = _validate_directory(directory)
@@ -233,11 +243,81 @@ def get_graph():
     return jsonify(result)
 
 
-# Thread-safe tracking of upload temp dirs keyed by an opaque session token.
-# Each upload gets a unique token; the previous upload for the same token is
-# cleaned up automatically.
-_upload_sessions = {}  # token -> temp_dir path
+# ---------------------------------------------------------------------------
+# Upload session management
+# ---------------------------------------------------------------------------
+# Upload sessions are persisted to disk so that all Gunicorn workers can
+# resolve tokens.  Each upload creates a temp directory; a sibling marker
+# file (<token>.session) in the shared session root maps the token back to
+# the directory path.  Sessions expire after _UPLOAD_TTL seconds.
+
+_UPLOAD_SESSION_ROOT = os.path.join(tempfile.gettempdir(), 'depgraph_sessions')
+os.makedirs(_UPLOAD_SESSION_ROOT, exist_ok=True)
+
+_UPLOAD_TTL = int(os.environ.get('DEPGRAPH_UPLOAD_TTL', '3600'))  # 1 hour
 _upload_lock = threading.Lock()
+
+
+def _session_file(token):
+    """Return the path to the marker file for *token*."""
+    # Sanitise token so it can't escape the directory
+    safe = token.replace('/', '').replace('..', '').replace(os.sep, '')
+    return os.path.join(_UPLOAD_SESSION_ROOT, safe + '.session')
+
+
+def _save_upload_session(token, temp_dir):
+    """Persist a token → temp_dir mapping to disk."""
+    with open(_session_file(token), 'w') as f:
+        f.write(temp_dir)
+
+
+def _load_upload_session(token):
+    """Load a temp_dir path from a persisted token. Returns None if missing or expired."""
+    path = _session_file(token)
+    try:
+        mtime = os.path.getmtime(path)
+        if time.time() - mtime > _UPLOAD_TTL:
+            # Expired — clean up
+            _expire_session(path)
+            return None
+        with open(path, 'r') as f:
+            temp_dir = f.read().strip()
+        if os.path.isdir(temp_dir):
+            return temp_dir
+        # Directory gone — clean up stale marker
+        os.remove(path)
+        return None
+    except FileNotFoundError:
+        return None
+
+
+def _expire_session(marker_path):
+    """Remove an expired session marker and its temp directory."""
+    try:
+        with open(marker_path, 'r') as f:
+            temp_dir = f.read().strip()
+        if os.path.isdir(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        os.remove(marker_path)
+    except Exception:
+        pass
+
+
+def _cleanup_expired_sessions():
+    """Sweep the session root and remove anything older than _UPLOAD_TTL."""
+    now = time.time()
+    try:
+        for fname in os.listdir(_UPLOAD_SESSION_ROOT):
+            if not fname.endswith('.session'):
+                continue
+            fpath = os.path.join(_UPLOAD_SESSION_ROOT, fname)
+            try:
+                if now - os.path.getmtime(fpath) > _UPLOAD_TTL:
+                    _expire_session(fpath)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def _safe_extract_zip(zip_path, dest_dir):
@@ -301,14 +381,10 @@ def upload_files():
         # Return an opaque token — never expose the real filesystem path
         result["upload_token"] = upload_token
 
-        with _upload_lock:
-            # Clean up any previous upload for robustness (simple FIFO)
-            if len(_upload_sessions) > 50:
-                oldest_key = next(iter(_upload_sessions))
-                old_dir = _upload_sessions.pop(oldest_key, None)
-                if old_dir and os.path.isdir(old_dir):
-                    shutil.rmtree(old_dir, ignore_errors=True)
-            _upload_sessions[upload_token] = temp_dir
+        # Persist the session to disk so all workers can resolve it
+        _save_upload_session(upload_token, temp_dir)
+        # Opportunistically clean up expired sessions
+        _cleanup_expired_sessions()
 
         return jsonify(result)
     except ValueError as e:
@@ -322,7 +398,8 @@ def upload_files():
 @app.route('/api/diff', methods=['POST'])
 def diff_graphs():
     """Accept two JSON graph payloads and return a merged diff view."""
-    body = request.get_json(force=True)
+    body, err = _get_json_body()
+    if err: return err
     old = body.get('old', {})
     new = body.get('new', {})
 
@@ -366,7 +443,8 @@ def check_layers():
 
     A violation occurs when a file in a lower layer imports from a higher layer.
     """
-    body = request.get_json(force=True)
+    body, err = _get_json_body()
+    if err: return err
     layer_order = body.get('layers', [])
     graph = body.get('graph', {})
 
@@ -410,7 +488,8 @@ def check_rules():
         "graph": { ...graph payload... }
     }
     """
-    body = request.get_json(force=True)
+    body, err = _get_json_body()
+    if err: return err
     rules = body.get('rules', [])
     graph = body.get('graph', {})
 
@@ -468,7 +547,8 @@ def simulate_removal():
         "remove_edges": [{"source": "a", "target": "b"}, ...]
     }
     """
-    body = request.get_json(force=True)
+    body, err = _get_json_body()
+    if err: return err
     graph = body.get('graph', {})
     remove_nodes = set(body.get('remove_nodes', []))
     remove_edges = {(e['source'], e['target'])
@@ -621,7 +701,8 @@ def generate_story():
 
 
 def _generate_story_impl():
-    body = request.get_json(force=True)
+    body, err = _get_json_body()
+    if err: return err
     graph = body.get('graph', {})
     nodes = graph.get('nodes', [])
     edges = graph.get('edges', [])

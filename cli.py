@@ -174,6 +174,101 @@ def _format_dot(result):
     return "\n".join(lines)
 
 
+def _format_diff(old_result, new_result):
+    """Return a Markdown-formatted dependency diff between two graph results."""
+    old_nodes = {n["data"]["id"] for n in old_result["nodes"]}
+    new_nodes = {n["data"]["id"] for n in new_result["nodes"]}
+
+    old_edges = {(e["data"]["source"], e["data"]["target"])
+                 for e in old_result["edges"]}
+    new_edges = {(e["data"]["source"], e["data"]["target"])
+                 for e in new_result["edges"]}
+
+    added_nodes = sorted(new_nodes - old_nodes)
+    removed_nodes = sorted(old_nodes - new_nodes)
+    added_edges = sorted(new_edges - old_edges)
+    removed_edges = sorted(old_edges - new_edges)
+
+    # Detect new cycles
+    old_cycle_groups = old_result.get("cycles", [])
+    new_cycle_groups = new_result.get("cycles", [])
+    old_cycle_sets = {frozenset(c) for c in old_cycle_groups if len(c) > 1}
+    new_cycle_sets = {frozenset(c) for c in new_cycle_groups if len(c) > 1}
+    new_cycles = new_cycle_sets - old_cycle_sets
+
+    lines = []
+    lines.append("## DepGraph — Dependency Diff")
+    lines.append("")
+
+    total_changes = len(added_nodes) + len(removed_nodes) + len(added_edges) + len(removed_edges)
+    if total_changes == 0 and not new_cycles:
+        lines.append("No dependency changes detected.")
+        return "\n".join(lines)
+
+    # Summary line
+    parts = []
+    if added_nodes:
+        parts.append(f"+{len(added_nodes)} file{'s' if len(added_nodes) != 1 else ''}")
+    if removed_nodes:
+        parts.append(f"-{len(removed_nodes)} file{'s' if len(removed_nodes) != 1 else ''}")
+    if added_edges:
+        parts.append(f"+{len(added_edges)} dep{'s' if len(added_edges) != 1 else ''}")
+    if removed_edges:
+        parts.append(f"-{len(removed_edges)} dep{'s' if len(removed_edges) != 1 else ''}")
+    lines.append(f"**{', '.join(parts)}**")
+    lines.append("")
+
+    if added_nodes:
+        lines.append("<details>")
+        lines.append(f"<summary>Added files ({len(added_nodes)})</summary>")
+        lines.append("")
+        for n in added_nodes:
+            lines.append(f"- `{n}`")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+    if removed_nodes:
+        lines.append("<details>")
+        lines.append(f"<summary>Removed files ({len(removed_nodes)})</summary>")
+        lines.append("")
+        for n in removed_nodes:
+            lines.append(f"- `{n}`")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+    if added_edges:
+        lines.append("<details>")
+        lines.append(f"<summary>Added dependencies ({len(added_edges)})</summary>")
+        lines.append("")
+        for src, tgt in added_edges:
+            lines.append(f"- `{src}` → `{tgt}`")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+    if removed_edges:
+        lines.append("<details>")
+        lines.append(f"<summary>Removed dependencies ({len(removed_edges)})</summary>")
+        lines.append("")
+        for src, tgt in removed_edges:
+            lines.append(f"- `{src}` → `{tgt}`")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+    if new_cycles:
+        lines.append(f"⚠️ **{len(new_cycles)} new circular dependency group{'s' if len(new_cycles) != 1 else ''} introduced**")
+        lines.append("")
+        for cycle in sorted(new_cycles, key=len):
+            cycle_files = " → ".join(f"`{f}`" for f in sorted(cycle))
+            lines.append(f"- {cycle_files}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def _format_mermaid(result):
     """Return a Mermaid flowchart."""
     lines = ["graph LR"]
@@ -215,7 +310,8 @@ def main():
     # Language selection
     parser.add_argument("--lang", "-l", default="auto",
                         choices=["auto", "c", "cpp", "js", "py", "python",
-                                 "java", "go", "rust", "cs", "csharp"],
+                                 "java", "go", "rust", "cs", "csharp",
+                                 "swift", "ruby"],
                         help="language mode (default: auto-detect)")
 
     # Output format (mutually exclusive)
@@ -225,6 +321,10 @@ def main():
     fmt.add_argument("--mermaid", action="store_true", help="output Mermaid diagram")
     fmt.add_argument("--serve", action="store_true",
                      help="start web UI and open browser")
+
+    # Diff mode
+    parser.add_argument("--diff", metavar="BASE_DIR",
+                        help="compare dependencies against BASE_DIR and output a Markdown diff")
 
     # Filters
     parser.add_argument("--hide-external", action="store_true",
@@ -248,6 +348,52 @@ def main():
     if not os.path.isdir(directory):
         print(f"Error: '{args.directory}' is not a directory.", file=sys.stderr)
         sys.exit(1)
+
+    # --diff: compare two directories and output Markdown diff
+    if args.diff:
+        base_dir = os.path.abspath(args.diff)
+        if not os.path.isdir(base_dir):
+            print(f"Error: '{args.diff}' is not a directory.", file=sys.stderr)
+            sys.exit(1)
+
+        detected_base = _detect_languages(base_dir)
+        detected_head = _detect_languages(directory)
+
+        # Merge detected languages from both dirs
+        all_langs = set(detected_base.keys()) | set(detected_head.keys())
+        merged = {k: detected_base.get(k, False) or detected_head.get(k, False)
+                  for k in all_langs}
+
+        base_flags = {
+            "hide_system": args.hide_external,
+            "show_c": merged.get("has_c", False),
+            "show_h": merged.get("has_h", False),
+            "show_cpp": merged.get("has_cpp", False),
+            "show_js": merged.get("has_js", False),
+            "show_py": merged.get("has_py", False),
+            "show_java": merged.get("has_java", False),
+            "show_go": merged.get("has_go", False),
+            "show_rust": merged.get("has_rust", False),
+            "show_cs": merged.get("has_cs", False),
+            "show_swift": merged.get("has_swift", False),
+            "show_ruby": merged.get("has_ruby", False),
+            "hide_isolated": args.hide_isolated,
+            "filter_dir": args.filter_dir,
+        }
+
+        base_result = _build_graph(base_dir, **base_flags)
+        head_result = _build_graph(directory, **base_flags)
+
+        output = _format_diff(base_result, head_result)
+
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(output)
+                f.write("\n")
+            print(f"Written to {args.output}", file=sys.stderr)
+        else:
+            print(output)
+        return
 
     # --serve: start the Flask web UI
     if args.serve:
@@ -282,6 +428,8 @@ def main():
         show_go = detected["has_go"]
         show_rust = detected["has_rust"]
         show_cs = detected["has_cs"]
+        show_swift = detected.get("has_swift", False)
+        show_ruby = detected.get("has_ruby", False)
     else:
         show_c = lang == "c"
         show_h = lang in ("c", "cpp")
@@ -292,6 +440,8 @@ def main():
         show_go = lang == "go"
         show_rust = lang == "rust"
         show_cs = lang == "cs"
+        show_swift = lang == "swift"
+        show_ruby = lang == "ruby"
 
     # Build graph
     result = _build_graph(
@@ -300,6 +450,7 @@ def main():
         show_c=show_c, show_h=show_h, show_cpp=show_cpp,
         show_js=show_js, show_py=show_py, show_java=show_java,
         show_go=show_go, show_rust=show_rust, show_cs=show_cs,
+        show_swift=show_swift, show_ruby=show_ruby,
         hide_isolated=args.hide_isolated,
         filter_dir=args.filter_dir,
     )

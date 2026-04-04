@@ -21,7 +21,7 @@
     --success-soft: #ecfdf5;
     --warning: #f59e0b;
     --warning-soft: #fffbeb;
-    --loading-bg: rgba(241, 245, 249, 0.85);
+    --loading-bg: rgba(241, 245, 249, 1);
     --radius-sm: 6px;
     --radius-md: 8px;
     --radius-lg: 12px;
@@ -65,7 +65,7 @@
     --warning: #fbbf24;
     --warning-soft: rgba(251, 191, 36, 0.08);
 
-    --loading-bg: rgba(14, 16, 25, 0.88);
+    --loading-bg: rgba(14, 16, 25, 1);
 
     /* Richer shadows with subtle colored ambient */
     --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.4);
@@ -119,15 +119,6 @@ body {
     padding: 0.35rem 0.6rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
-
-.toolbar-zone-left {
-    flex-shrink: 1;
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-}
-.toolbar-zone-left::-webkit-scrollbar { display: none; }
 
 .toolbar-zone-right {
     flex-shrink: 0;
