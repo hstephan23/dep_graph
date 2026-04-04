@@ -690,6 +690,53 @@
                     </div>
 
                     <div id="sim-results"></div>
+
+                    <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0 0.75rem;">
+
+                    <div class="panel-header">Merge / Split Simulation</div>
+                    <div class="panel-hint">Model what happens if you merge two files into one, or split one file into parts.</div>
+
+                    <div class="sim-ms-tabs">
+                        <button class="sim-ms-tab active" data-mode="merge" onclick="simSetMergeMode('merge')">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                            Merge Files
+                        </button>
+                        <button class="sim-ms-tab" data-mode="split" onclick="simSetMergeMode('split')">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="2" x2="12" y2="22"/><polyline points="8 18 4 22 4 2 8 6"/><polyline points="16 6 20 2 20 22 16 18"/></svg>
+                            Split File
+                        </button>
+                    </div>
+
+                    <!-- Merge panel -->
+                    <div id="sim-merge-panel" class="sim-section">
+                        <div class="sim-section-label">Files to merge</div>
+                        <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                            <input type="text" id="simMergeNodeInput" placeholder="Add file to merge..." list="simNodeList" autocomplete="off">
+                            <button class="btn btn-ghost" onclick="simMergeAddNode()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">+ Add File</button>
+                        </div>
+                        <div id="sim-merge-list" class="sim-items"></div>
+                        <div id="sim-merge-preview" class="sim-merge-preview" style="display:none;"></div>
+                    </div>
+
+                    <!-- Split panel -->
+                    <div id="sim-split-panel" class="sim-section" style="display:none;">
+                        <div class="sim-section-label">File to split</div>
+                        <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                            <input type="text" id="simSplitNodeInput" placeholder="File to split..." list="simNodeList" autocomplete="off">
+                            <button class="btn btn-ghost" onclick="simSplitSetNode()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Select File</button>
+                        </div>
+                        <div id="sim-split-parts"></div>
+                    </div>
+
+                    <div style="display:flex;gap:0.5rem;margin-top:0.75rem;">
+                        <button class="btn btn-primary sim-run-btn" onclick="runMergeSimulation()" style="flex:1;padding:0.5rem 0.65rem;font-size:0.75rem;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Run Merge / Split
+                        </button>
+                        <button class="btn btn-ghost" onclick="simMSReset()" style="padding:0.5rem 0.65rem;font-size:0.75rem;">Reset</button>
+                    </div>
+
+                    <div id="sim-ms-results"></div>
                 </div>
 
                 <!-- Story Mode panel -->
