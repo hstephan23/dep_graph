@@ -1,0 +1,18 @@
+name: Dependency Diff
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  depgraph:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: harrisonstephan/DepGraph@main
+        with:
+          path: '.'
