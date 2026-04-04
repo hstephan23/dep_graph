@@ -623,7 +623,8 @@ function pdSetView(mode) {
         })), ...currentGraphData.edges];
         _cInitCy(elements, _normalStyles());
         _cBindNormalHandlers();
-        buildFolderColorKey(currentGraphData.nodes);
+        if (typeof buildColorKey === 'function') buildColorKey(currentGraphData.nodes);
+        else buildFolderColorKey(currentGraphData.nodes);
         _cAutoFit();
     } else {
         compoundFullRender(currentGraphData);
@@ -646,7 +647,8 @@ function _cUpdateColorKey() {
     cy.nodes('[?isFile]').forEach(n => nodes.push({ data: { id: n.id(), color: n.data('color') } }));
     // Also include collapsed dir colors
     cy.nodes('[?isCollapsed]').forEach(n => nodes.push({ data: { id: n.data('dirId') || n.id(), color: n.data('color') } }));
-    buildFolderColorKey(nodes);
+    if (typeof buildColorKey === 'function') buildColorKey(nodes);
+    else buildFolderColorKey(nodes);
 }
 
 // --- Layout ---

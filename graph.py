@@ -62,13 +62,117 @@ _PALETTE = [
     "#38bdf8", "#2dd4bf", "#a5b4fc", "#94a3b8", "#5eead4",
 ]
 
+# Per-language colors — loosely based on each language's brand/community colour.
+# Used when the caller opts in to language-aware colouring.
+LANGUAGE_COLORS = {
+    "c":       "#555555",
+    "h":       "#6e6e6e",
+    "cpp":     "#00599c",
+    "js":      "#f7df1e",
+    "py":      "#3776ab",
+    "java":    "#e76f00",
+    "go":      "#00add8",
+    "rust":    "#ce422b",
+    "cs":      "#68217a",
+    "swift":   "#f05138",
+    "ruby":    "#cc342d",
+    "kotlin":  "#7f52ff",
+    "scala":   "#dc322f",
+    "php":     "#777bb4",
+    "dart":    "#0175c2",
+    "elixir":  "#6e4a7e",
+}
 
-def _color_for_path(filepath):
-    """Return a deterministic color based on the file's directory."""
-    dirname = os.path.dirname(filepath) or "."
-    hash_val = int(hashlib.md5(dirname.encode('utf-8')).hexdigest(), 16)
-    return _PALETTE[hash_val % len(_PALETTE)]
+# =========================================================================
+# Risk-based colour system
+# =========================================================================
+# Color encodes importance + risk so your eyes go straight to problems.
 
+RISK_COLORS = {
+    "critical": "#ef4444",   # red — god files, cycle members, extreme inbound
+    "high":     "#f97316",   # orange — high influence, shared modules
+    "warning":  "#eab308",   # yellow — high outbound, too coupled
+    "normal":   "#3b82f6",   # blue — healthy, default
+    "entry":    "#22c55e",   # green — entry points, orphans, leaves
+    "system":   "#6b7280",   # dark gray — stdlib/external
+}
+
+# Human-readable labels for the legend.
+RISK_LABELS = {
+    "critical": "Critical / God file",
+    "high":     "High influence",
+    "warning":  "High dependency",
+    "normal":   "Normal",
+    "entry":    "Entry point / leaf",
+    "system":   "System / external",
+}
+
+
+def classify_node_risk(node_data, total_nodes):
+    """Assign a risk category to a single node.
+
+    Returns one of: ``"critical"``, ``"high"``, ``"warning"``, ``"normal"``,
+    ``"entry"``, ``"system"``.
+
+    The classification uses thresholds that adapt to graph size so a 10-file
+    project doesn't treat everything as critical.
+    """
+    in_deg = node_data.get("in_degree", 0)
+    out_deg = node_data.get("out_degree", 0)
+    in_cycle = node_data.get("in_cycle", False)
+    reach_pct = node_data.get("reach_pct", 0)
+    nid = node_data.get("id", "")
+
+    # System / external nodes (identified by a leading "system:" or no language)
+    if nid.startswith("system:") or nid.startswith("<"):
+        return "system"
+
+    # Adaptive thresholds based on graph size
+    if total_nodes <= 10:
+        critical_in = 5
+        high_in = 3
+        warning_out = 4
+    elif total_nodes <= 50:
+        critical_in = 8
+        high_in = 5
+        warning_out = 6
+    else:
+        critical_in = max(10, total_nodes // 5)
+        high_in = max(5, total_nodes // 10)
+        warning_out = max(8, total_nodes // 8)
+
+    # 1. Critical: cycle members, or extreme inbound / reach
+    if in_cycle or in_deg >= critical_in or reach_pct >= 50:
+        return "critical"
+
+    # 2. High influence: significant inbound
+    if in_deg >= high_in or reach_pct >= 30:
+        return "high"
+
+    # 3. Warning: too many outbound (fragile / over-coupled)
+    if out_deg >= warning_out:
+        return "warning"
+
+    # 4. Entry points / leaves: zero inbound
+    if in_deg == 0:
+        return "entry"
+
+    # 5. Normal
+    return "normal"
+
+
+def node_size_for_degree(in_degree, total_nodes):
+    """Return a node size (diameter) scaled by inbound degree.
+
+    Returns a value between 60 and 200, compatible with the existing
+    Cytoscape ``data(size)`` convention (baseline ~80).
+    """
+    if total_nodes <= 1:
+        return 80
+    import math
+    # sqrt scale so one mega-hub doesn't dwarf everything
+    t = min(in_degree / max(total_nodes * 0.3, 1), 1.0)
+    return int(60 + 140 * math.sqrt(t))
 
 # =========================================================================
 # File filtering helpers
@@ -113,6 +217,35 @@ LANG_SKIP_DIRS = {
     "show_elixir": {'_build', 'deps', '.elixir_ls'},
 }
 
+# Map file extensions → short language key (used for node metadata).
+_EXT_TO_LANG = {}
+for _flag, _exts in LANG_EXTENSION_TABLE:
+    _lang = _flag[len("show_"):]          # "show_py" → "py"
+    for _ext in _exts:
+        _EXT_TO_LANG[_ext] = _lang
+
+
+def _lang_for_path(filepath):
+    """Return the short language key for *filepath*, or ``None``."""
+    _, ext = os.path.splitext(filepath)
+    return _EXT_TO_LANG.get(ext)
+
+
+def _dir_color(filepath):
+    """Return a deterministic color for *filepath*'s directory."""
+    dirname = os.path.dirname(filepath) or "."
+    hash_val = int(hashlib.md5(dirname.encode('utf-8')).hexdigest(), 16)
+    return _PALETTE[hash_val % len(_PALETTE)]
+
+
+def _color_for_path(filepath):
+    """Return a deterministic color for *filepath*.
+
+    Uses the file's directory to pick a palette colour so files in the
+    same folder share a colour.
+    """
+    return _dir_color(filepath)
+
 
 def _should_skip_dir(name):
     """Return True for directories that should be excluded from scanning."""
@@ -148,6 +281,45 @@ def _include_target_excluded(filename, lang_flags):
         if filename.endswith(exts) and not lang_flags.get(flag):
             return True
     return False
+
+
+def _resolve_c_include(included, source_file, known_files, _basename_index=None):
+    """Resolve a C/C++ #include path to a known project file.
+
+    Search order:
+      1. Relative to the including file's directory  (e.g. src/main.c → src/utils.h)
+      2. Exact match as a project-relative path       (e.g. inc/utils.h)
+      3. Basename match anywhere in the project        (e.g. utils.h → inc/utils.h)
+
+    Returns the resolved relative path, or None if not found.
+    """
+    # 1. Relative to the including file's directory
+    source_dir = os.path.dirname(source_file)
+    if source_dir:
+        candidate = os.path.normpath(os.path.join(source_dir, included))
+    else:
+        candidate = os.path.normpath(included)
+    if candidate in known_files:
+        return candidate
+
+    # 2. Exact match as project-relative path
+    normed = os.path.normpath(included)
+    if normed in known_files:
+        return normed
+
+    # 3. Basename match — find any file in the project with the same name
+    basename = os.path.basename(included)
+    if _basename_index is not None:
+        matches = _basename_index.get(basename)
+        if matches:
+            # Prefer the shortest path (closest to root) if multiple matches
+            return min(matches, key=len)
+    else:
+        for kf in known_files:
+            if os.path.basename(kf) == basename:
+                return kf
+
+    return None
 
 
 # =========================================================================
@@ -308,6 +480,12 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
     # Per-build resolution cache — avoids re-resolving the same import string
     # thousands of times across different source files.
     _cache = ResolutionCache()
+
+    # Build a basename → [relative paths] index for fast C/C++ include resolution
+    _c_basename_idx = {}
+    for kf in known_files:
+        bn = os.path.basename(kf)
+        _c_basename_idx.setdefault(bn, []).append(kf)
 
     def _add_edge(source, target):
         edges.append({
@@ -670,7 +848,29 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                 if _include_target_excluded(included, lang_flags):
                     continue
 
-                _add_edge(filename, included)
+                # Resolve the include path to an actual project file
+                cached = _cache.get('c_include', included, filename)
+                if cached is None:
+                    resolved = _resolve_c_include(
+                        included, filename, known_files, _c_basename_idx
+                    )
+                    if resolved:
+                        cached = (resolved, False)
+                    elif is_system:
+                        # System header not in project — always skip.
+                        # Unresolved angle-bracket includes (e.g. <stdlib.h>)
+                        # are standard library headers that don't belong as
+                        # nodes in a project dependency graph.
+                        continue
+                    else:
+                        # Quoted include not found — use raw path as-is
+                        cached = (included, False)
+                    _cache.put('c_include', included, filename, cached)
+
+                target, is_ext = cached
+                if hide_system and is_ext:
+                    continue
+                _add_edge(filename, target)
 
             else:
                 match = JS_IMPORT_RE.search(line)
@@ -806,12 +1006,22 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
     for node in nodes:
         node["data"]["impact"] = impact.get(node["data"]["id"], 0)
 
-    # --- Stability metric: I = Ce / (Ca + Ce) ---
+    # --- Per-node enrichment: stability, language, degrees, cycle flag ---
+    total_nodes = len(nodes)
     for node in nodes:
         nid = node["data"]["id"]
+        nd = node["data"]
         ca = in_degrees.get(nid, 0)   # afferent (inbound)
         ce = out_degrees.get(nid, 0)  # efferent (outbound)
-        node["data"]["stability"] = round(ce / (ca + ce), 3) if (ca + ce) > 0 else 0.5
+        nd["stability"] = round(ce / (ca + ce), 3) if (ca + ce) > 0 else 0.5
+        nd["in_degree"] = ca
+        nd["out_degree"] = ce
+        nd["language"] = _lang_for_path(nid)
+        nd["in_cycle"] = nid in cycle_nodes
+
+    # --- Risk classification & sizing (second pass, needs reach_pct) ---
+    # reach_pct is computed later, so we do a preliminary pass here and
+    # a final risk pass after reach_pct is set (see below).
 
     # --- Unused file detection (zero inbound edges) ---
     unused_files = [nid for nid, deg in in_degrees.items() if deg == 0]
@@ -892,6 +1102,16 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
             })
 
     depth_warnings.sort(key=lambda w: (0 if w["severity"] == "critical" else 1, -w["reach_pct"]))
+
+    # --- Risk classification & node sizing (final pass, needs reach_pct) ---
+    for node in nodes:
+        nd = node["data"]
+        risk = classify_node_risk(nd, total_files)
+        nd["risk"] = risk
+        nd["risk_color"] = RISK_COLORS[risk]
+        nd["risk_label"] = RISK_LABELS[risk]
+        nd["node_size"] = node_size_for_degree(nd.get("in_degree", 0), total_files)
+        nd["dir_color"] = _dir_color(nd["id"])
 
     return {
         "nodes": nodes,

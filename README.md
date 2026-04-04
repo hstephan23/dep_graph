@@ -109,6 +109,7 @@ DepGraph/
 │       ├── sidebar.ts    — tree views (dependencies, cycles, metrics)
 │       ├── commands.ts   — command implementations (graph, cycles, blast radius, export)
 │       ├── webview.ts    — interactive Cytoscape.js graph in a VS Code panel
+│       ├── hover.ts      — mini dependency graph on import hover
 │       ├── codeLens.ts   — inline dependency counts and metrics above files
 │       ├── diagnostics.ts — cycle, depth, and high-impact warnings in Problems panel
 │       └── config.ts     — reads workspace settings
@@ -237,6 +238,10 @@ Three tree views appear in the Explorer sidebar under a DepGraph section:
 - **Dependencies** — files sorted by depth, expandable to show imports and imported-by lists
 - **Cycles** — detected circular dependencies with member files
 - **File Metrics** — files sorted by impact with per-file depth, stability, and reach percentage
+
+### Import Hover Preview
+
+Hover over any import statement to see a mini dependency graph for the imported file — its metrics (depth, impact, stability, blast radius), who imports it, and what it imports, with second-level dependencies shown inline. Cycle membership is flagged with a warning. Works across all 9 supported languages.
 
 ### CodeLens & Diagnostics
 

@@ -150,6 +150,15 @@
                 </div>
             </details>
 
+            <!-- Color mode -->
+            <div class="toolbar-group">
+                <span class="toolbar-group-label">Color by</span>
+                <div class="pill-group">
+                    <input type="radio" name="colorMode" id="colorRisk" value="risk" checked onchange="changeColorMode(this.value)"><label for="colorRisk">Risk</label>
+                    <input type="radio" name="colorMode" id="colorDir" value="directory" onchange="changeColorMode(this.value)"><label for="colorDir">Directory</label>
+                </div>
+            </div>
+
             <!-- Graph layout -->
             <div class="toolbar-group">
                 <span class="toolbar-group-label">Layout</span>
@@ -337,11 +346,10 @@
         <div class="path-hint" id="pathHint">Click a node to trace dependencies &middot; Double-click to view source &middot; Esc to clear</div>
 
         <div class="folder-color-key" id="folderColorKey">
-            <button class="folder-key-toggle" id="folderKeyToggle" onclick="toggleFolderKey()">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                Folders
-                <svg class="folder-key-chevron" id="folderKeyChevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
+            <div class="folder-key-header" id="folderKeyHeader">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                <span id="folderKeyTitle">Legend</span>
+            </div>
             <div class="folder-key-list" id="folderKeyList"></div>
         </div>
         <div class="graph-status-bar" id="graphStatusBar">
@@ -522,8 +530,11 @@
                     <div id="cycles-list"></div>
                     <div class="panel-header">Reference Counts <span id="nodeCountBadge" class="count-badge"></span></div>
                     <div class="legend-bar">
-                        <span class="legend-item"><span class="legend-dot" style="background:#f97316;"></span> God file</span>
-                        <span class="legend-item"><span class="legend-dot" style="background:var(--danger);"></span> Orphan</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Critical</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#f97316;"></span> High</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#eab308;"></span> Warning</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#3b82f6;"></span> Normal</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> Entry</span>
                     </div>
                     <div id="ref-list"></div>
                 </div>

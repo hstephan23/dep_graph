@@ -4,6 +4,7 @@ import { getConfig } from './config';
 import { DependencyTreeProvider, CyclesTreeProvider, MetricsTreeProvider } from './sidebar';
 import { GraphWebviewProvider } from './webview';
 import { DepGraphCodeLensProvider } from './codeLens';
+import { DepGraphHoverProvider } from './hover';
 import { DepGraphDiagnostics } from './diagnostics';
 import * as commands from './commands';
 
@@ -29,6 +30,12 @@ export function activate(context: vscode.ExtensionContext) {
   const codeLens = new DepGraphCodeLensProvider();
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider({ scheme: 'file' }, codeLens),
+  );
+
+  // ── Hover provider (mini dependency graph on import hover) ─────
+  const hoverProvider = new DepGraphHoverProvider();
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider({ scheme: 'file' }, hoverProvider),
   );
 
   // Refresh CodeLens when graph changes

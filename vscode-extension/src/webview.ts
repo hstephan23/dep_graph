@@ -273,6 +273,16 @@ export class GraphWebviewProvider {
       font-family: inherit;
     }
     .context-menu button:hover { background: var(--border); }
+    .color-toggle { display: flex; gap: 2px; }
+    .color-toggle button { font-size: 11px; padding: 2px 8px; }
+    .legend {
+      position: absolute; bottom: 12px; left: 12px;
+      display: flex; gap: 10px; align-items: center;
+      background: rgba(37,37,38,0.85); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px 10px; font-size: 11px;
+      z-index: 50;
+    }
+    .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
   </style>
 </head>
 <body>
@@ -281,12 +291,24 @@ export class GraphWebviewProvider {
     <button id="btnForce" class="active">Force</button>
     <button id="btnHierarchy">Hierarchy</button>
     <button id="btnConcentric">Concentric</button>
+    <div class="color-toggle">
+      <button id="btnRisk" class="active">Risk</button>
+      <button id="btnDir">Directory</button>
+    </div>
     <div class="spacer"></div>
     <div class="cycle-badge" id="cycleBadge">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
       <span id="cycleCount"></span>
     </div>
     <div class="stats" id="stats"></div>
+  </div>
+  <div class="legend" id="legend">
+    <span><span class="legend-dot" style="background:#ef4444;"></span>Critical</span>
+    <span><span class="legend-dot" style="background:#f97316;"></span>High</span>
+    <span><span class="legend-dot" style="background:#eab308;"></span>Warning</span>
+    <span><span class="legend-dot" style="background:#3b82f6;"></span>Normal</span>
+    <span><span class="legend-dot" style="background:#22c55e;"></span>Entry</span>
+    <span><span class="legend-dot" style="background:#6b7280;"></span>System</span>
   </div>
   <div id="cy"></div>
   <div class="loading" id="loading">
@@ -307,6 +329,50 @@ export class GraphWebviewProvider {
     let graphData = null;
     let currentLayout = 'cose';
     let contextNodeId = null;
+    let colorMode = 'risk'; // 'risk' or 'directory'
+
+    const RISK_COLORS = {
+      critical: '#ef4444', high: '#f97316', warning: '#eab308',
+      normal: '#3b82f6', entry: '#22c55e', system: '#6b7280',
+    };
+
+    function applyColorMode() {
+      if (!cy || !graphData) return;
+      // Only swap colors — sizes stay the same so the graph doesn't jump
+      cy.batch(() => {
+        cy.nodes().forEach(n => {
+          if (colorMode === 'risk') {
+            const rc = n.data('risk_color') || RISK_COLORS[n.data('risk')] || RISK_COLORS.normal;
+            n.data('color', rc);
+          } else {
+            n.data('color', n.data('dir_color') || n.data('color'));
+          }
+        });
+      });
+      // Update legend content
+      const legendEl = document.getElementById('legend');
+      if (colorMode === 'risk') {
+        legendEl.innerHTML =
+          '<span><span class="legend-dot" style="background:#ef4444;"></span>Critical</span>' +
+          '<span><span class="legend-dot" style="background:#f97316;"></span>High</span>' +
+          '<span><span class="legend-dot" style="background:#eab308;"></span>Warning</span>' +
+          '<span><span class="legend-dot" style="background:#3b82f6;"></span>Normal</span>' +
+          '<span><span class="legend-dot" style="background:#22c55e;"></span>Entry</span>' +
+          '<span><span class="legend-dot" style="background:#6b7280;"></span>System</span>';
+      } else if (graphData) {
+        const dirMap = {};
+        graphData.nodes.forEach(n => {
+          const id = n.data.id;
+          const color = n.data.dir_color || n.data.color || '#6b7280';
+          const dir = id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.';
+          if (!dirMap[dir]) dirMap[dir] = color;
+        });
+        legendEl.innerHTML = Object.keys(dirMap).sort().map(d =>
+          '<span><span class="legend-dot" style="background:' + dirMap[d] + ';"></span>' + d + '</span>'
+        ).join('');
+      }
+      legendEl.style.display = 'flex';
+    }
 
     // Register cytoscape-dagre plugin for Hierarchy layout
     const hasDagre = typeof dagre !== 'undefined';
@@ -371,7 +437,14 @@ export class GraphWebviewProvider {
     // ── Graph rendering ───────────────────────────────────────────
     function renderGraph(data) {
       document.getElementById('loading').style.display = 'none';
-      const nodes = data.nodes.map(n => ({ ...n }));
+      const nodes = data.nodes.map(n => {
+        const d = { ...n.data };
+        if (!d.dir_color) d.dir_color = d.color; // fallback directory color
+        if (colorMode === 'risk') {
+          d.color = d.risk_color || RISK_COLORS[d.risk] || RISK_COLORS.normal;
+        }
+        return { ...n, data: d };
+      });
       const edges = data.edges.map(e => ({ ...e }));
 
       if (cy) { cy.destroy(); }
@@ -454,12 +527,18 @@ export class GraphWebviewProvider {
       const tooltip = document.getElementById('tooltip');
       cy.on('mouseover', 'node', (e) => {
         const d = e.target.data();
+        const riskLabel = d.risk_label || d.risk || 'normal';
+        const riskColor = RISK_COLORS[d.risk] || RISK_COLORS.normal;
         tooltip.innerHTML =
           '<div class="tooltip-title">' + d.id + '</div>' +
+          '<div class="tooltip-row"><span class="tooltip-label">Risk</span><span style="color:' + riskColor + ';font-weight:600;">' + riskLabel + '</span></div>' +
+          '<div class="tooltip-row"><span class="tooltip-label">Inbound</span><span>' + (d.in_degree || 0) + '</span></div>' +
+          '<div class="tooltip-row"><span class="tooltip-label">Outbound</span><span>' + (d.out_degree || 0) + '</span></div>' +
           '<div class="tooltip-row"><span class="tooltip-label">Depth</span><span>' + d.depth + '</span></div>' +
           '<div class="tooltip-row"><span class="tooltip-label">Impact</span><span>' + d.impact + '</span></div>' +
           '<div class="tooltip-row"><span class="tooltip-label">Stability</span><span>' + (d.stability || 0).toFixed(2) + '</span></div>' +
-          '<div class="tooltip-row"><span class="tooltip-label">Reach</span><span>' + (d.reach_pct || 0).toFixed(1) + '%</span></div>';
+          '<div class="tooltip-row"><span class="tooltip-label">Reach</span><span>' + (d.reach_pct || 0).toFixed(1) + '%</span></div>' +
+          '<div class="tooltip-row"><span class="tooltip-label">Language</span><span>' + (d.language || '?') + '</span></div>';
         tooltip.classList.add('visible');
       });
       cy.on('mousemove', 'node', (e) => {
@@ -602,6 +681,20 @@ export class GraphWebviewProvider {
     document.getElementById('btnForce').addEventListener('click', () => setLayout('cose'));
     document.getElementById('btnHierarchy').addEventListener('click', () => setLayout('dagre'));
     document.getElementById('btnConcentric').addEventListener('click', () => setLayout('concentric'));
+
+    // Color mode toggle
+    document.getElementById('btnRisk').addEventListener('click', () => {
+      colorMode = 'risk';
+      document.getElementById('btnRisk').classList.add('active');
+      document.getElementById('btnDir').classList.remove('active');
+      applyColorMode();
+    });
+    document.getElementById('btnDir').addEventListener('click', () => {
+      colorMode = 'directory';
+      document.getElementById('btnDir').classList.add('active');
+      document.getElementById('btnRisk').classList.remove('active');
+      applyColorMode();
+    });
 
     document.getElementById('ctxOpen').addEventListener('click', () => {
       if (contextNodeId) vscode.postMessage({ type: 'openFile', fileId: contextNodeId });

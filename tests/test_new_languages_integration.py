@@ -30,7 +30,8 @@ def assert_result_structure(result):
 
 
 def assert_node_structure(node_data):
-    required_keys = {"id", "color", "size", "depth", "impact", "stability", "reach_pct"}
+    required_keys = {"id", "color", "size", "depth", "impact", "stability", "reach_pct",
+                     "in_degree", "out_degree", "language", "in_cycle"}
     for key in required_keys:
         assert key in node_data, f"Missing key '{key}' in node {node_data.get('id', 'unknown')}"
 

@@ -8,10 +8,6 @@
 // ============================================================================
 
 // --- Folder Color Key ---
-function toggleFolderKey() {
-    document.getElementById('folderColorKey').classList.toggle('open');
-}
-
 function buildFolderColorKey(nodes) {
     const folderMap = {};
     nodes.forEach(n => {
