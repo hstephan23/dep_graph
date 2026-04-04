@@ -81,11 +81,24 @@ _rate_store = {}  # ip -> list of timestamps
 _rate_lock = threading.Lock()
 
 
+_RATE_CLEANUP_INTERVAL = 300  # purge stale IPs every 5 minutes
+_rate_last_cleanup = 0
+
+
 def _rate_limit_check():
     """Return True if the request should be rate-limited (rejected)."""
+    global _rate_last_cleanup
     ip = request.remote_addr or 'unknown'
     now = time.time()
     with _rate_lock:
+        # Periodically purge stale entries so the store doesn't grow unbounded
+        if now - _rate_last_cleanup > _RATE_CLEANUP_INTERVAL:
+            stale = [k for k, v in _rate_store.items()
+                     if not v or now - v[-1] > _RATE_WINDOW]
+            for k in stale:
+                del _rate_store[k]
+            _rate_last_cleanup = now
+
         timestamps = _rate_store.get(ip, [])
         timestamps = [t for t in timestamps if now - t < _RATE_WINDOW]
         if len(timestamps) >= _RATE_LIMIT:
@@ -115,7 +128,11 @@ def _validate_directory(directory):
 def _before_request():
     """Global rate limiting."""
     if _rate_limit_check():
-        return jsonify({"error": "Rate limit exceeded. Try again later."}), 429
+        return jsonify({
+            "error": "Rate limit exceeded. Try again later.",
+            "suggestion": "Too many requests — wait a moment and try again.",
+            "code": "RATE_LIMITED",
+        }), 429
 
 
 # ---------------------------------------------------------------------------
@@ -170,10 +187,24 @@ def get_file():
         if abs_dir is None:
             return jsonify({"error": "Directory not found or access denied."}), 403
 
-    # Resolve to absolute path and enforce containment
-    full_path = os.path.abspath(os.path.join(abs_dir, filepath))
-    if not full_path.startswith(abs_dir + os.sep) and full_path != abs_dir:
-        return jsonify({"error": "Invalid file path"}), 403
+    # Reject obviously malicious path components
+    if '..' in filepath.split('/') or '..' in filepath.split(os.sep):
+        return jsonify({
+            "error": "Invalid file path.",
+            "suggestion": "File paths must not contain '..' components.",
+            "code": "PATH_TRAVERSAL",
+        }), 403
+
+    # Resolve to absolute path and enforce containment (using realpath to
+    # follow symlinks and prevent escape via symlinked directories).
+    full_path = os.path.realpath(os.path.join(abs_dir, filepath))
+    real_dir = os.path.realpath(abs_dir)
+    if not full_path.startswith(real_dir + os.sep) and full_path != real_dir:
+        return jsonify({
+            "error": "Invalid file path.",
+            "suggestion": "The requested file is outside the allowed directory.",
+            "code": "PATH_ESCAPE",
+        }), 403
 
     # If the direct path doesn't exist, search for the filename within the
     # *validated* base directory only. This handles unresolved includes like
@@ -234,7 +265,11 @@ def get_graph():
 
     abs_dir = _validate_directory(directory)
     if abs_dir is None:
-        return jsonify({"error": "Directory not found or access denied."}), 400
+        return jsonify({
+            "error": "Directory not found or access denied.",
+            "suggestion": "Check that the directory path exists and is within the allowed base directory.",
+            "code": "INVALID_DIRECTORY",
+        }), 400
 
     detected = detect_languages(abs_dir)
     filters = parse_filters(request.args, detected=detected)
@@ -323,21 +358,52 @@ def _cleanup_expired_sessions():
 def _safe_extract_zip(zip_path, dest_dir):
     """Extract a ZIP file while guarding against Zip Slip (path traversal).
 
-    Raises ValueError if any entry would escape *dest_dir*.
+    Rejects entries that:
+    - Would escape *dest_dir* via ``..`` or absolute paths
+    - Are symbolic links (could point outside the sandbox)
+    - Resolve (via symlink) to a path outside *dest_dir* after extraction
+
+    Raises ValueError if any entry is unsafe.
     """
-    abs_dest = os.path.abspath(dest_dir)
+    abs_dest = os.path.realpath(dest_dir)
     with zipfile.ZipFile(zip_path, 'r') as zf:
         for member in zf.infolist():
             # Skip directory entries
             if member.is_dir():
                 continue
-            target = os.path.abspath(os.path.join(abs_dest, member.filename))
+
+            # Reject symlinks: external_attr upper 16 bits contain Unix mode;
+            # 0o120000 is the symlink flag.
+            unix_mode = (member.external_attr >> 16) & 0xFFFF
+            if unix_mode != 0 and (unix_mode & 0o170000) == 0o120000:
+                raise ValueError(
+                    f"Zip entry is a symbolic link (rejected): {member.filename}"
+                )
+
+            target = os.path.normpath(os.path.join(abs_dest, member.filename))
             if not target.startswith(abs_dest + os.sep):
                 raise ValueError(
                     f"Zip entry escapes target directory: {member.filename}"
                 )
+
         # All entries validated — extract
         zf.extractall(dest_dir)
+
+        # Post-extraction: verify no symlinks were created and all real paths
+        # stay inside the destination.
+        for root, dirs, files in os.walk(abs_dest):
+            for name in files + dirs:
+                full = os.path.join(root, name)
+                if os.path.islink(full):
+                    os.remove(full)
+                    raise ValueError(
+                        f"Extracted entry is a symlink (removed): {name}"
+                    )
+                real = os.path.realpath(full)
+                if not real.startswith(abs_dest + os.sep) and real != abs_dest:
+                    raise ValueError(
+                        f"Extracted entry resolves outside sandbox: {name}"
+                    )
 
 
 @app.route('/api/upload', methods=['POST'])
@@ -349,18 +415,30 @@ def upload_files():
     )
 
     if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+        return jsonify({
+            "error": "No file part in request.",
+            "suggestion": "Select a file before uploading.",
+            "code": "NO_FILE",
+        }), 400
 
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+        return jsonify({
+            "error": "No selected file.",
+            "suggestion": "Choose a ZIP or source file to upload.",
+            "code": "EMPTY_FILENAME",
+        }), 400
 
     allowed_ext = (('.zip',) + C_EXTENSIONS + H_EXTENSIONS + CPP_EXTENSIONS
                    + JS_EXTENSIONS + PY_EXTENSIONS + JAVA_EXTENSIONS
                    + GO_EXTENSIONS + RUST_EXTENSIONS + CS_EXTENSIONS
                    + SWIFT_EXTENSIONS + RUBY_EXTENSIONS)
     if not file.filename.endswith(allowed_ext):
-        return jsonify({"error": "Unsupported file type. Please upload a ZIP or supported source file."}), 400
+        return jsonify({
+            "error": "Unsupported file type.",
+            "suggestion": "Upload a .zip archive or a supported source file (.py, .js, .ts, .c, .java, .go, .rs, etc.).",
+            "code": "UNSUPPORTED_TYPE",
+        }), 400
 
     # Generate an opaque upload token for this session
     upload_token = secrets.token_urlsafe(16)
@@ -389,10 +467,18 @@ def upload_files():
         return jsonify(result)
     except ValueError as e:
         shutil.rmtree(temp_dir, ignore_errors=True)
-        return jsonify({"error": "Invalid archive contents."}), 400
+        return jsonify({
+            "error": "Invalid archive contents.",
+            "suggestion": "The ZIP contains unsafe paths. Re-create it without directory traversal entries.",
+            "code": "UNSAFE_ARCHIVE",
+        }), 400
     except Exception:
         shutil.rmtree(temp_dir, ignore_errors=True)
-        return jsonify({"error": "Failed to process uploaded file."}), 500
+        return jsonify({
+            "error": "Failed to process uploaded file.",
+            "suggestion": "Check that the file is a valid ZIP or source file and try again.",
+            "code": "PROCESSING_ERROR",
+        }), 500
 
 
 @app.route('/api/diff', methods=['POST'])
@@ -697,7 +783,11 @@ def generate_story():
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": f"Story generation failed: {exc}"}), 500
+        return jsonify({
+            "error": "Story generation failed.",
+            "suggestion": "Try with a smaller graph or check that graph data is valid.",
+            "code": "STORY_ERROR",
+        }), 500
 
 
 def _generate_story_impl():
