@@ -440,7 +440,7 @@ function timelineSeek(position) {
     if (target > 0) _tlDimOlderLayers(target - 1);
 
     _tlUpdateUI();
-    if (cy && cy.nodes().length) cy.fit(60);
+    if (cy && cy.nodes().length) cy.fit(120);
 
     // Show label for current layer
     if (target > 0 && target <= _timeline.layers.length) {

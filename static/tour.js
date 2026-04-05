@@ -24,13 +24,13 @@ const Tour = (() => {
         {
             target: '.toolbar-group:has([name="layoutMode"])',
             label: 'Layout Modes',
-            desc: 'Choose how nodes are arranged: Force (organic), Hierarchy (top-down DAG), or Concentric (rings). The lens icon enables focus-magnification.',
+            desc: 'Choose how nodes are arranged. The lens icon enables focus-magnification.',
             placement: 'bottom',
         },
         {
             target: '.toolbar-group:has([name="viewMode"])',
             label: 'View Modes',
-            desc: 'Switch between an interactive Graph, a Treemap heat-map, or a Matrix grid showing every file-to-file dependency at a glance.',
+            desc: 'Switch between an interactive Graph or a Tree view showing dependency chains.',
             placement: 'bottom',
         },
         {

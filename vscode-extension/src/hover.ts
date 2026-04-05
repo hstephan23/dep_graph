@@ -56,6 +56,26 @@ const IMPORT_PATTERNS: { langs: string[]; pattern: RegExp }[] = [
     langs: ['ruby'],
     pattern: /(?:require_relative|require|load)\s+['"]([^'"]+)['"]/,
   },
+  // Kotlin: import com.example.Foo
+  {
+    langs: ['kotlin'],
+    pattern: /^\s*import\s+([\w.*]+)(?:\s+as\s+\w+)?/,
+  },
+  // Scala: import com.example.Foo | import com.example.{Foo, Bar}
+  {
+    langs: ['scala'],
+    pattern: /^\s*import\s+([\w.*]+(?:\.\{[^}]+\})?)/,
+  },
+  // PHP: use App\Models\User | require 'path' | include 'path'
+  {
+    langs: ['php'],
+    pattern: /(?:^\s*use\s+([\w\\]+)|(?:require_once|include_once|require|include)\s*\(?\s*['"]([^'"]+)['"]\s*\)?)/,
+  },
+  // Dart: import 'package:foo/bar.dart' | import 'path/to/file.dart'
+  {
+    langs: ['dart'],
+    pattern: /^\s*import\s+['"]([^'"]+)['"]/,
+  },
   // Elixir: alias/import/use/require Foo.Bar
   {
     langs: ['elixir'],

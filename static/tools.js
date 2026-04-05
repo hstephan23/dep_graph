@@ -35,8 +35,8 @@ function buildFolderColorKey(nodes) {
 
 let _fisheye = {
     active: false,
-    radius: 300,       // influence radius in model coordinates
-    magnification: 2.5, // max scale factor for closest nodes
+    radius: 180,       // influence radius in model coordinates
+    magnification: 3.0, // max scale factor for closest nodes
     minScale: 0.5,     // minimum scale for distant nodes
     restoreData: null,  // original sizes to restore on disable
     rafId: null,
@@ -78,8 +78,11 @@ function _fisheyeHandler(evt) {
 
 function _fisheyeApply(cursor) {
     if (!cy || !_fisheye.active) return;
-    const R = _fisheye.radius;
-    const mag = _fisheye.magnification;
+    // Scale lens strength inversely with zoom: zoomed out → bigger radius & stronger magnification
+    const zoom = cy.zoom();
+    const zoomFactor = Math.max(1, 1 / zoom);  // 1 at zoom≥1, grows as zoom shrinks
+    const R = _fisheye.radius * Math.sqrt(zoomFactor);  // gentler radius growth
+    const mag = _fisheye.magnification + (zoomFactor - 1) * 0.6;  // subtle mag boost when zoomed out
     const minS = _fisheye.minScale;
 
     cy.batch(() => {
@@ -187,6 +190,23 @@ function showNodeAnalysis(nodeId, up, down) {
     const d = n.data;
     const el = document.getElementById('node-analysis');
     const bCls = (v, lo, hi) => v > hi ? 'badge-red' : v > lo ? 'badge-yellow' : 'badge-green';
+    // Build churn section if data is available
+    let churnHtml = '';
+    if (typeof _churnData !== 'undefined' && _churnData && _churnData.files && _churnData.files[d.id]) {
+        const ch = _churnData.files[d.id];
+        const isHot = ch.churn_score > 0.6 && (d.risk === 'critical' || d.risk === 'high');
+        churnHtml = `
+            <div class="metric-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">
+                <span class="metric-label">Churn Score</span>
+                <span class="badge ${ch.churn_score > 0.6 ? 'badge-red' : ch.churn_score > 0.3 ? 'badge-yellow' : 'badge-green'}">${(ch.churn_score * 100).toFixed(0)}%</span>
+            </div>
+            <div class="metric-row"><span class="metric-label">Commits</span><span class="metric-value">${ch.commits}</span></div>
+            <div class="metric-row"><span class="metric-label">Recent (90d)</span><span class="metric-value">${ch.recent}</span></div>
+            <div class="metric-row"><span class="metric-label">Authors</span><span class="metric-value">${ch.authors}</span></div>
+            <div class="metric-row"><span class="metric-label">Last Change</span><span class="metric-value">${ch.last_date || '—'}</span></div>
+            ${isHot ? '<div style="margin-top:6px;padding:4px 8px;border-radius:6px;background:rgba(239,68,68,0.12);color:#ef4444;font-size:0.75rem;font-weight:600;">⚠ Danger zone — high risk + high churn</div>' : ''}`;
+    }
+
     el.innerHTML = `
         <div class="node-card">
             <div class="node-card-header">${d.id}</div>
@@ -195,6 +215,7 @@ function showNodeAnalysis(nodeId, up, down) {
             <div class="metric-row"><span class="metric-label">Stability (I)</span><span class="badge ${d.stability > 0.7 ? 'badge-red' : d.stability < 0.3 ? 'badge-green' : 'badge-yellow'}">${d.stability}</span></div>
             <div class="metric-row"><span class="metric-label">Upstream</span><span class="metric-value">${up}</span></div>
             <div class="metric-row"><span class="metric-label">Downstream</span><span class="metric-value">${down}</span></div>
+            ${churnHtml}
         </div>`;
     switchTab(document.querySelector('[data-panel="panel-analysis"]'));
 }
@@ -634,7 +655,7 @@ function renderDiff(diff) {
     const reveal = () => {
         if (revealed) return;
         revealed = true;
-        cy.fit(80);
+        cy.fit(120);
         cyContainer.style.visibility = '';
         overlay.classList.remove('active');
     };

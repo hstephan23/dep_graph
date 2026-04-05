@@ -13,6 +13,11 @@ DepGraph is a lightweight tool for exploring source file dependencies as an inte
 - **C#** — `using` directives with namespace-to-file resolution (`.cs`)
 - **Swift** — `import` declarations with local module resolution (`.swift`)
 - **Ruby** — `require`, `require_relative`, and `load` (`.rb`)
+- **Kotlin** — `import` declarations with package resolution (`.kt`, `.kts`)
+- **Scala** — `import` declarations including grouped imports (`.scala`, `.sc`)
+- **PHP** — `use`, `require`, `include`, and `require_once`/`include_once` with PSR-4 namespace resolution (`.php`)
+- **Dart** — `import` declarations for package and relative imports (`.dart`)
+- **Elixir** — `alias`, `import`, `require`, and `use` (`.ex`, `.exs`)
 
 Language detection is automatic — DepGraph scans the target directory and enables the relevant parsers based on which file types are present.
 
@@ -20,14 +25,18 @@ Language detection is automatic — DepGraph scans the target directory and enab
 
 ### Visualization
 
-- Interactive node-edge graph powered by Cytoscape.js with three layout algorithms: force-directed, hierarchical (dagre), and concentric
+- Interactive node-edge graph powered by Cytoscape.js with three layout algorithms: force-directed (COSE), hierarchical (dagre), and concentric
+- **Transitive reduction** — redundant edges are automatically pruned (if A→B→C exists, the direct A→C edge is removed) to declutter the graph without losing structural information
+- **Weighted edges** — edge thickness, color, and opacity scale with target importance (blend of in-degree and reach percentage), so critical dependency paths stand out visually
+- **Adaptive layout** — the force-directed layout adjusts repulsion, gravity, and edge length based on graph density, keeping dense graphs readable and sparse graphs cohesive
+- **Logarithmic node sizing** — node diameter uses a square-root scale (60–200px) based on inbound references, preventing high-degree hubs from dominating the view
 - Treemap view for a heat-map style overview sized by file count and colored by a chosen metric (inbound, outbound, depth, impact, instability)
 - Matrix view showing an N×N dependency grid with directory boundary markers
 - Directory collapsing — toggle between a directory-level overview and the full file-level graph, with click-to-expand/collapse on any folder
+- **Tree view** — a spacious hierarchical view showing downstream or upstream dependencies for any file, with risk indicators and file-type badges
 - Focus lens — a fisheye distortion that magnifies nodes near the cursor while shrinking distant ones (toggle with `L`)
 - Minimap for orientation in large graphs with click-to-pan
 - Inline source preview with syntax highlighting (double-click any node)
-- Nodes sized by inbound reference count, colored by directory
 - Smooth loading transitions with spinner overlay when switching layouts or views
 
 ### Analysis Tools
@@ -100,7 +109,13 @@ DepGraph/
 │   ├── timeline.js     — diff/timeline view for snapshot comparison
 │   ├── state.js        — shared global state and helpers
 │   ├── tour.js         — guided tour system
-│   └── style.css       — UI styles with light/dark theme
+│   ├── style.css       — UI styles with light/dark theme
+│   └── __tests__/      — frontend unit tests (Node.js built-in test runner)
+│       ├── helpers.js     — test infrastructure (vm loader, DOM shim setup, factories)
+│       ├── jsdom-shim.js  — minimal DOM shim (no npm dependencies)
+│       ├── query.test.js  — query parser and filter tests
+│       ├── analysis.test.js — depth warnings and insights tests
+│       └── exports.test.js  — DOT, Mermaid, and Markdown export tests
 ├── vscode-extension/
 │   ├── package.json    — extension manifest (commands, views, settings)
 │   └── src/
@@ -241,7 +256,7 @@ Three tree views appear in the Explorer sidebar under a DepGraph section:
 
 ### Import Hover Preview
 
-Hover over any import statement to see a mini dependency graph for the imported file — its metrics (depth, impact, stability, blast radius), who imports it, and what it imports, with second-level dependencies shown inline. Cycle membership is flagged with a warning. Works across all 9 supported languages.
+Hover over any import statement to see a mini dependency graph for the imported file — its metrics (depth, impact, stability, blast radius), who imports it, and what it imports, with second-level dependencies shown inline. Cycle membership is flagged with a warning. Works across all 14 supported languages.
 
 ### CodeLens & Diagnostics
 
@@ -309,7 +324,7 @@ All graph endpoints return JSON with `nodes`, `edges`, `has_cycles`, `cycles`, `
 
 ### Query parameters for `/api/graph`
 
-`dir` (directory to scan), `mode` (set to `auto` for language detection), `hide_system`, `hide_isolated`, `filter_dir`, and per-language toggles: `show_c`, `show_h`, `show_cpp`, `show_js`, `show_py`, `show_java`, `show_go`, `show_rust`, `show_cs`, `show_swift`, `show_ruby`.
+`dir` (directory to scan), `mode` (set to `auto` for language detection), `hide_system`, `hide_isolated`, `filter_dir`, and per-language toggles: `show_c`, `show_h`, `show_cpp`, `show_js`, `show_py`, `show_java`, `show_go`, `show_rust`, `show_cs`, `show_swift`, `show_ruby`, `show_kotlin`, `show_scala`, `show_php`, `show_dart`, `show_elixir`.
 
 ## Deployment
 
@@ -318,6 +333,16 @@ A `render.yaml` is included for deploying to Render as a Python web service with
 ## Security
 
 The server includes rate limiting (configurable via `DEPGRAPH_RATE_LIMIT` and `DEPGRAPH_RATE_WINDOW` env vars), CSRF protection, directory traversal prevention (restricted to `DEPGRAPH_BASE_DIR`), and a 50 MB upload size limit.
+
+## Testing
+
+Frontend unit tests use Node.js 22's built-in test runner with zero npm dependencies. A custom JSDOM shim provides DOM APIs and `vm.runInThisContext` loads the vanilla JS modules into the test context.
+
+```bash
+node --test static/__tests__/query.test.js static/__tests__/analysis.test.js static/__tests__/exports.test.js
+```
+
+This runs 57 tests covering the query parser, depth warning computation, project insights, and DOT/Mermaid/Markdown export.
 
 ## Notes
 
@@ -331,4 +356,9 @@ The server includes rate limiting (configurable via `DEPGRAPH_RATE_LIMIT` and `D
 - C# `using` directives resolve namespaces to project files by stripping the root namespace prefix. System/framework namespaces (System, Microsoft, etc.) are classified as external.
 - Swift `import` resolves module names to local `.swift` files or directories. System frameworks (Foundation, UIKit, SwiftUI, etc.) are classified as external.
 - Ruby `require_relative` resolves relative to the source file; `require` resolves against the project tree. Standard library and popular gem names are classified as external.
+- Kotlin `import` resolves package paths to project files; standard library packages (kotlin, kotlinx, java, javax, android) are classified as external.
+- Scala `import` resolves package paths including grouped imports (`import foo.{Bar, Baz}`). Standard library and Akka packages are classified as external.
+- PHP `use` resolves PSR-4 namespace paths to files; `require`/`include` resolve literal paths. Standard library functions and common framework namespaces are classified as external.
+- Dart `import` resolves `package:` and relative paths. SDK packages (dart:core, dart:async, etc.) are classified as external.
+- Elixir `alias`, `import`, `require`, and `use` resolve module names to file paths following Mix project conventions. Standard library modules (Kernel, Enum, etc.) are classified as external.
 - The frontend depends on Cytoscape.js, cytoscape-dagre, and Prism.js from CDNs.

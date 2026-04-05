@@ -87,7 +87,7 @@ export function activate(context: vscode.ExtensionContext) {
   // ── File watcher for auto-refresh ──────────────────────────────
   const config = getConfig();
   if (config.autoRefresh) {
-    const watcher = vscode.workspace.createFileSystemWatcher('**/*.{py,js,ts,jsx,tsx,java,go,rs,c,cpp,h,hpp,cs,swift,rb}');
+    const watcher = vscode.workspace.createFileSystemWatcher('**/*.{py,js,ts,jsx,tsx,java,go,rs,c,cpp,h,hpp,cs,swift,rb,kt,kts,scala,sc,php,dart,ex,exs}');
 
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     const debouncedRefresh = () => {

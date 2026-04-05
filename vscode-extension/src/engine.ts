@@ -48,14 +48,25 @@ export interface GraphEdge {
     source: string;
     target: string;
     color: string;
+    weight: number; // 1-5, importance of this edge
   };
   classes?: string; // "cycle" when part of a cycle
 }
 
 export interface CouplingEntry {
-  dir_a: string;
-  dir_b: string;
-  shared_deps: number;
+  dir1: string;
+  dir2: string;
+  cross_edges: number;
+  score: number;
+}
+
+export interface DepthWarning {
+  file: string;
+  severity: 'critical' | 'warning';
+  depth: number;
+  impact: number;
+  reach_pct: number;
+  reasons: string[];
 }
 
 export interface GraphData {
@@ -65,8 +76,7 @@ export interface GraphData {
   cycles: string[][];
   unused_files: string[];
   coupling: CouplingEntry[];
-  depth_warnings: string[];
-  detected: Record<string, number>;
+  depth_warnings: DepthWarning[];
 }
 
 // ── Server management ───────────────────────────────────────────────
@@ -282,6 +292,78 @@ export function getBlastRadius(graph: GraphData, fileId: string): Set<string> {
 /** Get the node data for a file */
 export function getNodeData(graph: GraphData, fileId: string): GraphNode | undefined {
   return graph.nodes.find(n => n.data.id === fileId);
+}
+
+/** Fetch git churn data for the workspace */
+export async function getChurn(): Promise<any> {
+  const config = getConfig();
+  const root = getWorkspaceRoot();
+  if (!root) {
+    return { files: {}, is_git: false, period: '' };
+  }
+
+  const churnScript = path.join(_depgraphRoot!, 'churn.py');
+  // Run: python -c "import json; from churn import get_churn; print(json.dumps(get_churn('ROOT')))"
+  const code = `import json, sys; sys.path.insert(0, ${JSON.stringify(_depgraphRoot!)}); from churn import get_churn; print(json.dumps(get_churn(${JSON.stringify(root)})))`;
+
+  return new Promise<any>((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    const proc = spawn(config.pythonPath, ['-c', code], {
+      cwd: root,
+      env: { ...process.env },
+    });
+    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+    proc.on('close', (exitCode) => {
+      if (exitCode !== 0) {
+        console.warn('[DepGraph] churn failed:', stderr);
+        resolve({ files: {}, is_git: false, period: '' });
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout));
+      } catch (e) {
+        console.warn('[DepGraph] churn parse error:', e);
+        resolve({ files: {}, is_git: false, period: '' });
+      }
+    });
+    proc.on('error', (err) => {
+      console.warn('[DepGraph] churn spawn error:', err);
+      resolve({ files: {}, is_git: false, period: '' });
+    });
+  });
+}
+
+/** Fetch churn data from a remote git repo URL */
+export async function getChurnFromRemote(repoUrl: string): Promise<any> {
+  const config = getConfig();
+  const code = `import json, sys; sys.path.insert(0, ${JSON.stringify(_depgraphRoot!)}); from churn import get_churn_from_remote; print(json.dumps(get_churn_from_remote(${JSON.stringify(repoUrl)})))`;
+
+  return new Promise<any>((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    const proc = spawn(config.pythonPath, ['-c', code], {
+      env: { ...process.env },
+    });
+    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+    proc.on('close', (exitCode) => {
+      if (exitCode !== 0) {
+        console.warn('[DepGraph] remote churn failed:', stderr);
+        resolve({ files: {}, is_git: false, period: '', error: 'Failed to fetch remote churn data' });
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout));
+      } catch (e) {
+        resolve({ files: {}, is_git: false, period: '', error: 'Parse error' });
+      }
+    });
+    proc.on('error', (err) => {
+      resolve({ files: {}, is_git: false, period: '', error: String(err) });
+    });
+  });
 }
 
 /** Convert an absolute path to a workspace-relative path (matching node IDs) */
