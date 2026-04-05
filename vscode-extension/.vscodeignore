@@ -3,6 +3,7 @@
 src/**
 !out/**
 !media/**
+!engine/**
 node_modules/**
 .gitignore
 tsconfig.json
