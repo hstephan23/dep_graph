@@ -66,7 +66,7 @@ Examples: `files where inbound > 3 and outbound > 2`, `files in cycles`, `files 
 
 The toolbar is split into two rows. The top row holds the brand, action buttons (Insights, Query, Upload, Export, Theme, Tour, Help, Sidebar toggle), and status indicators. The second row holds the graph controls:
 
-- **Filters** dropdown — filter by subdirectory, toggle system/external imports and isolated nodes, select language mode
+- **Filters** dropdown — filter by subdirectory, toggle system/external imports and isolated nodes, select language mode (language filter works with local directories, uploads, and GitHub clones — switching languages re-scans instantly without re-uploading)
 - **Layout** pills — Force, Hierarchy, Concentric, plus a focus lens toggle
 - **Scope** pills — toggle between Directories and All Files (when in directory view)
 - **View** pills — Graph, Treemap, Matrix, with a metric selector for treemap
@@ -88,7 +88,7 @@ Press `?` in the UI to see all shortcuts. Highlights include: `1`/`2`/`3` for la
 DepGraph/
 ├── app.py              — Flask server, API routes, upload handling, security
 ├── graph.py            — core graph engine (build_graph, detect_languages, find_sccs)
-├── parsers.py          — language-specific import resolution for all 9 languages
+├── parsers.py          — language-specific import resolution for all 14 languages
 ├── cli.py              — CLI entry point (depgraph command)
 ├── pyproject.toml      — package config (pip install .)
 ├── requirements.txt    — Flask, Gunicorn, Werkzeug
@@ -309,7 +309,7 @@ All graph endpoints return JSON with `nodes`, `edges`, `has_cycles`, `cycles`, `
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/graph` | GET | Build graph from a local directory |
+| `/api/graph` | GET | Build graph from a local directory or re-filter an upload/clone via `upload_token` |
 | `/api/upload` | POST | Build graph from an uploaded ZIP or source file |
 | `/api/detect` | GET | Detect which languages are present in a directory |
 | `/api/file` | GET | Return source file contents for inline preview |
@@ -324,7 +324,7 @@ All graph endpoints return JSON with `nodes`, `edges`, `has_cycles`, `cycles`, `
 
 ### Query parameters for `/api/graph`
 
-`dir` (directory to scan), `mode` (set to `auto` for language detection), `hide_system`, `hide_isolated`, `filter_dir`, and per-language toggles: `show_c`, `show_h`, `show_cpp`, `show_js`, `show_py`, `show_java`, `show_go`, `show_rust`, `show_cs`, `show_swift`, `show_ruby`, `show_kotlin`, `show_scala`, `show_php`, `show_dart`, `show_elixir`.
+`dir` (directory to scan), `upload_token` (re-scan a previously uploaded/cloned project), `mode` (set to `auto` for language detection), `hide_system`, `hide_isolated`, `filter_dir`, and per-language toggles: `show_c`, `show_h`, `show_cpp`, `show_js`, `show_py`, `show_java`, `show_go`, `show_rust`, `show_cs`, `show_swift`, `show_ruby`, `show_kotlin`, `show_scala`, `show_php`, `show_dart`, `show_elixir`.
 
 ## Deployment
 
