@@ -5,7 +5,9 @@ for language-specific import resolution).  Both modules use only the Python
 standard library so they can be imported by the CLI without Flask.
 """
 
+import logging
 import os
+import subprocess
 import tempfile
 import zipfile
 import shutil
@@ -13,12 +15,31 @@ import threading
 import time
 import secrets
 
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+# Configure a module-level logger.  In production (Gunicorn) the root logger
+# is already wired to stderr; in development ``app.run(debug=True)`` does the
+# same.  We avoid calling ``basicConfig`` here so we don't fight the host.
+
+log = logging.getLogger('depgraph.server')
+
+# If no handlers have been configured yet (e.g. running ``python app.py``
+# directly), add a sensible default so messages aren't swallowed.
+if not logging.root.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s  %(levelname)-8s  [%(name)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    )
+
 from graph import (
     build_graph,
     detect_languages,
     parse_filters,
     find_sccs,
 )
+from churn import get_churn, get_churn_from_remote, _normalise_git_url
 
 try:
     from werkzeug.utils import secure_filename
@@ -104,6 +125,8 @@ def _rate_limit_check():
         timestamps = [t for t in timestamps if now - t < _RATE_WINDOW]
         if len(timestamps) >= _RATE_LIMIT:
             _rate_store[ip] = timestamps
+            log.warning('Rate limit exceeded  ip=%s  count=%d  window=%ds',
+                        ip, len(timestamps), _RATE_WINDOW)
             return True
         timestamps.append(now)
         _rate_store[ip] = timestamps
@@ -119,8 +142,11 @@ def _validate_directory(directory):
     # Ensure the path is within the allowed base
     if not (abs_dir == _ALLOWED_BASE_DIR
             or abs_dir.startswith(_ALLOWED_BASE_DIR + os.sep)):
+        log.warning('Directory access denied  path=%s  base=%s',
+                    abs_dir, _ALLOWED_BASE_DIR)
         return None
     if not os.path.isdir(abs_dir):
+        log.info('Directory not found  path=%s', abs_dir)
         return None
     return abs_dir
 
@@ -192,6 +218,8 @@ def get_file():
 
     # Reject obviously malicious path components
     if '..' in filepath.split('/') or '..' in filepath.split(os.sep):
+        log.warning('Path traversal attempt  ip=%s  filepath=%s',
+                    request.remote_addr, filepath)
         return jsonify({
             "error": "Invalid file path.",
             "suggestion": "File paths must not contain '..' components.",
@@ -203,6 +231,8 @@ def get_file():
     full_path = os.path.realpath(os.path.join(abs_dir, filepath))
     real_dir = os.path.realpath(abs_dir)
     if not full_path.startswith(real_dir + os.sep) and full_path != real_dir:
+        log.warning('Path escape attempt  ip=%s  filepath=%s  resolved=%s',
+                    request.remote_addr, filepath, full_path)
         return jsonify({
             "error": "Invalid file path.",
             "suggestion": "The requested file is outside the allowed directory.",
@@ -264,20 +294,38 @@ def detect_languages_route():
 
 @app.route('/api/graph', methods=['GET'])
 def get_graph():
-    directory = request.args.get('dir', '.')
+    # Support re-filtering uploaded/cloned projects via upload_token
+    upload_token = request.args.get('upload_token', '')
+    if upload_token:
+        abs_dir = _load_upload_session(upload_token)
+        if abs_dir is None:
+            return jsonify({
+                "error": "Upload session expired or not found.",
+                "suggestion": "Re-upload or re-clone the project.",
+                "code": "SESSION_EXPIRED",
+            }), 400
+    else:
+        directory = request.args.get('dir', '.')
+        abs_dir = _validate_directory(directory)
+        if abs_dir is None:
+            return jsonify({
+                "error": "Directory not found or access denied.",
+                "suggestion": "Check that the directory path exists and is within the allowed base directory.",
+                "code": "INVALID_DIRECTORY",
+            }), 400
 
-    abs_dir = _validate_directory(directory)
-    if abs_dir is None:
-        return jsonify({
-            "error": "Directory not found or access denied.",
-            "suggestion": "Check that the directory path exists and is within the allowed base directory.",
-            "code": "INVALID_DIRECTORY",
-        }), 400
-
+    log.info('Building graph  dir=%s', abs_dir)
+    t0 = time.time()
     detected = detect_languages(abs_dir)
     filters = parse_filters(request.args, detected=detected)
     result = build_graph(abs_dir, **filters)
     result["detected"] = detected
+    if upload_token:
+        result["upload_token"] = upload_token
+    elapsed = time.time() - t0
+    log.info('Graph built  nodes=%d  edges=%d  cycles=%d  %.2fs',
+             len(result['nodes']), len(result['edges']),
+             len(result.get('cycles', [])), elapsed)
     return jsonify(result)
 
 
@@ -450,6 +498,9 @@ def upload_files():
     # Generate an opaque upload token for this session
     upload_token = secrets.token_urlsafe(16)
 
+    log.info('Upload started  filename=%s  size=%s  ip=%s',
+             file.filename, request.content_length, request.remote_addr)
+
     temp_dir = tempfile.mkdtemp()
 
     try:
@@ -486,8 +537,12 @@ def upload_files():
         # Opportunistically clean up expired sessions
         _cleanup_expired_sessions()
 
+        log.info('Upload processed  token=%s…  nodes=%d  edges=%d',
+                 upload_token[:8], len(result['nodes']), len(result['edges']))
         return jsonify(result)
     except ValueError as e:
+        log.warning('Unsafe archive rejected  ip=%s  filename=%s  reason=%s',
+                    request.remote_addr, file.filename, e)
         shutil.rmtree(temp_dir, ignore_errors=True)
         return jsonify({
             "error": "Invalid archive contents.",
@@ -495,6 +550,8 @@ def upload_files():
             "code": "UNSAFE_ARCHIVE",
         }), 400
     except Exception:
+        log.exception('Upload processing failed  ip=%s  filename=%s',
+                      request.remote_addr, file.filename)
         shutil.rmtree(temp_dir, ignore_errors=True)
         return jsonify({
             "error": "Failed to process uploaded file.",
@@ -1021,14 +1078,127 @@ def simulate_merge():
     })
 
 
+@app.route('/api/churn', methods=['GET'])
+def api_churn():
+    """Return git churn (commit frequency / recency) for files in the project."""
+    directory = request.args.get('dir', '.')
+    abs_dir = _validate_directory(directory)
+    if abs_dir is None:
+        return jsonify({"error": "Directory not found or access denied."}), 400
+
+    days = request.args.get('days', 365, type=int)
+    recent_days = request.args.get('recent_days', 90, type=int)
+    log.info('Churn request  dir=%s  days=%d  recent=%d', abs_dir, days, recent_days)
+
+    result = get_churn(abs_dir, days=days, recent_days=recent_days)
+    return jsonify(result)
+
+
+@app.route('/api/churn-remote', methods=['POST'])
+def api_churn_remote():
+    """Fetch churn data from a remote git repository (GitHub/GitLab/Bitbucket)."""
+    body = request.get_json(silent=True)
+    if not body or not body.get('repo'):
+        return jsonify({"error": "Missing 'repo' field."}), 400
+
+    repo_url = body['repo'].strip()
+    days = body.get('days', 365)
+    recent_days = body.get('recent_days', 90)
+
+    log.info('Remote churn request  repo=%s  days=%d  recent=%d', repo_url, days, recent_days)
+    result = get_churn_from_remote(repo_url, days=days, recent_days=recent_days)
+
+    if result.get('error'):
+        return jsonify(result), 400
+
+    return jsonify(result)
+
+
+@app.route('/api/github', methods=['POST'])
+def api_github():
+    """Clone a GitHub/GitLab/Bitbucket repo and return graph + churn data.
+
+    Accepts JSON body: { "repo": "owner/repo" or full URL }
+    Returns the same shape as /api/graph, plus a "churn" key with churn data.
+    """
+    body = request.get_json(silent=True)
+    if not body or not body.get('repo'):
+        return jsonify({"error": "Missing 'repo' field.",
+                        "suggestion": "Paste a GitHub URL like owner/repo or https://github.com/owner/repo"}), 400
+
+    raw_url = body['repo'].strip()
+    git_url = _normalise_git_url(raw_url)
+    if git_url is None:
+        return jsonify({"error": "Invalid repository URL.",
+                        "suggestion": "Use owner/repo or https://github.com/owner/repo"}), 400
+
+    filters_body = body.get('filters', {})
+
+    log.info('GitHub clone request  repo=%s  url=%s', raw_url, git_url)
+
+    temp_dir = tempfile.mkdtemp(prefix="depgraph_github_")
+    try:
+        # Full shallow clone (need actual files for graph, history for churn)
+        clone_cmd = [
+            "git", "clone", "--single-branch", "--depth=500",
+            git_url, temp_dir,
+        ]
+        r = subprocess.run(clone_cmd, capture_output=True, text=True, timeout=180)
+        if r.returncode != 0:
+            err_msg = r.stderr.strip()[:300]
+            log.warning('git clone failed: %s', err_msg)
+            if "not found" in err_msg.lower() or "404" in err_msg:
+                return jsonify({"error": "Repository not found.",
+                                "suggestion": "Check the URL and make sure the repo is public."}), 400
+            if "authentication" in err_msg.lower() or "403" in err_msg:
+                return jsonify({"error": "Authentication failed.",
+                                "suggestion": "Check that your git credentials are configured for this repo."}), 400
+            return jsonify({"error": f"Clone failed: {err_msg}"}), 400
+
+        # Detect root — skip single wrapper dirs
+        scan_dir = temp_dir
+        entries = [e for e in os.listdir(temp_dir)
+                   if not e.startswith('.') and e not in {'__MACOSX', '__pycache__'}]
+        if len(entries) == 1 and os.path.isdir(os.path.join(temp_dir, entries[0])):
+            scan_dir = os.path.join(temp_dir, entries[0])
+
+        # Build graph
+        detected = detect_languages(scan_dir)
+        filters = parse_filters(filters_body, detected=detected)
+        result = build_graph(scan_dir, **filters)
+        result["detected"] = detected
+        result["source"] = "github"
+        result["repo"] = raw_url
+
+        # Persist for file previews
+        upload_token = secrets.token_urlsafe(16)
+        result["upload_token"] = upload_token
+        _save_upload_session(upload_token, scan_dir)
+
+        # Run churn from the clone root (where .git lives, not scan_dir)
+        churn_data = get_churn(temp_dir)
+        result["churn"] = churn_data
+
+        log.info('GitHub processed  repo=%s  nodes=%d  edges=%d  churn_files=%d',
+                 raw_url, len(result['nodes']), len(result['edges']), len(churn_data.get('files', {})))
+
+        return jsonify(result)
+
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Clone timed out.",
+                        "suggestion": "The repository may be too large. Try a smaller repo."}), 400
+    except Exception as exc:
+        log.exception('GitHub clone error')
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route('/api/story', methods=['POST'])
 def generate_story():
     """Generate a guided narrative walkthrough of the dependency graph."""
     try:
         return _generate_story_impl()
-    except Exception as exc:
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        log.exception('Story generation failed')
         return jsonify({
             "error": "Story generation failed.",
             "suggestion": "Try with a smaller graph or check that graph data is valid.",
@@ -1325,11 +1495,21 @@ def _check_csrf():
         token = (request.headers.get('X-CSRF-Token')
                  or request.form.get('_csrf_token'))
         if token != _csrf_token:
+            log.warning('CSRF validation failed  ip=%s  method=%s  path=%s',
+                        request.remote_addr, request.method, request.path)
             return jsonify({"error": "Invalid or missing CSRF token."}), 403
+
+
+if _HAS_FLASK:
+    log.info('DepGraph server ready  base_dir=%s  csrf=%s  rate_limit=%d/%ds  debug=%s',
+             _ALLOWED_BASE_DIR, 'on' if _CSRF_ENABLED else 'off',
+             _RATE_LIMIT, _RATE_WINDOW, _DEBUG_MODE)
 
 
 if __name__ == '__main__':
     import os
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     port = int(os.environ.get('PORT', 8080))
+    if debug:
+        logging.getLogger('depgraph').setLevel(logging.DEBUG)
     app.run(host='0.0.0.0', debug=debug, port=port)

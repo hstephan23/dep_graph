@@ -60,9 +60,33 @@ function _baseNodeStyle() {
 
 function _baseEdgeStyle() {
     return {
-        width: 4, 'line-color': 'data(color)',
-        'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle',
-        'curve-style': 'bezier', opacity: 0.7,
+        width: ele => {
+            const w = ele.data('weight') || 1;
+            return 2.5 + w * 1.5;  // 4px (weight 1) to 10px (weight 5)
+        },
+        'line-color': ele => {
+            const w = ele.data('weight') || 1;
+            // Blend from light gray to darker blue-gray as weight increases
+            const t = (w - 1) / 4;  // 0..1
+            const r = Math.round(148 - t * 50);
+            const g = Math.round(163 - t * 55);
+            const b = Math.round(184 - t * 30);
+            return `rgb(${r},${g},${b})`;
+        },
+        'target-arrow-color': ele => {
+            const w = ele.data('weight') || 1;
+            const t = (w - 1) / 4;
+            const r = Math.round(148 - t * 50);
+            const g = Math.round(163 - t * 55);
+            const b = Math.round(184 - t * 30);
+            return `rgb(${r},${g},${b})`;
+        },
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        opacity: ele => {
+            const w = ele.data('weight') || 1;
+            return 0.4 + (w - 1) * 0.15;  // 0.4 (weight 1) to 1.0 (weight 5)
+        },
     };
 }
 
@@ -392,6 +416,9 @@ function _cInitCy(elements, styles) {
             elements: elements,
             style: styles,
             layout: { name: 'preset' },
+            minZoom: 0.08,
+            maxZoom: 4,
+            wheelSensitivity: 0.25,
         });
         attachMinimapListeners();
     } else {
@@ -417,7 +444,7 @@ function _cInitCy(elements, styles) {
         revealed = true;
         _runningLayout = null;
         if (!cy) return;
-        cy.fit(80);
+        cy.fit(120);
 
         if (needsCreate) {
             cyContainer.style.visibility = '';
@@ -463,7 +490,7 @@ function _cBindHandlers() {
 function _cBindNormalHandlers() {
     // Remove only interaction events (not layout events like layoutstop)
     cy.off('tap dbltap mouseover mouseout');
-    cy.on('tap', 'node', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); showBlastRadius(evt.target.id()); });
+    cy.on('tap', 'node', evt => { clearPathHighlight(); highlightPaths(evt.target.id()); showBlastRadius(evt.target.id()); setTreeRoot(evt.target.id()); });
     cy.on('dbltap', 'node', evt => openPreview(evt.target.id()));
     cy.on('tap', evt => { if (evt.target === cy) clearPathHighlight(); });
     attachMinimapListeners();
@@ -563,7 +590,7 @@ function compoundToggle(dirId) {
     });
     _runningLayout.one('layoutstop', () => {
         _runningLayout = null;
-        if (cy) cy.fit(80);
+        if (cy) cy.fit(120);
         cyContainer.style.visibility = '';
         overlay.classList.remove('active');
     });
@@ -588,7 +615,7 @@ function compoundCollapseAll() {
     cy.batch(() => { cy.elements().remove(); cy.add(elements); });
     cy.style(_compoundStyles());
     _runningLayout = cy.layout({ ...getLayoutConfig(), animate: false, fit: true, padding: 80 });
-    _runningLayout.one('layoutstop', () => { _runningLayout = null; if (cy) cy.fit(80); cyContainer.style.visibility = ''; overlay.classList.remove('active'); });
+    _runningLayout.one('layoutstop', () => { _runningLayout = null; if (cy) cy.fit(120); cyContainer.style.visibility = ''; overlay.classList.remove('active'); });
     _runningLayout.run();
     _cUpdateColorKey();
 }
@@ -606,7 +633,7 @@ function compoundExpandAll() {
     cy.batch(() => { cy.elements().remove(); cy.add(elements); });
     cy.style(_compoundStyles());
     _runningLayout = cy.layout({ ...getLayoutConfig(), animate: false, fit: true, padding: 80 });
-    _runningLayout.one('layoutstop', () => { _runningLayout = null; if (cy) cy.fit(80); cyContainer.style.visibility = ''; overlay.classList.remove('active'); });
+    _runningLayout.one('layoutstop', () => { _runningLayout = null; if (cy) cy.fit(120); cyContainer.style.visibility = ''; overlay.classList.remove('active'); });
     _runningLayout.run();
     _cUpdateColorKey();
 }
@@ -664,14 +691,51 @@ function getLayoutConfig(name) {
         return { name: 'cose', padding: 60, nodeRepulsion: () => repulsion, idealEdgeLength: () => edgeLen, edgeElasticity: () => 100, gravity: 80, numIter: iters, fit: true };
     }
     if (l === 'dagre') return { name: 'dagre', rankDir: 'TB', nodeSep: 80, rankSep: 200, padding: 60 };
-    if (l === 'concentric') return { name: 'concentric', concentric: n => n.indegree(), levelWidth: () => 2, padding: 60, minNodeSpacing: 80 };
+    if (l === 'concentric') {
+        // Scale ring width with graph size so large graphs don't become giant spirals
+        const lvlWidth = nodeCount < 20 ? 1 : nodeCount < 80 ? 2 : nodeCount < 200 ? 3 : 4;
+        const spacing = nodeCount < 50 ? 80 : nodeCount < 200 ? 50 : 30;
+        return { name: 'concentric', concentric: n => n.indegree(), levelWidth: () => lvlWidth, padding: 40, minNodeSpacing: spacing };
+    }
 
-    // Scale COSE parameters based on graph size to prevent small graphs from exploding
-    const repulsion = nodeCount < 10 ? 4000000 : nodeCount < 50 ? 20000000 : 80000000;
-    const edgeLen = nodeCount < 10 ? 150 : nodeCount < 50 ? 400 : 800;
-    const iters = nodeCount < 10 ? 500 : nodeCount < 50 ? 1000 : 2000;
-    const gravity = nodeCount < 10 ? 100 : 50;
-    return { name: 'cose', padding: 60, nodeRepulsion: () => repulsion, idealEdgeLength: () => edgeLen, edgeElasticity: () => 100, gravity: gravity, numIter: iters, fit: true };
+    // Adaptive COSE: compute edge density and scale parameters accordingly.
+    // Dense graphs need stronger repulsion to prevent overlaps; sparse graphs
+    // need more gravity to stay cohesive.
+    const edgeCount = cy ? cy.edges().length : (currentGraphData ? currentGraphData.edges.length : 0);
+    const density = nodeCount > 1 ? edgeCount / (nodeCount * (nodeCount - 1)) : 0;
+    const isDense = density > 0.05;
+
+    let repulsion, edgeLen, iters, gravity;
+    if (nodeCount < 10) {
+        repulsion = isDense ? 4000000 : 2500000;
+        edgeLen = 100;
+        iters = 500;
+        gravity = isDense ? 100 : 150;
+    } else if (nodeCount < 50) {
+        repulsion = isDense ? 20000000 : 12000000;
+        edgeLen = isDense ? 300 : 250;
+        iters = 1000;
+        gravity = isDense ? 60 : 80;
+    } else {
+        repulsion = isDense ? 60000000 : 40000000;
+        edgeLen = isDense ? 550 : 450;
+        iters = 2000;
+        gravity = isDense ? 40 : 70;
+    }
+
+    return {
+        name: 'cose', padding: 40,
+        nodeRepulsion: () => repulsion,
+        idealEdgeLength: ele => {
+            // Heavier edges pull nodes closer together
+            const w = ele.data('weight') || 1;
+            return edgeLen * (1.15 - w * 0.06);
+        },
+        edgeElasticity: () => 120,
+        gravity: gravity,
+        numIter: iters,
+        fit: true,
+    };
 }
 
 function changeLayout(name) {
@@ -690,7 +754,7 @@ function changeLayout(name) {
         const finish = () => {
             if (done) return;
             done = true;
-            if (cy) cy.fit(60);
+            if (cy) cy.fit(120);
             cyContainer.style.visibility = '';
             overlay.classList.remove('active');
         };
@@ -708,5 +772,5 @@ function changeLayout(name) {
 
 (function restoreLayout() {
     const s = localStorage.getItem('layout');
-    if (s) { currentLayout = s; const r = document.querySelector(`input[name="layoutMode"][value="${s}"]`); if (r) r.checked = true; }
+    if (s && s !== 'dagre' && s !== 'concentric') { currentLayout = s; const r = document.querySelector(`input[name="layoutMode"][value="${s}"]`); if (r) r.checked = true; }
 })();

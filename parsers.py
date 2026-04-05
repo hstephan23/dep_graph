@@ -5,9 +5,12 @@ file, project directory, and set of known files) and returns a tuple of
 ``(resolved_path, is_external)``.
 """
 
+from __future__ import annotations
+
 import os
 import re
 from functools import lru_cache
+from typing import Optional
 
 # =========================================================================
 # Regex patterns
@@ -278,20 +281,20 @@ class ResolutionCache:
 
     __slots__ = ('_store',)
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._store = {}
 
-    def get(self, resolver, import_path, source_file=None):
+    def get(self, resolver: str, import_path: str, source_file: str | None = None) -> object | None:
         return self._store.get((resolver, import_path, source_file))
 
-    def put(self, resolver, import_path, source_file, value):
+    def put(self, resolver: str, import_path: str, source_file: str | None, value: object) -> None:
         self._store[(resolver, import_path, source_file)] = value
 
-    def clear(self):
+    def clear(self) -> None:
         self._store.clear()
 
     @property
-    def size(self):
+    def size(self) -> int:
         return len(self._store)
 
 
@@ -299,7 +302,7 @@ class ResolutionCache:
 # Resolution functions
 # =========================================================================
 
-def resolve_js_import(import_path, source_file, directory, known_files):
+def resolve_js_import(import_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Try to resolve a JS/TS import path to a real file in the project.
 
     Handles bare specifiers (treated as external / node_modules — skipped when
@@ -333,7 +336,7 @@ def resolve_js_import(import_path, source_file, directory, known_files):
     return candidate, False
 
 
-def resolve_py_import(module_path, source_file, directory, known_files):
+def resolve_py_import(module_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Python import to a file path.
 
     *module_path* is the dotted module string (e.g. ``foo.bar`` or ``.bar``
@@ -376,7 +379,7 @@ def resolve_py_import(module_path, source_file, directory, known_files):
     return candidate_file, False
 
 
-def resolve_java_import(import_path, directory, known_files):
+def resolve_java_import(import_path: str, directory: str, known_files: set[str]) -> list[tuple[str, bool]]:
     """Resolve a Java import to source files.
 
     Returns a list of ``(resolved_path, is_external)`` tuples.
@@ -400,7 +403,7 @@ def resolve_java_import(import_path, directory, known_files):
         return [(import_path, True)]
 
 
-def parse_go_mod(directory):
+def parse_go_mod(directory: str) -> str | None:
     """Read go.mod and return the module path, or None."""
     go_mod = os.path.join(directory, 'go.mod')
     if not os.path.isfile(go_mod):
@@ -413,7 +416,7 @@ def parse_go_mod(directory):
     return None
 
 
-def resolve_go_import(import_path, directory, known_files, module_path):
+def resolve_go_import(import_path: str, directory: str, known_files: set[str], module_path: str | None) -> tuple[str, bool]:
     """Resolve a Go import path.
 
     Returns ``(resolved_path, is_external)``.
@@ -435,7 +438,7 @@ def resolve_go_import(import_path, directory, known_files, module_path):
     return import_path, True
 
 
-def resolve_rust_mod(mod_name, source_file, directory, known_files):
+def resolve_rust_mod(mod_name: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Rust ``mod foo;`` declaration.
 
     Follows Rust conventions: ``foo.rs`` or ``foo/mod.rs`` relative to the
@@ -453,7 +456,7 @@ def resolve_rust_mod(mod_name, source_file, directory, known_files):
     return os.path.join(source_dir, mod_name + '.rs'), False
 
 
-def build_cs_namespace_map(directory, known_files):
+def build_cs_namespace_map(directory: str, known_files: set[str]) -> tuple[dict[str, list[str]], dict[str, str]]:
     """Pre-scan .cs files to build a map of declared namespace → [file paths].
 
     Also builds a class-name → file path map for individual type resolution.
@@ -492,8 +495,8 @@ def build_cs_namespace_map(directory, known_files):
     return ns_map, class_map
 
 
-def resolve_cs_using(namespace, directory, known_files, ns_map=None,
-                     class_map=None):
+def resolve_cs_using(namespace: str, directory: str, known_files: set[str], ns_map: dict[str, list[str]] | None = None,
+                     class_map: dict[str, str] | None = None) -> tuple[list[str], bool]:
     """Resolve a C# ``using`` directive to project file(s) if possible.
 
     C# using directives reference namespaces, not files directly.  Resolution
@@ -577,7 +580,7 @@ def resolve_cs_using(namespace, directory, known_files, ns_map=None,
     return [namespace], True
 
 
-def resolve_swift_import(module_name, source_file, directory, known_files):
+def resolve_swift_import(module_name: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Swift import to a local file or mark as external.
 
     Swift imports reference modules (not files directly).  For local project
@@ -611,8 +614,7 @@ def resolve_swift_import(module_name, source_file, directory, known_files):
     return module_name, True
 
 
-def resolve_ruby_require(req_path, source_file, directory, known_files,
-                         relative=False):
+def resolve_ruby_require(req_path: str, source_file: str, directory: str, known_files: set[str], relative: bool = False) -> tuple[str, bool]:
     """Resolve a Ruby require/require_relative to a project file.
 
     Returns ``(resolved, is_external)``.
@@ -647,7 +649,7 @@ def resolve_ruby_require(req_path, source_file, directory, known_files,
     return candidate_rb, False
 
 
-def resolve_kotlin_import(import_path, directory, known_files):
+def resolve_kotlin_import(import_path: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Kotlin import to source files.
 
     Returns ``(resolved_path, is_external)``.
@@ -685,7 +687,7 @@ def resolve_kotlin_import(import_path, directory, known_files):
         return import_path, True
 
 
-def resolve_scala_import(import_path, directory, known_files):
+def resolve_scala_import(import_path: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Scala import to source files.
 
     Returns ``(resolved_path, is_external)``.
@@ -724,7 +726,7 @@ def resolve_scala_import(import_path, directory, known_files):
     return import_path, True
 
 
-def build_php_namespace_map(directory, known_files):
+def build_php_namespace_map(directory: str, known_files: set[str]) -> tuple[dict[str, list[str]], dict[str, str]]:
     """Pre-scan .php files to build a map of declared namespace → [file paths].
 
     Returns ``(ns_map, class_map)`` where *ns_map* maps a full namespace string
@@ -760,8 +762,8 @@ def build_php_namespace_map(directory, known_files):
     return ns_map, class_map
 
 
-def resolve_php_use(namespace, directory, known_files, ns_map=None,
-                    class_map=None):
+def resolve_php_use(namespace: str, directory: str, known_files: set[str], ns_map: dict[str, list[str]] | None = None,
+                    class_map: dict[str, str] | None = None) -> tuple[str, bool]:
     """Resolve a PHP ``use`` statement to project file(s) if possible.
 
     Returns ``(resolved_path, is_external)``.
@@ -804,7 +806,7 @@ def resolve_php_use(namespace, directory, known_files, ns_map=None,
     return namespace, True
 
 
-def resolve_php_require(req_path, source_file, directory, known_files):
+def resolve_php_require(req_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a PHP require/include to a project file.
 
     Returns ``(resolved_path, is_external)``.
@@ -822,7 +824,7 @@ def resolve_php_require(req_path, source_file, directory, known_files):
     return candidate, False
 
 
-def resolve_dart_import(import_path, source_file, directory, known_files):
+def resolve_dart_import(import_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Dart import to a project file.
 
     Returns ``(resolved_path, is_external)``.
@@ -861,7 +863,7 @@ def resolve_dart_import(import_path, source_file, directory, known_files):
     return candidate, False
 
 
-def resolve_elixir_module(module_name, source_file, directory, known_files):
+def resolve_elixir_module(module_name: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve an Elixir module reference to a project file.
 
     Elixir modules map to files via snake_case conversion:
