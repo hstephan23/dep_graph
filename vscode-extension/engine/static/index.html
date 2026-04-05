@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive Dependency Graph Viewer. Visualize file dependencies, reference counts, and detect circular dependencies for C, C++, JavaScript, TypeScript, Python, Java, Go, and Rust projects.">
+    <title>DepGraph</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="apple-touch-icon" href="/static/logo.png">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <!-- Open Graph -->
+    <meta property="og:title" content="DepGraph">
+    <meta property="og:description" content="Interactive dependency graph visualization for C, C++, JavaScript, TypeScript, Python, Java, Go, Rust, C#, Swift, and Ruby projects.">
+    <meta property="og:image" content="/static/logo.png">
+    <meta property="og:type" content="website">
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="DepGraph">
+    <meta name="twitter:description" content="Visualize file dependencies, detect circular imports, and explore your codebase as an interactive graph.">
+    <meta name="twitter:image" content="/static/logo.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.23.0/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=16">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Splash screen -->
+    <div id="splash" class="splash">
+        <img src="/static/logo.png" alt="DepGraph" class="splash-logo">
+    </div>
+
+    <noscript>
+        <div style="padding:3rem;text-align:center;">
+            <h2>JavaScript Required</h2>
+            <p>Please enable JavaScript to use DepGraph.</p>
+        </div>
+    </noscript>
+
+    <!-- ============================================================
+         TOOLBAR — TOP ROW (branding, path, search, actions)
+         ============================================================ -->
+    <div class="toolbar">
+        <div class="toolbar-top">
+            <!-- Left zone: brand -->
+            <div class="brand">
+                <span class="brand-name">DepGraph</span>
+                <a href="https://github.com/hstephan23/dep_graph" target="_blank" rel="noopener noreferrer" class="brand-github" title="View on GitHub">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                </a>
+            </div>
+
+            <div style="flex:1;"></div>
+
+            <!-- Right zone: actions + utilities -->
+            <div class="toolbar-zone toolbar-zone-right">
+                <!-- Status -->
+                <div id="cycleWarning" class="cycle-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                Cycle Detected
+            </div>
+
+            <button class="btn btn-ghost btn-insights" onclick="openInsights()" title="Project insights">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                <span>Insights</span>
+            </button>
+
+            <!-- Actions: Query, Upload, Export -->
+            <button class="btn btn-ghost" onclick="toggleQueryTerminal()" title="Query terminal (Q)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                <span>Query</span>
+            </button>
+
+            <label for="zipUpload" class="btn btn-upload" tabindex="0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Upload</span>
+            </label>
+            <input type="file" id="zipUpload" accept=".zip,.c,.h,.cpp,.hpp,.cc,.cxx,.hxx,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.java,.go,.rs,.swift,.rb,.kt,.kts,.scala,.sc,.php,.dart,.ex,.exs" style="display:none;" onchange="handleZipSelect(event)">
+
+            <details class="dropdown">
+                <summary class="btn btn-ghost">
+                    <span>Export</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="dropdown-body export-menu" style="right:0;left:auto;">
+                    <button onclick="exportJSON()">JSON</button>
+                    <button onclick="exportPNG()">PNG</button>
+                    <button onclick="exportDOT()">DOT / Graphviz</button>
+                    <button onclick="exportMermaid()">Mermaid</button>
+                </div>
+            </details>
+
+            <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+                <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+
+            <button class="btn btn-ghost btn-timeline" onclick="timelineToggle()" title="Timeline animation (P)" aria-label="Timeline animation">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>Timeline</span>
+            </button>
+
+            <button class="btn btn-ghost btn-tour" onclick="Tour.toggle()" title="Take a tour" aria-label="Take a tour">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+                <span>Tour</span>
+            </button>
+
+            <button class="btn-icon btn-help" onclick="toggleShortcutHelp()" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+                <span>?</span>
+            </button>
+
+            <button class="btn-icon" id="sidebarDesktopToggle" onclick="toggleSidebar()" title="Toggle sidebar (S)" aria-label="Toggle sidebar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+            </button>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             TOOLBAR — CONTROLS ROW (filters, layout, scope, view)
+             ============================================================ -->
+        <div class="toolbar-controls">
+            <details class="dropdown">
+                <summary class="btn btn-ghost" style="font-size:0.75rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    Filters
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="dropdown-body">
+                    <div class="input-wrap" style="width:100%;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        <input type="text" id="filterDirInput" placeholder="Filter by subdirectory..." value="" onkeydown="if(event.key==='Enter')updateGraph()" style="width:100%;" aria-label="Filter by subdirectory">
+                    </div>
+                    <label class="check-label">
+                        <input type="checkbox" id="hideSystemHeaders" checked onchange="updateGraph()">
+                        Hide system / external imports
+                    </label>
+                    <label class="check-label">
+                        <input type="checkbox" id="hideIsolated" checked onchange="updateGraph()">
+                        Hide isolated files
+                    </label>
+                    <div id="detectedLangs" class="detected-label" style="display:none;"></div>
+                </div>
+            </details>
+
+            <details class="dropdown dropdown-lang" id="langDropdown">
+                <summary class="btn btn-ghost lang-summary">
+                    <span id="langLabel">Auto</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="dropdown-body lang-dropdown-body">
+                    <button class="lang-option active" data-lang="auto" onclick="selectLang(this)">Auto</button>
+                    <button class="lang-option" data-lang="c" onclick="selectLang(this)">C</button>
+                    <button class="lang-option" data-lang="cpp" onclick="selectLang(this)">C++</button>
+                    <button class="lang-option" data-lang="js" onclick="selectLang(this)">JS / TS</button>
+                    <button class="lang-option" data-lang="py" onclick="selectLang(this)">Python</button>
+                    <button class="lang-option" data-lang="java" onclick="selectLang(this)">Java</button>
+                    <button class="lang-option" data-lang="go" onclick="selectLang(this)">Go</button>
+                    <button class="lang-option" data-lang="rust" onclick="selectLang(this)">Rust</button>
+                    <button class="lang-option" data-lang="cs" onclick="selectLang(this)">C#</button>
+                    <button class="lang-option" data-lang="swift" onclick="selectLang(this)">Swift</button>
+                    <button class="lang-option" data-lang="ruby" onclick="selectLang(this)">Ruby</button>
+                    <button class="lang-option" data-lang="kotlin" onclick="selectLang(this)">Kotlin</button>
+                    <button class="lang-option" data-lang="scala" onclick="selectLang(this)">Scala</button>
+                    <button class="lang-option" data-lang="php" onclick="selectLang(this)">PHP</button>
+                    <button class="lang-option" data-lang="dart" onclick="selectLang(this)">Dart</button>
+                    <button class="lang-option" data-lang="elixir" onclick="selectLang(this)">Elixir</button>
+                </div>
+            </details>
+
+            <!-- Color mode -->
+            <div class="toolbar-group">
+                <span class="toolbar-group-label">Color by</span>
+                <div class="pill-group">
+                    <input type="radio" name="colorMode" id="colorRisk" value="risk" checked onchange="changeColorMode(this.value)"><label for="colorRisk">Risk</label>
+                    <input type="radio" name="colorMode" id="colorDir" value="directory" onchange="changeColorMode(this.value)"><label for="colorDir">Directory</label>
+                </div>
+            </div>
+
+            <!-- Graph layout -->
+            <div class="toolbar-group">
+                <span class="toolbar-group-label">Layout</span>
+                <div class="pill-group">
+                    <input type="radio" name="layoutMode" id="layoutCose" value="cose" checked onchange="changeLayout(this.value)"><label for="layoutCose">Force</label>
+                    <input type="radio" name="layoutMode" id="layoutDagre" value="dagre" onchange="changeLayout(this.value)"><label for="layoutDagre">Hierarchy</label>
+                    <input type="radio" name="layoutMode" id="layoutConcentric" value="concentric" onchange="changeLayout(this.value)"><label for="layoutConcentric">Concentric</label>
+                </div>
+                <div class="toolbar-group-divider"></div>
+                <button class="btn-icon" id="fisheyeToggle" onclick="fisheyeToggle()" title="Focus lens (L)" aria-label="Focus lens">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M11 7a4 4 0 0 1 4 4"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
+            </div>
+
+            <!-- Scope (shown for package-directory view) -->
+            <div class="toolbar-group" id="pdViewToggle" style="display:none;">
+                <span class="toolbar-group-label">Scope</span>
+                <div class="pill-group">
+                    <input type="radio" name="pdView" id="pdViewDirs" value="dirs" checked onchange="pdSetView('dirs')"><label for="pdViewDirs">Directories</label>
+                    <input type="radio" name="pdView" id="pdViewFiles" value="files" onchange="pdSetView('files')"><label for="pdViewFiles">All Files</label>
+                </div>
+                <div class="toolbar-group-divider"></div>
+                <button class="btn-icon" id="compoundCollapseAllBtn" onclick="compoundCollapseAll()" title="Collapse all directories" aria-label="Collapse all directories" style="display:none;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                </button>
+                <button class="btn-icon" id="compoundExpandAllBtn" onclick="compoundExpandAll()" title="Expand all directories" aria-label="Expand all directories" style="display:none;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                </button>
+            </div>
+
+            <!-- View mode -->
+            <div class="toolbar-group">
+                <span class="toolbar-group-label">View</span>
+                <div class="pill-group">
+                    <input type="radio" name="viewMode" id="viewGraph" value="graph" checked onchange="switchView('graph')"><label for="viewGraph">Graph</label>
+                    <input type="radio" name="viewMode" id="viewTreemap" value="treemap" onchange="switchView('treemap')"><label for="viewTreemap">Treemap</label>
+                    <input type="radio" name="viewMode" id="viewMatrix" value="matrix" onchange="switchView('matrix')"><label for="viewMatrix">Matrix</label>
+                </div>
+                <div class="treemap-metric-inline" id="treemapMetricGroup" style="display:none;">
+                    <div class="toolbar-group-divider"></div>
+                    <select id="treemapMetric" class="treemap-metric-select" onchange="renderTreemap()">
+                        <option value="total">Total deps</option>
+                        <option value="inbound">Inbound</option>
+                        <option value="outbound">Outbound</option>
+                        <option value="impact">Impact</option>
+                        <option value="depth">Depth</option>
+                        <option value="stability">Instability</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Search — right-aligned -->
+            <div class="toolbar-controls-spacer"></div>
+            <div class="input-wrap input-search-controls">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="searchInput" placeholder="Search files... (F)" onkeydown="if(event.key==='Enter')searchNode()" aria-label="Search files">
+            </div>
+        </div>
+
+        <!-- ============================================================
+             TOOLBAR — BOTTOM ROW (directory path, search — dev only)
+             ============================================================ -->
+        <div class="toolbar-bottom dev-only">
+            <div class="input-wrap input-dir">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <input type="text" id="dirInput" placeholder="Directory path..." value="tests/test_files" onkeydown="if(event.key==='Enter')loadGraph()" aria-label="Directory path">
+            </div>
+
+            <button class="btn btn-primary" onclick="loadGraph()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>Generate</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         DEPTH WARNING BANNER
+         ============================================================ -->
+    <div class="depth-warning-banner" id="depthWarningBanner" style="display:none;">
+        <div class="depth-warning-banner-inner">
+            <div class="depth-warning-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            </div>
+            <div class="depth-warning-content">
+                <span class="depth-warning-title" id="depthWarningTitle"></span>
+                <span class="depth-warning-summary" id="depthWarningSummary"></span>
+            </div>
+            <button class="depth-warning-expand-btn" id="depthWarningExpandBtn" onclick="toggleDepthWarningDetails()" title="Show details" aria-label="Show warning details">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button class="depth-warning-settings-btn" id="depthWarningSettingsBtn" onclick="openDepthSettings()" title="Configure thresholds" aria-label="Configure depth warning thresholds">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+            </button>
+            <button class="depth-warning-dismiss-btn" onclick="dismissDepthWarnings()" title="Dismiss" aria-label="Dismiss warnings">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="depth-warning-details" id="depthWarningDetails" style="display:none;"></div>
+    </div>
+
+    <!-- ============================================================
+         DEPTH SETTINGS MODAL
+         ============================================================ -->
+    <div class="modal-overlay" id="depthSettingsOverlay" style="display:none;" onclick="if(event.target===this)closeDepthSettings()">
+        <div class="modal depth-settings-modal">
+            <div class="modal-header">
+                <span class="modal-title">Depth Warning Thresholds</span>
+                <button class="btn-icon" onclick="closeDepthSettings()" aria-label="Close">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="depth-settings-group">
+                    <label class="depth-settings-label">Codebase Reach — Warning (%)</label>
+                    <div class="depth-settings-row">
+                        <input type="range" id="reachWarnSlider" min="10" max="80" value="30" oninput="document.getElementById('reachWarnVal').textContent=this.value+'%'">
+                        <span class="depth-settings-val badge-yellow" id="reachWarnVal">30%</span>
+                    </div>
+                    <div class="depth-settings-hint">Files pulling in more than this % of the codebase get a warning.</div>
+                </div>
+                <div class="depth-settings-group">
+                    <label class="depth-settings-label">Codebase Reach — Critical (%)</label>
+                    <div class="depth-settings-row">
+                        <input type="range" id="reachCritSlider" min="20" max="90" value="50" oninput="document.getElementById('reachCritVal').textContent=this.value+'%'">
+                        <span class="depth-settings-val badge-red" id="reachCritVal">50%</span>
+                    </div>
+                    <div class="depth-settings-hint">Files exceeding this threshold are flagged as critical.</div>
+                </div>
+                <div class="depth-settings-group">
+                    <label class="depth-settings-label">Chain Depth — Warning (levels)</label>
+                    <div class="depth-settings-row">
+                        <input type="range" id="depthWarnSlider" min="2" max="15" value="5" oninput="document.getElementById('depthWarnVal').textContent=this.value">
+                        <span class="depth-settings-val badge-yellow" id="depthWarnVal">5</span>
+                    </div>
+                    <div class="depth-settings-hint">Dependency chains deeper than this get a warning.</div>
+                </div>
+                <div class="depth-settings-group">
+                    <label class="depth-settings-label">Chain Depth — Critical (levels)</label>
+                    <div class="depth-settings-row">
+                        <input type="range" id="depthCritSlider" min="3" max="20" value="8" oninput="document.getElementById('depthCritVal').textContent=this.value">
+                        <span class="depth-settings-val badge-red" id="depthCritVal">8</span>
+                    </div>
+                    <div class="depth-settings-hint">Chains exceeding this are flagged as critical.</div>
+                </div>
+                <div class="depth-settings-actions">
+                    <button class="btn btn-ghost" onclick="resetDepthSettings()">Reset Defaults</button>
+                    <button class="btn btn-primary" onclick="applyDepthSettings()">Apply &amp; Recheck</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         MAIN AREA
+         ============================================================ -->
+    <div class="main">
+        <!-- Diff mode overlay banner -->
+        <div id="diffBanner" class="diff-banner" style="display:none;">
+            <div class="diff-banner-left">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 3v18"/><path d="m18 9-6-6-6 6"/></svg>
+                <span>Diff mode</span>
+                <span class="diff-banner-legend">
+                    <span class="diff-legend-dot" style="background:#22c55e;"></span> Added
+                    <span class="diff-legend-dot" style="background:#ef4444;"></span> Removed
+                    <span class="diff-legend-dot" style="background:#64748b;"></span> Unchanged
+                </span>
+            </div>
+            <button class="btn-icon" onclick="exitDiffMode()" title="Exit diff mode" aria-label="Exit diff mode">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div id="loading" class="loading-overlay"><div class="spinner"></div></div>
+        <div id="cy"></div>
+        <div id="treemapContainer" class="treemap-container" style="display:none;"></div>
+        <div id="matrixContainer" class="matrix-container" style="display:none;"></div>
+
+        <div id="emptyState" class="empty-state">
+            <div class="empty-state-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3m-6.36-2.64 2.12-2.12m8.48-8.48 2.12-2.12M3 12h3m12 0h3M5.64 5.64l2.12 2.12m8.48 8.48 2.12 2.12"/></svg>
+            </div>
+            <div class="empty-state-title">No files found</div>
+            <div class="empty-state-desc">Check the directory path and make sure a language is enabled in Filters.</div>
+        </div>
+
+        <div id="demoBanner" class="demo-banner" style="display:none;">
+            <img src="/static/logo.png" alt="" width="18" height="18" style="flex-shrink:0;border-radius:22%;">
+            <span>Viewing demo graph &mdash; <strong>upload</strong> a project to see your own dependencies</span>
+            <button onclick="dismissDemo()" title="Dismiss" style="background:none;border:none;cursor:pointer;color:inherit;padding:2px 6px;margin-left:auto;opacity:0.7;">&#10005;</button>
+        </div>
+
+        <div class="path-hint" id="pathHint">Click a node to trace dependencies &middot; Double-click to view source &middot; Esc to clear</div>
+
+        <div class="folder-color-key" id="folderColorKey">
+            <div class="folder-key-header" id="folderKeyHeader">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                <span id="folderKeyTitle">Legend</span>
+            </div>
+            <div class="folder-key-list" id="folderKeyList"></div>
+        </div>
+        <div class="graph-status-bar" id="graphStatusBar">
+            <span class="status-item"><span class="legend-line" style="background:#94a3b8;"></span> Edge</span>
+            <span class="status-item"><span class="legend-dot" style="background:#6366f1;"></span> Upstream</span>
+            <span class="status-item"><span class="legend-dot" style="background:#f97316;"></span> Downstream</span>
+            <span class="status-item"><span class="legend-dot" style="background:#facc15;"></span> Selected</span>
+            <span class="status-item"><span class="legend-line" style="background:#ef4444;"></span> Cycle</span>
+        </div>
+
+        <!-- Timeline animation bar -->
+        <div class="timeline-bar" id="timelineBar" style="display:none;">
+            <button class="btn-icon tl-btn" id="tlStepBack" onclick="timelineStepBack()" title="Step back">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+            </button>
+            <button class="btn-icon tl-btn tl-play" id="tlPlayBtn" onclick="timelinePlayPause()" title="Play (P)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </button>
+            <button class="btn-icon tl-btn" id="tlStepFwd" onclick="timelineStepForward()" title="Step forward">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+            </button>
+            <input type="range" class="tl-scrubber" id="tlScrubber" min="0" max="100" value="0" oninput="timelineSeek(this.value)">
+            <span class="tl-counter" id="tlCounter">0 / 0 files</span>
+            <div class="tl-speed" id="tlSpeedGroup">
+                <button class="tl-speed-btn" onclick="_tlSetSpeedBtn(this,0.5)">0.5x</button>
+                <button class="tl-speed-btn tl-speed-active" onclick="_tlSetSpeedBtn(this,1)">1x</button>
+                <button class="tl-speed-btn" onclick="_tlSetSpeedBtn(this,2)">2x</button>
+                <button class="tl-speed-btn" onclick="_tlSetSpeedBtn(this,5)">5x</button>
+            </div>
+            <button class="btn-icon tl-btn tl-close" onclick="timelineClose()" title="Exit timeline">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <!-- Minimap (moved to sidebar) -->
+
+        <!-- File preview drawer -->
+        <div class="preview-drawer" id="previewDrawer">
+            <div class="preview-drawer-header">
+                <div class="preview-drawer-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span id="previewFileName">—</span>
+                    <span class="preview-meta" id="previewMeta"></span>
+                </div>
+                <div class="preview-drawer-actions">
+                    <button class="btn-icon" onclick="closePreview()" title="Close preview" aria-label="Close preview">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="preview-drawer-body" id="previewBody">
+                <pre class="line-numbers"><code id="previewCode"></code></pre>
+            </div>
+        </div>
+
+        <!-- Resize handle for preview drawer -->
+        <div class="preview-resize-handle" id="previewResizeHandle"></div>
+
+        <!-- ============================================================
+             QUERY TERMINAL
+             ============================================================ -->
+        <div class="query-terminal" id="queryTerminal">
+            <div class="query-terminal-header">
+                <div class="query-terminal-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span>Query</span>
+                    <span class="query-result-count" id="queryResultCount"></span>
+                </div>
+                <div class="query-terminal-actions">
+                    <div class="query-mode-toggle" id="queryModeToggle">
+                        <button class="query-mode-btn active" data-mode="highlight" onclick="setQueryMode('highlight')" title="Highlight matches in graph">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                            <span>Highlight</span>
+                        </button>
+                        <button class="query-mode-btn" data-mode="isolate" onclick="setQueryMode('isolate')" title="Show only matching nodes">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                            <span>Isolate</span>
+                        </button>
+                    </div>
+                    <button class="btn-icon query-clear-btn" onclick="clearQuery()" title="Clear query">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6"/></svg>
+                    </button>
+                    <button class="btn-icon" onclick="toggleQueryTerminal()" title="Close (Q)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="query-terminal-body" id="queryTerminalBody">
+                <div class="query-input-row">
+                    <span class="query-prompt-char">&gt;</span>
+                    <input type="text" id="queryInput" placeholder="files where inbound > 3 and outbound > 2" autocomplete="off" spellcheck="false" onkeydown="handleQueryKeydown(event)">
+                </div>
+                <div class="query-hints" id="queryHints">
+                    <div class="query-hint-title">Examples</div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where inbound > 3 and outbound > 2</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files in cycles</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files with no downstream</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files with no upstream</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where stability > 0.7</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where impact > 5</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where depth > 3</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files matching utils/</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files matching /\.(test|spec)\./</code></div>
+                    <div class="query-hint-item" onclick="runExampleQuery(this)"><code>files where name matching .*index.* and inbound > 2</code></div>
+                </div>
+                <div class="query-results-list" id="queryResultsList"></div>
+                <div class="query-error" id="queryError"></div>
+            </div>
+        </div>
+
+        <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
+
+        <!-- Floating sidebar toggle for mobile -->
+        <button class="sidebar-toggle-fab" id="sidebarMobileToggle" onclick="toggleSidebar()" title="Open sidebar" aria-label="Toggle sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+        </button>
+
+        <!-- ============================================================
+             SIDEBAR
+             ============================================================ -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-tabs-wrap" role="tablist">
+                <span class="tab-row-label">Inspect</span>
+                <div class="sidebar-tab-row">
+                    <div class="sidebar-tab active" data-panel="panel-refs" onclick="switchTab(this)" title="References" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 22h2a2 2 0 0 0 2-2V7l-5-5H8a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><circle cx="8" cy="16" r="6"/><path d="M9.5 17.5 8 16.25V14"/></svg>
+                        <span>Refs</span>
+                    </div>
+                    <div class="sidebar-tab" data-panel="panel-analysis" onclick="switchTab(this)" title="Analysis" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                        <span>Analysis</span>
+                    </div>
+                    <div class="sidebar-tab" data-panel="panel-unused" onclick="switchTab(this)" title="Unused files" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        <span>Unused</span>
+                    </div>
+                    <div class="sidebar-tab" data-panel="panel-blast" onclick="switchTab(this)" title="Blast radius" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                        <span>Blast</span>
+                    </div>
+                </div>
+                <span class="tab-row-label">Tools</span>
+                <div class="sidebar-tab-row">
+                    <div class="sidebar-tab" data-panel="panel-layers" onclick="switchTab(this)" title="Layering violations" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.84Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+                        <span>Layers</span>
+                    </div>
+                    <div class="sidebar-tab" data-panel="panel-rules" onclick="switchTab(this)" title="Dependency rules" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+                        <span>Rules</span>
+                    </div>
+                    <div class="sidebar-tab" data-panel="panel-path" onclick="switchTab(this)" title="Path finder" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="3"/><circle cx="19" cy="12" r="3"/><path d="M8 12h8"/></svg>
+                        <span>Path</span>
+                    </div>
+                    <div class="sidebar-tab" data-panel="panel-diff" onclick="switchTab(this)" title="Diff mode" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
+                        <span>Diff</span>
+                    </div>
+                </div>
+                <span class="tab-row-label">More</span>
+                <div class="sidebar-tab-row">
+                    <div class="sidebar-tab" data-panel="panel-simulate" onclick="switchTab(this)" title="Refactor simulation" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64A9 9 0 0 1 20.77 15"/><path d="M6.16 6.16a9 9 0 1 0 12.68 12.68"/><path d="M12 2v4"/><path d="m2 2 20 20"/></svg>
+                        <span>Simulate</span>
+                    </div>
+                    <div class="sidebar-tab" data-panel="panel-story" onclick="switchTab(this)" title="Story mode" role="tab">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        <span>Story</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-scroll">
+                <!-- Refs panel -->
+                <div id="panel-refs" class="sidebar-panel active" role="tabpanel">
+                    <div class="panel-header" id="cycles-header" style="display:none;">Circular Dependencies</div>
+                    <div id="cycles-list"></div>
+                    <div class="panel-header">Reference Counts <span id="nodeCountBadge" class="count-badge"></span></div>
+                    <div class="legend-bar">
+                        <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Critical</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#f97316;"></span> High</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#eab308;"></span> Warning</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#3b82f6;"></span> Normal</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> Entry</span>
+                    </div>
+                    <div id="ref-list"></div>
+                </div>
+
+                <!-- Analysis panel -->
+                <div id="panel-analysis" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Directory Coupling</div>
+                    <div id="coupling-list"></div>
+                    <div class="panel-header">Node Analysis</div>
+                    <div id="node-analysis">
+                        <div class="panel-hint">Click a node on the graph to inspect its metrics.</div>
+                    </div>
+                </div>
+
+                <!-- Unused files panel -->
+                <div id="panel-unused" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Potentially Unused <span id="unusedCountBadge" class="count-badge"></span></div>
+                    <div class="panel-hint">Files with zero inbound edges. Entry points (main, index) naturally appear here.</div>
+                    <div id="unused-list"></div>
+                </div>
+
+                <!-- Layers panel -->
+                <div id="panel-layers" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Layering Violations</div>
+                    <div class="panel-hint">Define layers top-to-bottom (e.g. ui, service, data, util). Imports going "upward" are flagged.</div>
+                    <div class="action-row">
+                        <input type="text" id="layerInput" placeholder="ui, service, data, util" onkeydown="if(event.key==='Enter')checkLayers()">
+                        <button class="btn btn-primary" onclick="checkLayers()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Check</button>
+                    </div>
+                    <div id="violations-list"></div>
+                </div>
+
+                <!-- Rules panel -->
+                <div id="panel-rules" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Dependency Rules</div>
+                    <div class="panel-hint">Define rules to enforce dependency boundaries. Violations appear as badges on graph nodes.</div>
+
+                    <div class="rules-form">
+                        <div class="rule-row-inputs">
+                            <select id="ruleType" class="rule-select">
+                                <option value="forbidden">Forbidden</option>
+                                <option value="required">Required only</option>
+                            </select>
+                        </div>
+                        <div class="rule-row-inputs">
+                            <input type="text" id="ruleSource" placeholder="Source pattern (e.g. ui/)" class="rule-input">
+                            <span class="rule-arrow">→</span>
+                            <input type="text" id="ruleTarget" placeholder="Target pattern (e.g. data/)" class="rule-input">
+                        </div>
+                        <div class="rule-row-inputs" style="gap:0.35rem;">
+                            <button class="btn btn-primary" onclick="addRule()" style="padding:0.4rem 0.65rem;font-size:0.75rem;flex:1;">Add Rule</button>
+                            <button class="btn btn-ghost" onclick="checkRules()" style="padding:0.4rem 0.65rem;font-size:0.75rem;flex:1;">Check All</button>
+                        </div>
+                    </div>
+
+                    <div class="panel-header" style="margin-top:0.75rem;">Active Rules <span id="ruleCountBadge" class="count-badge">0</span></div>
+                    <div id="rules-list"></div>
+
+                    <div class="panel-header" style="margin-top:0.75rem;">Violations <span id="ruleViolationBadge" class="count-badge">0</span></div>
+                    <div id="rule-violations-list"></div>
+                </div>
+
+                <!-- Blast Radius panel -->
+                <div id="panel-blast" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Blast Radius</div>
+                    <div class="panel-hint">Click any node on the graph to see everything that depends on it — the full blast radius of a change.</div>
+                    <div id="blast-content">
+                        <div class="panel-hint">No file selected. Click a node to analyze.</div>
+                    </div>
+                </div>
+
+                <!-- Path Finder panel -->
+                <div id="panel-path" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Path Finder</div>
+                    <div class="panel-hint">Find the shortest dependency path between two files. Searches along import/include direction.</div>
+                    <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                        <input type="text" id="pathFromInput" placeholder="From file..." list="pathFromList" autocomplete="off" onkeydown="if(event.key==='Enter')findPath()">
+                        <datalist id="pathFromList"></datalist>
+                        <input type="text" id="pathToInput" placeholder="To file..." list="pathToList" autocomplete="off" onkeydown="if(event.key==='Enter')findPath()">
+                        <datalist id="pathToList"></datalist>
+                        <div style="display:flex;gap:0.5rem;">
+                            <button class="btn btn-primary" onclick="findPath()" style="flex:1;padding:0.4rem 0.65rem;font-size:0.75rem;">Find Path</button>
+                            <button class="btn btn-ghost" onclick="clearFoundPath()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Clear</button>
+                        </div>
+                    </div>
+                    <div id="path-result"></div>
+                </div>
+
+                <div id="panel-diff" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Diff Mode</div>
+                    <div class="panel-hint">Compare against a second directory to see added/removed nodes and edges.</div>
+                    <div class="action-row">
+                        <input type="text" id="diffDirInput" placeholder="Second directory path...">
+                        <button class="btn btn-primary" onclick="loadDiff()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Diff</button>
+                    </div>
+
+                    <!-- Diff results (hidden until diff loaded) -->
+                    <div id="diff-results" style="display:none;">
+                        <!-- Stats banner -->
+                        <div id="diff-stats" class="diff-stats"></div>
+
+                        <!-- Filter toggles -->
+                        <div class="diff-filters">
+                            <label class="diff-filter-toggle">
+                                <input type="checkbox" id="diffShowAdded" checked onchange="diffApplyFilters()">
+                                <span class="diff-filter-chip diff-chip-added">Added</span>
+                            </label>
+                            <label class="diff-filter-toggle">
+                                <input type="checkbox" id="diffShowRemoved" checked onchange="diffApplyFilters()">
+                                <span class="diff-filter-chip diff-chip-removed">Removed</span>
+                            </label>
+                            <label class="diff-filter-toggle">
+                                <input type="checkbox" id="diffShowUnchanged" checked onchange="diffApplyFilters()">
+                                <span class="diff-filter-chip diff-chip-unchanged">Unchanged</span>
+                            </label>
+                        </div>
+
+                        <!-- File change list -->
+                        <div class="diff-section-label">Changed files</div>
+                        <div id="diff-file-list" class="diff-file-list"></div>
+
+                        <!-- Exit diff -->
+                        <button class="btn btn-ghost" onclick="exitDiffMode()" style="width:100%;margin-top:0.5rem;font-size:0.72rem;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            Exit diff mode
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Simulate panel -->
+                <div id="panel-simulate" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Refactor Simulation</div>
+                    <div class="panel-hint">Simulate removing a file or dependency to see what would break. Click a node to add it, or click an edge to select a dependency.</div>
+
+                    <div class="sim-section">
+                        <div class="sim-section-label">Remove Nodes (files)</div>
+                        <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                            <input type="text" id="simNodeInput" placeholder="File to remove..." list="simNodeList" autocomplete="off">
+                            <datalist id="simNodeList"></datalist>
+                            <button class="btn btn-ghost" onclick="simAddNode()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">+ Add File</button>
+                        </div>
+                        <div id="sim-node-list" class="sim-items"></div>
+                    </div>
+
+                    <div class="sim-section">
+                        <div class="sim-section-label">Remove Edges (dependencies)</div>
+                        <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                            <input type="text" id="simEdgeFrom" placeholder="Source file..." list="simEdgeFromList" autocomplete="off">
+                            <datalist id="simEdgeFromList"></datalist>
+                            <span style="text-align:center;color:var(--text-muted);font-size:0.7rem;">depends on</span>
+                            <input type="text" id="simEdgeTo" placeholder="Target file..." list="simEdgeToList" autocomplete="off">
+                            <datalist id="simEdgeToList"></datalist>
+                            <button class="btn btn-ghost" onclick="simAddEdge()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">+ Add Edge</button>
+                        </div>
+                        <div id="sim-edge-list" class="sim-items"></div>
+                    </div>
+
+                    <div style="display:flex;gap:0.5rem;margin-top:0.75rem;">
+                        <button class="btn btn-primary sim-run-btn" onclick="runSimulation()" style="flex:1;padding:0.5rem 0.65rem;font-size:0.75rem;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Run Simulation
+                        </button>
+                        <button class="btn btn-ghost" onclick="simReset()" style="padding:0.5rem 0.65rem;font-size:0.75rem;">Reset</button>
+                    </div>
+
+                    <div id="sim-results"></div>
+
+                    <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0 0.75rem;">
+
+                    <div class="panel-header">Merge / Split Simulation</div>
+                    <div class="panel-hint">Model what happens if you merge two files into one, or split one file into parts.</div>
+
+                    <div class="sim-ms-tabs">
+                        <button class="sim-ms-tab active" data-mode="merge" onclick="simSetMergeMode('merge')">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                            Merge Files
+                        </button>
+                        <button class="sim-ms-tab" data-mode="split" onclick="simSetMergeMode('split')">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="2" x2="12" y2="22"/><polyline points="8 18 4 22 4 2 8 6"/><polyline points="16 6 20 2 20 22 16 18"/></svg>
+                            Split File
+                        </button>
+                    </div>
+
+                    <!-- Merge panel -->
+                    <div id="sim-merge-panel" class="sim-section">
+                        <div class="sim-section-label">Files to merge</div>
+                        <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                            <input type="text" id="simMergeNodeInput" placeholder="Add file to merge..." list="simNodeList" autocomplete="off">
+                            <button class="btn btn-ghost" onclick="simMergeAddNode()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">+ Add File</button>
+                        </div>
+                        <div id="sim-merge-list" class="sim-items"></div>
+                        <div id="sim-merge-preview" class="sim-merge-preview" style="display:none;"></div>
+                    </div>
+
+                    <!-- Split panel -->
+                    <div id="sim-split-panel" class="sim-section" style="display:none;">
+                        <div class="sim-section-label">File to split</div>
+                        <div class="action-row" style="flex-direction:column;align-items:stretch;">
+                            <input type="text" id="simSplitNodeInput" placeholder="File to split..." list="simNodeList" autocomplete="off">
+                            <button class="btn btn-ghost" onclick="simSplitSetNode()" style="padding:0.4rem 0.65rem;font-size:0.75rem;">Select File</button>
+                        </div>
+                        <div id="sim-split-parts"></div>
+                    </div>
+
+                    <div style="display:flex;gap:0.5rem;margin-top:0.75rem;">
+                        <button class="btn btn-primary sim-run-btn" onclick="runMergeSimulation()" style="flex:1;padding:0.5rem 0.65rem;font-size:0.75rem;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Run Merge / Split
+                        </button>
+                        <button class="btn btn-ghost" onclick="simMSReset()" style="padding:0.5rem 0.65rem;font-size:0.75rem;">Reset</button>
+                    </div>
+
+                    <div id="sim-ms-results"></div>
+                </div>
+
+                <!-- Story Mode panel -->
+                <div id="panel-story" class="sidebar-panel" role="tabpanel">
+                    <div class="panel-header">Story Mode</div>
+                    <div class="panel-hint">A guided walkthrough of your project's architecture. Generate a graph first, then hit Play.</div>
+
+                    <div class="story-controls">
+                        <button class="btn btn-primary story-play-btn" id="storyPlayBtn" onclick="storyLoad()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            <span>Generate Story</span>
+                        </button>
+                        <div class="story-nav">
+                            <button class="btn btn-ghost story-nav-btn" id="storyPrevBtn" onclick="storyPrev()" disabled>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <span class="story-step-counter" id="storyCounter">0 / 0</span>
+                            <button class="btn btn-ghost story-nav-btn" id="storyNextBtn" onclick="storyNext()" disabled>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="story-progress" id="storyProgress">
+                        <div class="story-progress-bar" id="storyProgressBar"></div>
+                    </div>
+
+                    <div id="story-content"></div>
+                </div>
+            </div>
+
+            <!-- Minimap pinned to sidebar bottom -->
+            <div class="sidebar-minimap open" id="minimap">
+                <div class="minimap-header">
+                    <span class="minimap-title">Minimap</span>
+                    <button class="minimap-close" onclick="toggleMinimap()" aria-label="Close minimap">&times;</button>
+                </div>
+                <div class="minimap-body">
+                    <canvas id="minimapCanvas"></canvas>
+                    <div class="minimap-viewport" id="minimapViewport"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+    <!-- Quick Jump modal (Cmd+K) -->
+    <div class="quickjump-backdrop" id="quickjumpModal" onclick="if(event.target===this)closeQuickJump()">
+        <div class="quickjump-modal">
+            <div class="quickjump-input-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="quickjumpInput" placeholder="Jump to file..." autocomplete="off" spellcheck="false" />
+                <kbd class="quickjump-esc">Esc</kbd>
+            </div>
+            <div class="quickjump-results" id="quickjumpResults"></div>
+            <div class="quickjump-empty" id="quickjumpEmpty" style="display:none;">No matching files</div>
+            <div class="quickjump-hint" id="quickjumpHint">Start typing to search nodes in the graph</div>
+        </div>
+    </div>
+
+    <!-- Keyboard shortcuts help modal -->
+    <div class="shortcut-modal-backdrop" id="shortcutModal" onclick="if(event.target===this)toggleShortcutHelp()">
+        <div class="shortcut-modal">
+            <div class="shortcut-modal-header">
+                <h2>Keyboard Shortcuts</h2>
+                <button class="btn-icon" onclick="toggleShortcutHelp()" aria-label="Close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="shortcut-grid"></div>
+        </div>
+    </div>
+
+    <!-- Insights modal -->
+    <div class="insights-backdrop" id="insightsModal" onclick="if(event.target===this)closeInsights()">
+        <div class="insights-modal">
+            <div class="insights-header">
+                <div class="insights-header-left">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                    <h2>Project Insights</h2>
+                </div>
+                <button class="btn-icon" onclick="closeInsights()" aria-label="Close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="insights-body" id="insightsBody"></div>
+            <div class="insights-footer">
+                <span class="insights-footer-label">Export</span>
+                <button class="insights-export-btn" onclick="exportInsights('json')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    JSON
+                </button>
+                <button class="insights-export-btn" onclick="exportInsights('md')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Markdown
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/tour.js?v=1"></script>
+    <!-- Module scripts (order matters: state first, then modules, app last) -->
+    <script src="/static/demo-graph.js?v=1"></script>
+    <script src="/static/state.js?v=21"></script>
+    <script src="/static/graph-core.js?v=21"></script>
+    <script src="/static/ui.js?v=21"></script>
+    <script src="/static/tools.js?v=21"></script>
+    <script src="/static/analysis.js?v=21"></script>
+    <script src="/static/simulation.js?v=21"></script>
+    <script src="/static/story.js?v=21"></script>
+    <script src="/static/timeline.js?v=1"></script>
+    <script src="/static/query.js?v=21"></script>
+    <script src="/static/views.js?v=21"></script>
+    <script src="/static/exports.js?v=21"></script>
+    <script src="/static/app.js?v=21"></script>
+</body>
+</html>

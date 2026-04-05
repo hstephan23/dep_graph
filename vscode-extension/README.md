@@ -1,108 +1,78 @@
-# DepGraph for VS Code
+# Dep Graph
 
-Visualize and analyze source file dependencies directly in VS Code. This extension brings the full DepGraph analysis toolkit into the editor — interactive graphs, cycle detection, blast radius, file metrics, and import hover previews.
+Visualize and explore file dependencies directly in VS Code. Dep Graph scans your workspace, builds an interactive dependency graph, detects circular imports, and gives you tools to understand the structure and health of your codebase.
 
-## Prerequisites
+## Supported Languages
 
-The extension uses the DepGraph CLI under the hood. Install it from the project root:
-
-```bash
-pip install .
-```
-
-This makes the `depgraph` command available, which the extension invokes to build graph data.
+C, C++, JavaScript, TypeScript, Python, Java, Go, Rust, C#, Swift, Ruby, Kotlin, Scala, PHP, Dart, and Elixir. Language detection is automatic based on the files in your workspace.
 
 ## Features
 
 ### Interactive Dependency Graph
 
-Open the command palette and run **DepGraph: Show Dependency Graph** to launch a Cytoscape.js graph in a webview panel. The graph includes three layout modes (Force, Hierarchy, Concentric), file search, and a right-click context menu for focusing on individual files.
-
-The graph uses transitive reduction to remove redundant edges, logarithmic node sizing so hubs don't dominate the view, weighted edges that visually emphasize important dependency paths (thicker, darker, more opaque), and a density-adaptive force layout that adjusts spacing based on graph complexity.
+Open the command palette and run **DepGraph: Show Dependency Graph** to see a full interactive visualization of your project's file dependencies. The graph supports three layout modes (force-directed, hierarchical, and concentric), plus a treemap view and a dependency matrix.
 
 ### Sidebar Views
 
-Three tree views appear in the Explorer sidebar under a DepGraph section:
+Dep Graph adds a dedicated sidebar with three panels:
 
-- **Dependencies** — files sorted by depth, expandable to show imports and imported-by lists
-- **Cycles** — detected circular dependencies with member files
-- **File Metrics** — files sorted by impact with per-file depth, stability, and reach percentage
+- **Dependencies** -- browse the dependency tree for any file
+- **Cycles** -- see all circular dependency chains at a glance
+- **File Metrics** -- view inbound/outbound counts, depth, impact, and stability per file
 
-### Tree View
+### Cycle Detection
 
-A spacious hierarchical tree view shows downstream ("What breaks?") or upstream ("Depends on") dependencies for any file. Nodes display risk indicators, file-type badges, and in-degree counts. Click any node to focus the graph on that file.
+Automatically finds circular dependencies using Tarjan's strongly connected components algorithm. Cycles are listed in the sidebar and highlighted in the graph with red edges.
 
-### Import Hover Preview
+### Blast Radius
 
-Hover over any import statement to see a mini dependency graph for the imported file — its metrics (depth, impact, stability, blast radius), who imports it, and what it imports, with second-level dependencies shown inline. Cycle membership is flagged with a warning.
+Right-click any file and select **Show Blast Radius** to see every file that would be affected if it changed -- direct and transitive dependents, with impact percentage.
 
-Supported across all 14 languages: C/C++, JavaScript/TypeScript, Python, Java, Go, Rust, C#, Swift, Ruby, Kotlin, Scala, PHP, Dart, and Elixir.
+### CodeLens and Hover
 
-### CodeLens
-
-Inline annotations appear above each file showing inbound/outbound dependency counts, depth, impact, and stability.
+Dep Graph adds inline CodeLens annotations showing dependency counts above import statements. Hover over an import to see a mini dependency summary without leaving your editor.
 
 ### Diagnostics
 
-The extension reports cycle membership, excessive dependency depth, and high-impact files as warnings in the Problems panel. The depth threshold is configurable via `depgraph.maxDepthWarning`.
-
-### Commands
-
-Open the command palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and search for "DepGraph":
-
-| Command | Description |
-|---|---|
-| Show Dependency Graph | Open interactive graph in a webview panel |
-| Find Dependency Cycles | List detected cycles in a quick-pick menu |
-| Show Dependents of Current File | Quick-pick list of files that import the current file |
-| Show Dependencies of Current File | Quick-pick list of files imported by the current file |
-| Show Blast Radius of Current File | Highlight all transitive dependents |
-| Refresh Graph | Rebuild graph data from disk |
-| Export Graph as JSON | Write graph data to a JSON file |
-| Export Graph as DOT | Write graph in Graphviz DOT format |
-| Export Graph as Mermaid | Write graph as a Mermaid diagram |
+Files involved in circular dependencies are flagged with editor diagnostics so you can spot issues as you code.
 
 ### Context Menu
 
-Right-click any file in the editor to access Show Dependents, Show Dependencies, and Blast Radius directly.
+Right-click in any editor to quickly access **Show Dependents**, **Show Dependencies**, or **Blast Radius** for the current file.
+
+### Export
+
+Export your dependency graph as JSON, Graphviz DOT, or Mermaid for use in documentation or other tools.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `DepGraph: Show Dependency Graph` | Open the interactive graph view |
+| `DepGraph: Find Dependency Cycles` | List all circular dependencies |
+| `DepGraph: Show Dependents of Current File` | Show what depends on this file |
+| `DepGraph: Show Dependencies of Current File` | Show what this file depends on |
+| `DepGraph: Show Blast Radius of Current File` | Show transitive impact |
+| `DepGraph: Refresh Graph` | Re-scan and rebuild the graph |
+| `DepGraph: Export Graph as JSON` | Export as JSON |
+| `DepGraph: Export Graph as DOT` | Export as Graphviz DOT |
+| `DepGraph: Export Graph as Mermaid` | Export as Mermaid diagram |
 
 ## Settings
 
-Configure under `depgraph.*` in VS Code settings:
-
 | Setting | Default | Description |
-|---|---|---|
-| `pythonPath` | `python3` | Path to the Python interpreter with depgraph installed |
-| `language` | `auto` | Language mode — `auto` detects from file types, or force a specific language |
-| `hideExternal` | `true` | Hide system/external imports from the graph |
-| `hideIsolated` | `false` | Hide files with no dependencies |
-| `maxDepthWarning` | `8` | Depth threshold for diagnostic warnings |
-| `autoRefresh` | `true` | Automatically refresh the graph when files change |
+|---------|---------|-------------|
+| `depgraph.language` | `auto` | Language mode for dependency analysis |
+| `depgraph.hideExternal` | `true` | Hide system/external imports from the graph |
+| `depgraph.hideIsolated` | `false` | Hide files with no dependencies |
+| `depgraph.maxDepthWarning` | `8` | Highlight files exceeding this dependency depth |
+| `depgraph.autoRefresh` | `true` | Automatically refresh when files change |
+| `depgraph.pythonPath` | `python3` | Path to Python interpreter |
 
-## Supported Languages
+## Requirements
 
-C, C++, JavaScript, TypeScript, Python, Java, Go, Rust, C#, Swift, Ruby, Kotlin, Scala, PHP, Dart, and Elixir. Language detection is automatic based on which file types are present in the workspace.
+Python 3.8+ must be available on your system. The extension uses the bundled DepGraph engine for parsing and analysis.
 
-## Development
+## License
 
-```bash
-cd vscode-extension
-npm install
-npm run compile
-```
-
-Press `F5` in VS Code to launch an Extension Development Host for testing. The extension compiles TypeScript from `src/` to `out/`.
-
-## Architecture
-
-| File | Purpose |
-|---|---|
-| `extension.ts` | Activation, command registration, file watchers |
-| `engine.ts` | Spawns DepGraph CLI, caches and parses graph data |
-| `sidebar.ts` | Tree view providers for dependencies, cycles, and metrics |
-| `commands.ts` | Command implementations (graph, cycles, blast radius, export) |
-| `webview.ts` | Interactive Cytoscape.js graph and tree view in a VS Code panel |
-| `hover.ts` | Mini dependency graph on import hover (14 language patterns) |
-| `codeLens.ts` | Inline dependency counts and metrics above files |
-| `diagnostics.ts` | Cycle, depth, and high-impact warnings in Problems panel |
-| `config.ts` | Reads workspace settings |
+MIT

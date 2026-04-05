@@ -4,12 +4,12 @@ import { spawn, ChildProcess } from 'child_process';
 import { getConfig, getWorkspaceRoot } from './config';
 
 // ── Locate the DepGraph Python source directory ───────────────────
-// The extension lives at <depgraph-root>/vscode-extension, so the
-// Python source (cli.py, graph.py, parsers.py) is one level up.
+// The Python engine files (cli.py, graph.py, parsers.py) are bundled
+// inside the extension at <extension>/engine/.
 let _depgraphRoot: string | undefined;
 
 export function setDepgraphRoot(extensionPath: string): void {
-  _depgraphRoot = path.resolve(extensionPath, '..');
+  _depgraphRoot = path.join(extensionPath, 'engine');
 }
 
 function getCliPath(): string {
