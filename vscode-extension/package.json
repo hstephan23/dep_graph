@@ -1,15 +1,14 @@
 {
   "name": "dep-graph",
-  "displayName": "Dep Graph",
-  "description": "Interactive dependency graphs, cycle detection, and blast radius analysis for 16+ languages",
-  "version": "1.1.1",
+  "displayName": "DepGraph",
+  "description": "Visualize and analyze source file dependencies directly in VS Code",
+  "version": "1.2.0",
   "publisher": "depgraph",
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hstephan23/dep_graph"
+    "url": "https://github.com/depgraph/depgraph"
   },
-  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
