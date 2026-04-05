@@ -2678,12 +2678,7 @@ body.sidebar-hidden .query-terminal {
 }
 
 .minimap-viewport {
-    position: absolute;
-    border: 2px solid var(--primary);
-    background: rgba(99, 102, 241, 0.08);
-    border-radius: 3px;
-    pointer-events: none;
-    transition: none;
+    display: none;
 }
 
 [data-theme="dark"] .minimap-viewport {
