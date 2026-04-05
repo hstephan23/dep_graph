@@ -1,5 +1,5 @@
 {
-  "name": "depgraph",
+  "name": "dep-graph",
   "displayName": "DepGraph",
   "description": "Visualize and analyze source file dependencies directly in VS Code",
   "version": "1.2.0",
