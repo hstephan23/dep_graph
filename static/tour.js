@@ -45,7 +45,7 @@ const Tour = (() => {
         {
             target: '#githubForm',
             label: 'GitHub Import',
-            desc: 'Paste an owner/repo or full GitHub URL to clone and analyze any repository. Runs 100% locally \u2014 your code never leaves your machine. Works with private repos you have access to.',
+            desc: 'Paste an owner/repo or full GitHub URL to clone and analyze any public repository. For private repos, run DepGraph locally where your git credentials are available.',
             placement: 'bottom',
         },
         {

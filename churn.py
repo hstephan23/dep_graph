@@ -134,11 +134,13 @@ def get_churn_from_remote(git_url: str, *, days: int = 365, recent_days: int = 9
             "git", "clone", "--bare", "--filter=blob:none",
             "--single-branch", git_url, temp_dir,
         ]
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
         r = subprocess.run(
             clone_cmd,
             capture_output=True,
             text=True,
             timeout=120,
+            env=env,
         )
         if r.returncode != 0:
             err_msg = r.stderr.strip()[:300]
@@ -146,8 +148,8 @@ def get_churn_from_remote(git_url: str, *, days: int = 365, recent_days: int = 9
             # Check for common issues
             if "not found" in err_msg.lower() or "404" in err_msg:
                 return {"files": {}, "is_git": False, "period": "", "error": "Repository not found. Check the URL and make sure the repo is public."}
-            if "authentication" in err_msg.lower() or "403" in err_msg:
-                return {"files": {}, "is_git": False, "period": "", "error": "Authentication failed. Check that your git credentials are configured."}
+            if "authentication" in err_msg.lower() or "403" in err_msg or "could not read username" in err_msg.lower():
+                return {"files": {}, "is_git": False, "period": "", "error": "Authentication failed — this repository may be private. Make sure the repo is public, or check that your git credentials are configured."}
             return {"files": {}, "is_git": False, "period": "", "error": f"Clone failed: {err_msg}"}
 
         clone_time = time.monotonic() - t0

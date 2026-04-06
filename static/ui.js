@@ -106,7 +106,8 @@ function getBaseDir() {
 
 function openPreview(fileId) {
     const dir = getBaseDir();
-    if (!dir) { showToast('File preview only available for local directories'); return; }
+    const hasClientFiles = typeof _clientFileContents !== 'undefined' && _clientFileContents && _clientFileContents.has(fileId);
+    if (!dir && !hasClientFiles) { showToast('File preview only available for local directories'); return; }
 
     const drawer = document.getElementById('previewDrawer');
     const handle = document.getElementById('previewResizeHandle');
@@ -122,24 +123,39 @@ function openPreview(fileId) {
     handle.classList.add('open');
     previewOpen = true;
 
-    _fetchWithTimeout('/api/file?' + new URLSearchParams(_getFileParams(fileId)))
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) {
+    // Client-side file preview: serve from cached file contents if available
+    if (typeof _clientFileContents !== 'undefined' && _clientFileContents && _clientFileContents.has(fileId)) {
+        const content = _clientFileContents.get(fileId);
+        const lines = content.split('\n').length;
+        const ext = fileId.split('.').pop() || '';
+        const langMap = {c:'c',h:'c',cpp:'cpp',cc:'cpp',cxx:'cpp',hpp:'cpp',hxx:'cpp',js:'javascript',jsx:'jsx',mjs:'javascript',cjs:'javascript',ts:'typescript',tsx:'tsx',py:'python',java:'java',go:'go',rs:'rust',cs:'csharp',swift:'swift',rb:'ruby',kt:'kotlin',kts:'kotlin',scala:'scala',sc:'scala',php:'php',dart:'dart',ex:'elixir',exs:'elixir',lua:'lua',zig:'zig',hs:'haskell',r:'r',R:'r'};
+        const language = langMap[ext] || ext;
+        document.getElementById('previewMeta').textContent = `${lines} lines · ${language}`;
+        const codeEl = document.getElementById('previewCode');
+        codeEl.className = 'language-' + language;
+        codeEl.textContent = content;
+        if (typeof Prism !== 'undefined') Prism.highlightElement(codeEl);
+    } else {
+        // Fallback to server-side file preview (for local/dev mode)
+        _fetchWithTimeout('/api/file?' + new URLSearchParams(_getFileParams(fileId)))
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('previewMeta').textContent = '';
+                    document.getElementById('previewCode').textContent = data.error;
+                    return;
+                }
+                document.getElementById('previewMeta').textContent = `${data.lines} lines · ${data.language}`;
+                const codeEl = document.getElementById('previewCode');
+                codeEl.className = 'language-' + data.language;
+                codeEl.textContent = data.content;
+                Prism.highlightElement(codeEl);
+            })
+            .catch(err => {
                 document.getElementById('previewMeta').textContent = '';
-                document.getElementById('previewCode').textContent = data.error;
-                return;
-            }
-            document.getElementById('previewMeta').textContent = `${data.lines} lines · ${data.language}`;
-            const codeEl = document.getElementById('previewCode');
-            codeEl.className = 'language-' + data.language;
-            codeEl.textContent = data.content;
-            Prism.highlightElement(codeEl);
-        })
-        .catch(err => {
-            document.getElementById('previewMeta').textContent = '';
-            document.getElementById('previewCode').textContent = err && err.message && err.message.startsWith('Request timed out') ? err.message : 'Failed to load file.';
-        });
+                document.getElementById('previewCode').textContent = err && err.message && err.message.startsWith('Request timed out') ? err.message : 'Failed to load file.';
+            });
+    }
 }
 
 function closePreview() {

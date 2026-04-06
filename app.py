@@ -1151,16 +1151,18 @@ def api_github() -> tuple[Any, int] | Any:
             "git", "clone", "--single-branch", "--depth=500",
             git_url, temp_dir,
         ]
-        r = subprocess.run(clone_cmd, capture_output=True, text=True, timeout=180)
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        r = subprocess.run(clone_cmd, capture_output=True, text=True, timeout=180, env=env)
         if r.returncode != 0:
+            shutil.rmtree(temp_dir, ignore_errors=True)
             err_msg = r.stderr.strip()[:300]
             log.warning('git clone failed: %s', err_msg)
             if "not found" in err_msg.lower() or "404" in err_msg:
                 return jsonify({"error": "Repository not found.",
                                 "suggestion": "Check the URL and make sure the repo is public."}), 400
-            if "authentication" in err_msg.lower() or "403" in err_msg:
-                return jsonify({"error": "Authentication failed.",
-                                "suggestion": "Check that your git credentials are configured for this repo."}), 400
+            if "authentication" in err_msg.lower() or "403" in err_msg or "could not read username" in err_msg.lower():
+                return jsonify({"error": "Authentication failed — this repository may be private.",
+                                "suggestion": "Make sure the repo is public, or check that your git credentials are configured."}), 400
             return jsonify({"error": f"Clone failed: {err_msg}"}), 400
 
         # Detect root — skip single wrapper dirs
@@ -1193,9 +1195,11 @@ def api_github() -> tuple[Any, int] | Any:
         return jsonify(result)
 
     except subprocess.TimeoutExpired:
+        shutil.rmtree(temp_dir, ignore_errors=True)
         return jsonify({"error": "Clone timed out.",
                         "suggestion": "The repository may be too large. Try a smaller repo."}), 400
     except Exception as exc:
+        shutil.rmtree(temp_dir, ignore_errors=True)
         log.exception('GitHub clone error')
         return jsonify({"error": str(exc)}), 500
 
