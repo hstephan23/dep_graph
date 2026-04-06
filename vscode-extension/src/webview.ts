@@ -315,9 +315,125 @@ export class GraphWebviewProvider {
     }
     .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
 
-    /* View toggle (Graph / Tree) */
+    /* View toggle (Graph / Tree / Layers) */
     .view-toggle { display: flex; gap: 2px; margin-right: 6px; }
     .view-toggle button { font-size: 11px; padding: 2px 8px; }
+
+    /* ===== Layers Panel ===== */
+    .layers-panel {
+      position: absolute; top: 56px; right: 12px; z-index: 50;
+      width: 280px; max-height: calc(100vh - 80px);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    .layers-panel-header {
+      padding: 8px 12px; font-size: 12px; font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+    .layers-panel-body { padding: 10px 12px; overflow-y: auto; font-size: 11px; }
+    .layers-input-row { display: flex; gap: 4px; margin-bottom: 6px; }
+    .layers-input-row input {
+      flex: 1; font-size: 11px; padding: 4px 8px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text);
+    }
+    .layers-input-row button {
+      font-size: 11px; padding: 4px 10px; border-radius: 4px;
+      background: var(--accent); color: white; border: none; cursor: pointer;
+    }
+    .layers-hint { color: var(--text-dim); margin-bottom: 8px; line-height: 1.4; font-size: 10px; }
+
+    /* Swim-lane layer labels (DOM pills positioned over cy container) */
+    .layer-swim-label {
+      position: absolute; display: flex; align-items: center; gap: 8px;
+      pointer-events: none; z-index: 6;
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--text-dim); white-space: nowrap;
+    }
+    .layer-depth-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 32px; height: 24px; border-radius: 12px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-size: 0.68rem; font-weight: 700; color: var(--text);
+      padding: 0 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+    .layer-depth-count { font-size: 0.62rem; font-weight: 500; color: var(--text-dim); opacity: 0.7; }
+    .layer-violation-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 18px; height: 18px; border-radius: 9px;
+      background: #f59e0b; color: #fff; font-size: 0.58rem;
+      font-weight: 700; padding: 0 5px; letter-spacing: 0; text-transform: none;
+    }
+
+    /* Stats bar floating at top of graph */
+    #layerStatsBar {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      z-index: 10; display: flex; align-items: center; gap: 8px;
+      padding: 6px 18px; border-radius: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-size: 0.74rem; font-weight: 500; color: var(--text);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15); pointer-events: none;
+    }
+    .layer-stat { white-space: nowrap; }
+    .layer-stat-sep { opacity: 0.3; font-size: 0.8em; }
+    .layer-stat-warn { color: #f59e0b; font-weight: 600; }
+
+    /* Sidebar violation groups */
+    .panel-section-header {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--text-dim);
+      padding: 0.5rem 0 0.25rem; display: flex; align-items: center; gap: 0.4rem;
+    }
+    .count-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 20px; height: 18px; border-radius: 9px;
+      font-size: 0.62rem; font-weight: 700; padding: 0 5px;
+      background: rgba(255,255,255,0.08); color: var(--text);
+    }
+    .count-badge-warn { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .layers-violation-group { margin-bottom: 2px; }
+    .layers-violation-src {
+      display: flex; align-items: center; gap: 0.35rem;
+      padding: 0.4rem 0.4rem; font-size: 0.72rem; font-weight: 600;
+      color: #f59e0b; border-radius: 4px; cursor: pointer;
+      transition: background 0.12s;
+    }
+    .layers-violation-src:hover { background: rgba(245,158,11,0.1); }
+    .layers-violation-src svg { flex-shrink: 0; opacity: 0.7; }
+    .layers-violation-edge {
+      padding: 0.25rem 0.4rem 0.25rem 1.6rem;
+      font-size: 0.68rem; color: var(--text-dim); cursor: pointer;
+      border-radius: 4px; transition: background 0.12s;
+    }
+    .layers-violation-edge:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .metric-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.25rem 0.4rem; font-size: 0.72rem;
+    }
+    .metric-row.clickable { cursor: pointer; border-radius: 4px; }
+    .metric-row.clickable:hover { background: rgba(255,255,255,0.05); }
+    .metric-label { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .metric-label strong { color: var(--text); }
+    .metric-value { color: var(--text); font-weight: 600; flex-shrink: 0; }
+    .badge { padding: 1px 6px; border-radius: 8px; font-size: 0.6rem; font-weight: 700; }
+    .badge-warn { background: rgba(245,158,11,0.15); color: #f59e0b; }
+
+    /* Layer override bar in sidebar */
+    .layer-overrides-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.4rem 0.6rem; margin: 0.4rem 0;
+      background: rgba(99,102,241,0.1); border-radius: 6px;
+      font-size: 0.7rem; color: var(--text);
+    }
+    .layer-overrides-bar button {
+      padding: 0.2rem 0.5rem; border: 1px solid var(--border);
+      border-radius: 4px; background: var(--surface);
+      color: var(--text-dim); font-size: 0.65rem; cursor: pointer;
+    }
+    .layer-overrides-bar button:hover {
+      background: rgba(239,68,68,0.1); color: #ef4444;
+    }
 
     /* ===== Tree View Styles ===== */
     #treeContainer {
@@ -446,21 +562,55 @@ export class GraphWebviewProvider {
     }
     .tree-empty-title { font-size: 16px; font-weight: 600; }
     .tree-empty-desc { font-size: 12px; max-width: 300px; }
-    .tree-file-picker {
-      display: flex; flex-wrap: wrap; gap: 6px;
-      justify-content: center; padding: 0 20px 20px; max-height: 300px; overflow-y: auto;
-    }
-    .tree-file-picker-item {
-      font-family: 'SF Mono', Consolas, monospace;
-      font-size: 11px; padding: 4px 10px;
+    .tree-picker-search {
+      width: 280px; max-width: 90%; margin: 0 auto 10px; display: block;
+      font-family: 'SF Mono', Consolas, monospace; font-size: 11px;
+      padding: 6px 10px 6px 28px; border-radius: 99px;
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 6px; cursor: pointer;
-      transition: box-shadow 0.15s, border-color 0.15s;
+      color: var(--text); outline: none;
     }
-    .tree-file-picker-item:hover {
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      border-color: var(--primary);
+    .tree-picker-search:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+    .tree-picker-search-wrap { position: relative; text-align: center; }
+    .tree-picker-search-icon {
+      position: absolute; left: calc(50% - 140px + 8px); top: 50%;
+      transform: translateY(-50%); color: var(--text-dim); pointer-events: none;
     }
+    .tree-file-picker {
+      display: flex; flex-direction: column; gap: 0;
+      padding: 0 20px 20px; max-width: 400px; margin: 0 auto;
+      max-height: 50vh; overflow-y: auto;
+    }
+    .tree-picker-folder-group {
+      border: 1px solid var(--border); border-radius: 4px; margin-bottom: 3px; overflow: hidden;
+    }
+    .tree-picker-folder-group.open { border-color: var(--accent); }
+    .tree-picker-folder-header {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 8px; cursor: pointer; font-size: 11px;
+      color: var(--text-dim); background: var(--surface); user-select: none;
+    }
+    .tree-picker-folder-header:hover { background: rgba(255,255,255,0.04); }
+    .tree-picker-folder-arrow { font-size: 8px; width: 10px; text-align: center; color: var(--text-dim); }
+    .tree-picker-folder-name { font-family: 'SF Mono', Consolas, monospace; font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree-picker-folder-count { font-size: 10px; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 99px; }
+    .tree-picker-folder-files { border-top: 1px solid var(--border); }
+    .tree-file-picker-item {
+      display: flex; align-items: center; gap: 6px;
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 11px; padding: 4px 10px 4px 24px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background 0.1s;
+    }
+    .tree-file-picker-item:last-child { border-bottom: none; }
+    .tree-file-picker-item:hover { background: rgba(99,102,241,0.1); }
+    .tree-picker-item-badge {
+      font-size: 9px; font-weight: 600; padding: 1px 4px;
+      border-radius: 3px; color: #fff; min-width: 16px; text-align: center;
+    }
+    .tree-picker-item-name { color: var(--text); font-weight: 500; white-space: nowrap; }
+    .tree-picker-item-path { color: var(--text-dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; }
+    .tree-picker-no-match { padding: 16px; text-align: center; color: var(--text-dim); font-size: 12px; }
+    .tree-picker-results .tree-file-picker-item { padding-left: 10px; border-radius: 4px; border-bottom: none; margin-bottom: 1px; }
 
     /* Tree toolbar section */
     .tree-toolbar-section { display: none; align-items: center; gap: 6px; }
@@ -494,6 +644,7 @@ export class GraphWebviewProvider {
     <div class="view-toggle">
       <button id="btnViewGraph" class="active">Graph</button>
       <button id="btnViewTree">Tree</button>
+      <button id="btnViewLayers">Layers</button>
     </div>
     <input class="search-input" id="search" type="text" placeholder="Search files... (/)">
     <!-- Graph-only toolbar items -->
@@ -533,6 +684,17 @@ export class GraphWebviewProvider {
   </div>
   <div id="cy"></div>
   <div id="treeContainer"></div>
+  <div class="layers-panel" id="layersPanel" style="display:none;">
+    <div class="layers-panel-header">Architecture Layers</div>
+    <div class="layers-panel-body">
+      <div class="layers-input-row">
+        <input type="text" id="layerInput" placeholder="ui, service, data, util" spellcheck="false">
+        <button id="btnApplyLayers">Apply</button>
+      </div>
+      <div class="layers-hint">Define layers top-to-bottom, or leave empty for auto-depth.</div>
+      <div id="layersInfo"></div>
+    </div>
+  </div>
   <div class="loading" id="loading">
     <img src="${logoUri}" alt="Loading…" class="loading-logo">
     <div>Analyzing dependencies...</div>
@@ -553,6 +715,11 @@ export class GraphWebviewProvider {
     let contextNodeId = null;
     let colorMode = 'risk'; // 'risk', 'directory', or 'churn'
     let churnData = null;
+    let layersActive = false;
+    let userLayers = null;
+    let layerLabels = [];
+    let savedPositions = null; // stash graph positions before layers rearranges them
+    let baseStyles = []; // saved from renderGraph so layers can rebuild the full stylesheet
 
     const RISK_COLORS = ${JSON.stringify(_sharedConstants.risk_colors)};
 
@@ -703,75 +870,78 @@ export class GraphWebviewProvider {
 
       if (cy) { cy.destroy(); }
 
+      // Save base styles so layers view can rebuild the full stylesheet
+      baseStyles = [
+        {
+          selector: 'node',
+          style: {
+            'width': 'data(size)',
+            'height': 'data(size)',
+            'background-color': 'data(color)',
+            'label': 'data(id)',
+            'color': '#eee',
+            'text-outline-color': 'data(color)',
+            'text-outline-width': 2,
+            'font-size': '11px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-wrap': 'ellipsis',
+            'text-max-width': '120px',
+          },
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': (ele) => { const w = ele.data('weight') || 1; return 2 + w * 1.2; },
+            'line-color': (ele) => {
+              const w = ele.data('weight') || 1;
+              const t = (w - 1) / 4;
+              const r = Math.round(148 - t * 50);
+              const g = Math.round(163 - t * 55);
+              const b = Math.round(184 - t * 30);
+              return 'rgb(' + r + ',' + g + ',' + b + ')';
+            },
+            'target-arrow-color': (ele) => {
+              const w = ele.data('weight') || 1;
+              const t = (w - 1) / 4;
+              const r = Math.round(148 - t * 50);
+              const g = Math.round(163 - t * 55);
+              const b = Math.round(184 - t * 30);
+              return 'rgb(' + r + ',' + g + ',' + b + ')';
+            },
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'opacity': (ele) => { const w = ele.data('weight') || 1; return 0.4 + (w - 1) * 0.15; },
+          },
+        },
+        {
+          selector: 'edge.cycle',
+          style: {
+            'line-color': '#ef4444',
+            'target-arrow-color': '#ef4444',
+            'line-style': 'dashed',
+            'width': 3,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: '.dimmed',
+          style: { 'opacity': 0.15 },
+        },
+        {
+          selector: '.highlighted',
+          style: {
+            'opacity': 1,
+            'border-width': 3,
+            'border-color': '#6366f1',
+          },
+        },
+      ];
+
       cy = cytoscape({
         container: document.getElementById('cy'),
         elements: [...nodes, ...edges],
-        style: [
-          {
-            selector: 'node',
-            style: {
-              'width': 'data(size)',
-              'height': 'data(size)',
-              'background-color': 'data(color)',
-              'label': 'data(id)',
-              'color': '#eee',
-              'text-outline-color': 'data(color)',
-              'text-outline-width': 2,
-              'font-size': '11px',
-              'text-valign': 'center',
-              'text-halign': 'center',
-              'text-wrap': 'ellipsis',
-              'text-max-width': '120px',
-            },
-          },
-          {
-            selector: 'edge',
-            style: {
-              'width': (ele) => { const w = ele.data('weight') || 1; return 2 + w * 1.2; },
-              'line-color': (ele) => {
-                const w = ele.data('weight') || 1;
-                const t = (w - 1) / 4;
-                const r = Math.round(148 - t * 50);
-                const g = Math.round(163 - t * 55);
-                const b = Math.round(184 - t * 30);
-                return 'rgb(' + r + ',' + g + ',' + b + ')';
-              },
-              'target-arrow-color': (ele) => {
-                const w = ele.data('weight') || 1;
-                const t = (w - 1) / 4;
-                const r = Math.round(148 - t * 50);
-                const g = Math.round(163 - t * 55);
-                const b = Math.round(184 - t * 30);
-                return 'rgb(' + r + ',' + g + ',' + b + ')';
-              },
-              'target-arrow-shape': 'triangle',
-              'curve-style': 'bezier',
-              'opacity': (ele) => { const w = ele.data('weight') || 1; return 0.4 + (w - 1) * 0.15; },
-            },
-          },
-          {
-            selector: 'edge.cycle',
-            style: {
-              'line-color': '#ef4444',
-              'target-arrow-color': '#ef4444',
-              'line-style': 'dashed',
-              'width': 3,
-              'opacity': 1,
-            },
-          },
-          {
-            selector: '.dimmed',
-            style: { 'opacity': 0.15 },
-          },
-          {
-            selector: '.highlighted',
-            style: {
-              'opacity': 1,
-              'border-width': 3,
-              'border-color': '#6366f1',
-            },
-          },
-        ],
+        style: baseStyles,
         layout: getLayoutConfig(currentLayout),
         minZoom: 0.08,
         maxZoom: 4,
@@ -844,6 +1014,8 @@ export class GraphWebviewProvider {
           cy.elements().removeClass('dimmed highlighted');
         }
       });
+
+      // Layer labels now use RAF-based renderedBoundingBox() sync — no viewport listener needed.
     }
 
     /** Run dagre manually: compute positions with dagre lib, apply as preset layout */
@@ -1030,36 +1202,850 @@ export class GraphWebviewProvider {
     }
 
     function switchView(view) {
+      // Deactivate layers if leaving layers view
+      if (currentView === 'layers' && view !== 'layers') {
+        deactivateLayers();
+      }
       currentView = view;
       const cyEl = document.getElementById('cy');
       const treeEl = document.getElementById('treeContainer');
       const graphTb = document.getElementById('graphToolbar');
       const treeTb = document.getElementById('treeToolbar');
       const legendEl = document.getElementById('legend');
+      const layersPanel = document.getElementById('layersPanel');
 
       document.getElementById('btnViewGraph').classList.toggle('active', view === 'graph');
       document.getElementById('btnViewTree').classList.toggle('active', view === 'tree');
+      document.getElementById('btnViewLayers').classList.toggle('active', view === 'layers');
 
-      if (view === 'graph') {
-        cyEl.style.display = 'block';
-        treeEl.classList.remove('active');
-        graphTb.style.display = 'contents';
-        treeTb.classList.remove('active');
-        legendEl.style.display = 'flex';
-      } else {
+      if (view === 'tree') {
         cyEl.style.display = 'none';
         treeEl.classList.add('active');
         graphTb.style.display = 'none';
         treeTb.classList.add('active');
         legendEl.style.display = 'none';
+        layersPanel.style.display = 'none';
         renderTree();
+      } else if (view === 'layers') {
+        cyEl.style.display = 'block';
+        treeEl.classList.remove('active');
+        graphTb.style.display = 'none';
+        treeTb.classList.remove('active');
+        legendEl.style.display = 'none';
+        layersPanel.style.display = '';
+        activateLayers();
+      } else {
+        cyEl.style.display = 'block';
+        treeEl.classList.remove('active');
+        graphTb.style.display = 'contents';
+        treeTb.classList.remove('active');
+        legendEl.style.display = 'flex';
+        layersPanel.style.display = 'none';
       }
     }
 
     document.getElementById('btnViewGraph').addEventListener('click', () => switchView('graph'));
     document.getElementById('btnViewTree').addEventListener('click', () => switchView('tree'));
+    document.getElementById('btnViewLayers').addEventListener('click', () => switchView('layers'));
 
-    // Tree direction toggles
+    // ── Layers view logic ──────────────────────────────────────
+    const VIOLATION_COLOR = '#f59e0b';
+    const VIOLATION_GLOW  = '#fcd34d';
+    let violationPulseTimer = null;
+    let layerParentIds = [];
+    let labelRafId = null;
+    let layerOverrides = {};  // fileId → rank (per-file layer reassignments)
+    let dragStartRank = null;
+    let draggedNode = null;
+    let dragStartPos = null;
+    let dragBandSnapshot = null;
+
+    function dirOf(fp) {
+      const i = fp.lastIndexOf('/');
+      return i >= 0 ? fp.substring(0, i) : '.';
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function effectiveRank(nodeId) {
+      // 1. Per-file override (from drag simulation)
+      if (layerOverrides[nodeId] !== undefined) return layerOverrides[nodeId];
+      // 2. User-defined layer names
+      if (userLayers && userLayers.length > 0) {
+        const parts = nodeId.replace(/\\\\/g, '/').split('/');
+        for (const part of parts) {
+          const idx = userLayers.indexOf(part.toLowerCase());
+          if (idx !== -1) return idx;
+        }
+        return userLayers.length; // unmatched → bottom
+      }
+      // 3. Auto depth
+      const n = cy.getElementById(nodeId);
+      return n.length ? (n.data('depth') || 0) : 0;
+    }
+
+    function rankName(rank) {
+      if (userLayers && userLayers.length > 0) {
+        return rank < userLayers.length ? userLayers[rank] : 'other';
+      }
+      return 'L' + rank;
+    }
+
+    function computeLayerPositions() {
+      const nodes = cy.nodes().filter(n => !n.data('isLayerBand'));
+      if (nodes.length === 0) return {};
+      const nodeCount = nodes.length;
+
+      let nodeGap, groupGap, rowHeight, maxPerRow;
+      if (nodeCount <= 30)       { nodeGap=120; groupGap=90; rowHeight=220; maxPerRow=999; }
+      else if (nodeCount <= 80)  { nodeGap=85;  groupGap=65; rowHeight=185; maxPerRow=16;  }
+      else if (nodeCount <= 200) { nodeGap=60;  groupGap=45; rowHeight=150; maxPerRow=22;  }
+      else                       { nodeGap=40;  groupGap=28; rowHeight=110; maxPerRow=30;  }
+
+      const depthBuckets = {};
+      let maxDepth = 0;
+      nodes.forEach(n => {
+        const d = effectiveRank(n.id());
+        if (d > maxDepth) maxDepth = d;
+        if (!depthBuckets[d]) depthBuckets[d] = [];
+        depthBuckets[d].push(n);
+      });
+
+      // Sort by directory then alpha
+      for (let d = 0; d <= maxDepth; d++) {
+        (depthBuckets[d] || []).sort((a,b) => {
+          const da = dirOf(a.id()), db = dirOf(b.id());
+          if (da !== db) return da.localeCompare(db);
+          return a.id().localeCompare(b.id());
+        });
+      }
+
+      // Barycenter ordering
+      const adjBelow = {}, adjAbove = {};
+      cy.edges().forEach(e => {
+        const sId = e.source().id(), tId = e.target().id();
+        const sD = effectiveRank(sId), tD = effectiveRank(tId);
+        if (tD === sD + 1) {
+          (adjBelow[sId] = adjBelow[sId] || []).push(tId);
+          (adjAbove[tId] = adjAbove[tId] || []).push(sId);
+        } else if (sD === tD + 1) {
+          (adjBelow[tId] = adjBelow[tId] || []).push(sId);
+          (adjAbove[sId] = adjAbove[sId] || []).push(tId);
+        }
+      });
+      const orderIndex = {};
+      for (let d = 0; d <= maxDepth; d++)
+        (depthBuckets[d] || []).forEach((n,i) => { orderIndex[n.id()] = i; });
+
+      function bc(nodeId, adj) {
+        const nb = adj[nodeId];
+        if (!nb || !nb.length) return -1;
+        return nb.reduce((s,id) => s + (orderIndex[id]||0), 0) / nb.length;
+      }
+      function bcSort(bucket, adj) {
+        if (bucket.length <= 1) return;
+        bucket.sort((a,b) => {
+          const bca = bc(a.id(), adj), bcb = bc(b.id(), adj);
+          if (bca === -1 && bcb === -1) return dirOf(a.id()).localeCompare(dirOf(b.id())) || a.id().localeCompare(b.id());
+          if (bca === -1) return 1;
+          if (bcb === -1) return -1;
+          return bca - bcb;
+        });
+      }
+      for (let pass = 0; pass < Math.min(4, maxDepth+1); pass++) {
+        for (let d = 1; d <= maxDepth; d++) { bcSort(depthBuckets[d]||[], adjAbove); (depthBuckets[d]||[]).forEach((n,i) => { orderIndex[n.id()]=i; }); }
+        for (let d = maxDepth-1; d >= 0; d--) { bcSort(depthBuckets[d]||[], adjBelow); (depthBuckets[d]||[]).forEach((n,i) => { orderIndex[n.id()]=i; }); }
+      }
+
+      // Assign positions
+      const positions = {};
+      let yOffset = 100;
+      for (let d = 0; d <= maxDepth; d++) {
+        const bucket = depthBuckets[d] || [];
+        if (!bucket.length) { yOffset += rowHeight; continue; }
+        const rows = [];
+        for (let i = 0; i < bucket.length; i += maxPerRow) rows.push(bucket.slice(i, i + maxPerRow));
+        rows.forEach((row, ri) => {
+          const y = yOffset + ri * (rowHeight * 0.55);
+          let x = 0, prevDir = null;
+          row.forEach(n => {
+            const dir = dirOf(n.id());
+            if (prevDir !== null && dir !== prevDir) x += groupGap;
+            positions[n.id()] = { x, y };
+            x += nodeGap;
+            prevDir = dir;
+          });
+          const shift = (x - nodeGap) / 2;
+          row.forEach(n => { positions[n.id()].x -= shift; });
+        });
+        yOffset += rowHeight + (rows.length - 1) * (rowHeight * 0.55);
+      }
+      return positions;
+    }
+
+    // ── Mark violation edges ──
+    function markViolationEdges() {
+      if (!cy) return;
+      cy.edges().forEach(e => {
+        const srcRank = effectiveRank(e.source().id());
+        const tgtRank = effectiveRank(e.target().id());
+        if (srcRank > tgtRank) {
+          e.addClass('violation');
+          e.source().addClass('violation-endpoint');
+          e.target().addClass('violation-endpoint');
+        } else {
+          e.removeClass('violation');
+        }
+      });
+    }
+
+    // ── Violation pulse animation ──
+    function startViolationPulse() {
+      stopViolationPulse();
+      if (!cy) return;
+      let bright = true;
+      violationPulseTimer = setInterval(() => {
+        if (!layersActive || !cy) { stopViolationPulse(); return; }
+        const violations = cy.edges('.violation');
+        if (violations.length === 0) return;
+        violations.style({
+          'line-color': bright ? VIOLATION_GLOW : VIOLATION_COLOR,
+          'target-arrow-color': bright ? VIOLATION_GLOW : VIOLATION_COLOR,
+        });
+        bright = !bright;
+      }, 900);
+    }
+
+    function stopViolationPulse() {
+      if (violationPulseTimer) {
+        clearInterval(violationPulseTimer);
+        violationPulseTimer = null;
+      }
+    }
+
+    // ── Layer styles (scale-aware) ──
+    function layerStyles(nodeCount) {
+      const isLarge = nodeCount > 60;
+      const isHuge  = nodeCount > 150;
+      const nodeSize = isHuge ? 22 : (isLarge ? 38 : 50);
+      const dark = document.body.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.getAttribute('data-vscode-theme-kind') === 'vscode-dark';
+
+      return [
+        { selector: 'node', style: {
+          shape: 'round-rectangle', width: nodeSize, height: nodeSize,
+          'font-size': isHuge ? '7px' : (isLarge ? '10px' : '12px'),
+          'text-opacity': isHuge ? 0 : (isLarge ? 0.75 : 0.85),
+        }},
+        { selector: 'edge', style: {
+          opacity: isHuge ? 0.08 : (isLarge ? 0.12 : 0.2),
+          width: isHuge ? 0.8 : (isLarge ? 1.2 : 1.5),
+          'arrow-scale': isHuge ? 0.4 : (isLarge ? 0.5 : 0.6),
+        }},
+        { selector: 'edge.violation', style: {
+          'line-color': VIOLATION_COLOR, 'target-arrow-color': VIOLATION_COLOR,
+          'line-style': 'dashed', 'line-dash-pattern': [10, 5],
+          width: isLarge ? 1.5 : 2, opacity: 0.7,
+          'arrow-scale': isLarge ? 0.6 : 0.7, 'z-index': 999,
+        }},
+        { selector: 'node.violation-endpoint', style: {
+          'border-width': isLarge ? 2 : 2.5,
+          'border-color': VIOLATION_COLOR, 'border-style': 'solid',
+        }},
+        { selector: 'node[?isLayerBand]', style: {
+          'background-color': dark ? '#ffffff' : '#6366f1',
+          'background-opacity': 0.04,
+          'border-width': 1,
+          'border-color': dark ? 'rgba(255,255,255,0.08)' : 'rgba(99,102,241,0.12)',
+          'border-style': 'solid', 'border-opacity': 0.6,
+          shape: 'round-rectangle', padding: '40px',
+          label: '', 'text-opacity': 0, color: 'transparent',
+          'min-width': '100px', 'min-height': '40px', 'z-index': 0,
+          events: 'yes',
+        }},
+        { selector: 'node[?isLayerBand].layer-band-hover', style: {
+          'background-opacity': dark ? 0.12 : 0.10,
+          'border-width': 2, 'border-opacity': 1,
+        }},
+      ];
+    }
+
+    // ── Swim-lane background bands (Cytoscape compound parents) ──
+    function drawLayerBands(positions) {
+      clearLayerBands();
+      if (!cy) return;
+
+      const rankBuckets = {};
+      cy.nodes().forEach(n => {
+        if (n.data('isLayerBand')) return;
+        const rank = effectiveRank(n.id());
+        if (!rankBuckets[rank]) rankBuckets[rank] = [];
+        rankBuckets[rank].push(n.id());
+      });
+
+      const sortedRanks = Object.keys(rankBuckets).map(Number).sort((a,b) => a - b);
+
+      cy.batch(() => {
+        sortedRanks.forEach((rank, idx) => {
+          const parentId = '__layer_band_' + rank;
+          layerParentIds.push(parentId);
+
+          cy.add({
+            group: 'nodes',
+            data: {
+              id: parentId, isLayerBand: true, layerRank: rank,
+              bandColorIdx: idx % 2,
+              layerNodeCount: rankBuckets[rank].length,
+            },
+          });
+
+          rankBuckets[rank].forEach(nodeId => {
+            cy.getElementById(nodeId).move({ parent: parentId });
+          });
+        });
+      });
+
+      // Prevent band parents from being grabbed
+      cy.nodes('[?isLayerBand]').ungrabify().unselectify();
+
+      // Reapply positions (reparenting can shift them)
+      cy.batch(() => {
+        cy.nodes().forEach(n => {
+          const pos = positions[n.id()];
+          if (pos) n.position(pos);
+        });
+      });
+    }
+
+    function clearLayerBands() {
+      if (!cy) return;
+      if (layerParentIds.length > 0) {
+        cy.batch(() => {
+          layerParentIds.forEach(pid => {
+            const parent = cy.getElementById(pid);
+            if (parent.length) parent.children().move({ parent: null });
+          });
+          cy.remove(cy.nodes().filter(n => n.data('isLayerBand')));
+        });
+        layerParentIds = [];
+      }
+      cy.nodes('.violation-endpoint').removeClass('violation-endpoint');
+    }
+
+    // ── Swim-lane labels (DOM pills synced via RAF) ──
+    function drawLayerLabels(positions) {
+      clearLayerLabels();
+      if (!cy) return;
+
+      const container = cy.container ? cy.container() : document.getElementById('cy');
+      if (!container) return;
+
+      // Count violations per layer
+      const layerViolations = {};
+      cy.edges('.violation').forEach(e => {
+        const d = effectiveRank(e.source().id());
+        layerViolations[d] = (layerViolations[d] || 0) + 1;
+      });
+
+      // Create one DOM pill label per band
+      layerParentIds.forEach(pid => {
+        const bandNode = cy.getElementById(pid);
+        if (!bandNode || !bandNode.length) return;
+
+        const rank = bandNode.data('layerRank');
+        const count = bandNode.data('layerNodeCount') || 0;
+        const vCount = layerViolations[rank] || 0;
+        const name = rankName(rank);
+
+        const label = document.createElement('div');
+        label.className = 'layer-swim-label';
+        label.dataset.bandId = pid;
+
+        let html =
+          '<span class="layer-depth-num">' + escHtml(name) + '</span>' +
+          '<span class="layer-depth-count">' + count + ' file' + (count !== 1 ? 's' : '') + '</span>';
+        if (vCount > 0) {
+          html += '<span class="layer-violation-badge">' + vCount + '</span>';
+        }
+        label.innerHTML = html;
+        container.appendChild(label);
+        layerLabels.push(label);
+      });
+
+      // Stats bar
+      const violationCount = cy.edges('.violation').length;
+      const totalEdges = cy.edges().length;
+      const layerCount = layerParentIds.length;
+      const fileCount = cy.nodes('[!isLayerBand]').length;
+
+      let stats = document.getElementById('layerStatsBar');
+      if (!stats) {
+        stats = document.createElement('div');
+        stats.id = 'layerStatsBar';
+        container.appendChild(stats);
+      }
+
+      const pct = totalEdges > 0 ? ((violationCount / totalEdges) * 100).toFixed(1) : '0';
+      stats.innerHTML =
+        '<span class="layer-stat">' + layerCount + ' layers</span>' +
+        '<span class="layer-stat-sep">&middot;</span>' +
+        '<span class="layer-stat">' + fileCount + ' files</span>' +
+        '<span class="layer-stat-sep">&middot;</span>' +
+        '<span class="layer-stat ' + (violationCount > 0 ? 'layer-stat-warn' : '') + '">' +
+        violationCount + ' violation' + (violationCount !== 1 ? 's' : '') + ' (' + pct + '%)</span>';
+
+      // Initial sync + start rAF loop
+      syncLabelPositions();
+      startLabelLoop();
+    }
+
+    function syncLabelPositions() {
+      if (!cy || layerLabels.length === 0) return;
+      layerLabels.forEach(label => {
+        const bandNode = cy.getElementById(label.dataset.bandId);
+        if (!bandNode || !bandNode.length) { label.style.display = 'none'; return; }
+        const bb = bandNode.renderedBoundingBox();
+        label.style.display = '';
+        label.style.left = (bb.x1 + 10) + 'px';
+        label.style.top  = (bb.y1 + 8)  + 'px';
+      });
+    }
+
+    function labelLoop() {
+      syncLabelPositions();
+      labelRafId = requestAnimationFrame(labelLoop);
+    }
+
+    function startLabelLoop() {
+      stopLabelLoop();
+      labelRafId = requestAnimationFrame(labelLoop);
+    }
+
+    function stopLabelLoop() {
+      if (labelRafId !== null) {
+        cancelAnimationFrame(labelRafId);
+        labelRafId = null;
+      }
+    }
+
+    function clearLayerLabels() {
+      stopLabelLoop();
+      layerLabels.forEach(el => el.remove());
+      layerLabels = [];
+      const stats = document.getElementById('layerStatsBar');
+      if (stats) stats.remove();
+    }
+
+    // ── Activate / Deactivate ──
+    function activateLayers() {
+      if (!cy || !graphData) return;
+      layersActive = true;
+
+      // Save current positions so we can restore on deactivate
+      savedPositions = {};
+      cy.nodes().forEach(n => { savedPositions[n.id()] = { ...n.position() }; });
+
+      const nodeCount = cy.nodes().length;
+      const positions = computeLayerPositions();
+
+      // Mark violation edges
+      markViolationEdges();
+
+      // Apply full stylesheet: base styles + layer overrides
+      cy.style(baseStyles.concat(layerStyles(nodeCount)));
+
+      // Position nodes
+      cy.batch(() => {
+        cy.nodes().forEach(n => {
+          const pos = positions[n.id()];
+          if (pos) n.position(pos);
+        });
+      });
+      cy.fit(60);
+
+      // Draw swim-lane bands, labels, stats
+      drawLayerBands(positions);
+      drawLayerLabels(positions);
+
+      // Violation pulse
+      startViolationPulse();
+
+      // Populate sidebar info panel
+      populateLayersInfo();
+
+      // Install drag-to-reassign handlers
+      installLayerDragHandlers();
+    }
+
+    function deactivateLayers() {
+      layersActive = false;
+      userLayers = null;
+      layerOverrides = {};
+      stopViolationPulse();
+      removeLayerDragHandlers();
+
+      if (cy) {
+        cy.edges('.violation').removeClass('violation');
+        cy.nodes('.violation-endpoint').removeClass('violation-endpoint');
+
+        // Clear bands before restoring positions
+        clearLayerBands();
+
+        // Restore positions
+        if (savedPositions) {
+          cy.batch(() => {
+            cy.nodes().forEach(n => {
+              const pos = savedPositions[n.id()];
+              if (pos) n.position(pos);
+            });
+          });
+          savedPositions = null;
+        }
+        // Restore original styles
+        cy.style(baseStyles);
+        applyColorMode();
+      }
+      clearLayerLabels();
+      document.getElementById('layersInfo').innerHTML = '';
+    }
+
+    // ── Sidebar info panel (grouped violations, worst offenders, breakdown) ──
+    function populateLayersInfo() {
+      const info = document.getElementById('layersInfo');
+      if (!info || !cy) return;
+
+      // Gather violations
+      const violations = [];
+      cy.edges('.violation').forEach(e => {
+        const srcRank = effectiveRank(e.source().id());
+        const tgtRank = effectiveRank(e.target().id());
+        violations.push({
+          source: e.source().id(), target: e.target().id(),
+          srcRank: srcRank, tgtRank: tgtRank,
+          srcName: rankName(srcRank), tgtName: rankName(tgtRank),
+        });
+      });
+
+      // Group by source
+      const bySource = {};
+      violations.forEach(v => {
+        if (!bySource[v.source]) bySource[v.source] = [];
+        bySource[v.source].push(v);
+      });
+
+      // Count per file (as source or target)
+      const fileCounts = {};
+      violations.forEach(v => {
+        fileCounts[v.source] = (fileCounts[v.source] || 0) + 1;
+        fileCounts[v.target] = (fileCounts[v.target] || 0) + 1;
+      });
+
+      // Layer breakdown
+      const layerInfo = {};
+      cy.nodes().forEach(n => {
+        if (n.data('isLayerBand')) return;
+        const d = effectiveRank(n.id());
+        const dir = dirOf(n.id());
+        if (!layerInfo[d]) layerInfo[d] = { count: 0, dirs: {} };
+        layerInfo[d].count++;
+        layerInfo[d].dirs[dir] = (layerInfo[d].dirs[dir] || 0) + 1;
+      });
+
+      let html = '';
+
+      // ---- Per-file overrides bar ----
+      const overrideCount = Object.keys(layerOverrides).length;
+      if (overrideCount > 0) {
+        html += '<div class="layer-overrides-bar">' +
+          '<span>' + overrideCount + ' file' + (overrideCount > 1 ? 's' : '') + ' reassigned</span>' +
+          '<button id="btnResetOverrides">Reset all</button>' +
+          '</div>';
+      } else {
+        html += '<div class="layers-hint" style="opacity:0.55;">Drag a node to another layer to simulate reassignment.</div>';
+      }
+
+      // ---- Violations section ----
+      html += '<div class="panel-section-header">Violations <span class="count-badge' +
+        (violations.length > 0 ? ' count-badge-warn' : '') + '">' + violations.length + '</span></div>';
+
+      if (violations.length === 0) {
+        html += '<div style="color:#22c55e;padding:4px 0;font-size:11px;">No upward violations detected. Clean architecture!</div>';
+      } else {
+        html += '<div class="layers-hint">Imports pointing upward (deeper file -> shallower layer).</div>';
+
+        // Worst offenders
+        const offenders = Object.entries(fileCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 8);
+
+        html += '<div class="panel-section-header" style="margin-top:0.5rem;">Worst Offenders</div>';
+        offenders.forEach(function(entry) {
+          const file = entry[0], count = entry[1];
+          const short = file.length > 30 ? '...' + file.slice(-28) : file;
+          html += '<div class="metric-row clickable" data-zoom="' + escHtml(file) + '" title="' + escHtml(file) + '">' +
+            '<span class="metric-label">' + escHtml(short) + '</span>' +
+            '<span class="badge badge-warn">' + count + '</span>' +
+            '</div>';
+        });
+
+        // All violations grouped by source
+        html += '<div class="panel-section-header" style="margin-top:0.5rem;">All Violations</div>';
+        const sourceFiles = Object.keys(bySource).sort((a, b) =>
+          bySource[b].length - bySource[a].length
+        );
+
+        sourceFiles.forEach(src => {
+          const items = bySource[src];
+          const shortSrc = src.length > 26 ? '...' + src.slice(-24) : src;
+          html += '<div class="layers-violation-group">';
+          html += '<div class="layers-violation-src" data-zoom="' + escHtml(src) + '" title="' + escHtml(src) + '">' +
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>' +
+            '<span>' + escHtml(shortSrc) + '</span>' +
+            '<span class="badge badge-warn">' + items.length + '</span>' +
+            '</div>';
+
+          items.forEach(v => {
+            const shortTgt = v.target.length > 24 ? '...' + v.target.slice(-22) : v.target;
+            html += '<div class="layers-violation-edge" data-zoom="' + escHtml(v.target) + '" title="' + escHtml(v.target) + '">' +
+              '-> ' + escHtml(shortTgt) +
+              ' <span style="opacity:0.5;font-size:0.6rem;">' + escHtml(v.srcName) + ' -> ' + escHtml(v.tgtName) + '</span>' +
+              '</div>';
+          });
+          html += '</div>';
+        });
+      }
+
+      // ---- Layer breakdown ----
+      html += '<div class="panel-section-header" style="margin-top:0.6rem;">Layer Breakdown</div>';
+      const depths = Object.keys(layerInfo).map(Number).sort((a, b) => a - b);
+      depths.forEach(d => {
+        const linfo = layerInfo[d];
+        const dirs = Object.entries(linfo.dirs).sort((a, b) => b[1] - a[1]);
+        const topDirs = dirs.slice(0, 3).map(function(entry) {
+          const dir = entry[0], c = entry[1];
+          const short = dir === '.' ? '(root)' : (dir.length > 15 ? '...' + dir.slice(-13) : dir);
+          return short + (c > 1 ? ' (' + c + ')' : '');
+        }).join(', ');
+        const extra = dirs.length > 3 ? ' +' + (dirs.length - 3) + ' more' : '';
+
+        html += '<div class="metric-row">' +
+          '<span class="metric-label"><strong>' + escHtml(rankName(d)) + '</strong> &nbsp;' + escHtml(topDirs) + extra + '</span>' +
+          '<span class="metric-value">' + linfo.count + '</span>' +
+          '</div>';
+      });
+
+      info.innerHTML = html;
+
+      // Click-to-zoom handlers
+      info.querySelectorAll('[data-zoom]').forEach(el => {
+        el.addEventListener('click', () => {
+          const fileId = el.getAttribute('data-zoom');
+          const node = cy.getElementById(fileId);
+          if (node && node.length) {
+            cy.animate({ center: { eles: node }, zoom: Math.max(cy.zoom(), 1.5) }, { duration: 400 });
+            node.style({ 'border-width': 5, 'border-color': '#facc15', 'border-style': 'solid' });
+            setTimeout(() => {
+              if (layersActive) {
+                const isEp = node.hasClass('violation-endpoint');
+                node.style({
+                  'border-width': isEp ? 3 : 0,
+                  'border-color': isEp ? VIOLATION_COLOR : 'transparent',
+                });
+              } else {
+                node.style({ 'border-width': 0, 'border-color': 'transparent' });
+              }
+            }, 1500);
+          }
+        });
+      });
+
+      // Reset all overrides button
+      const resetBtn = document.getElementById('btnResetOverrides');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+          layerOverrides = {};
+          refreshLayers();
+        });
+      }
+    }
+
+    // ── Drag-to-reassign layer simulation ──
+    function getLayerBandRanges() {
+      if (!cy) return [];
+      const ranges = [];
+      cy.nodes('[?isLayerBand]').forEach(parent => {
+        const rank = parent.data('layerRank');
+        const bb = parent.boundingBox();
+        if (bb && !isNaN(bb.y1) && !isNaN(bb.y2)) {
+          ranges.push({ rank: rank, minY: bb.y1, maxY: bb.y2 });
+        }
+      });
+      return ranges.sort((a, b) => a.minY - b.minY);
+    }
+
+    function rankAtYFromSnapshot(modelY) {
+      const ranges = dragBandSnapshot || getLayerBandRanges();
+      if (!ranges || ranges.length === 0) return null;
+      // Exact hit
+      for (const r of ranges) {
+        if (modelY >= r.minY && modelY <= r.maxY) return r.rank;
+      }
+      // Nearest band
+      let best = null, bestDist = Infinity;
+      for (const r of ranges) {
+        const mid = (r.minY + r.maxY) / 2;
+        const dist = Math.abs(modelY - mid);
+        if (dist < bestDist) { bestDist = dist; best = r.rank; }
+      }
+      return best;
+    }
+
+    function refreshLayers() {
+      if (!layersActive || !cy) return;
+      cy.edges('.violation').removeClass('violation');
+      cy.nodes('.violation-endpoint').removeClass('violation-endpoint');
+      clearLayerLabels();
+      clearLayerBands();
+      stopViolationPulse();
+
+      const nodeCount = cy.nodes().length;
+      const positions = computeLayerPositions();
+      if (!positions || Object.keys(positions).length === 0) return;
+
+      markViolationEdges();
+      cy.style(baseStyles.concat(layerStyles(nodeCount)));
+
+      cy.batch(() => {
+        cy.nodes().forEach(n => {
+          const pos = positions[n.id()];
+          if (pos) n.position(pos);
+        });
+      });
+      cy.fit(60);
+
+      drawLayerBands(positions);
+      drawLayerLabels(positions);
+      startViolationPulse();
+      populateLayersInfo();
+    }
+
+    function onLayerDragStart(e) {
+      if (!layersActive) return;
+      if (e.target.data('isLayerBand')) return;
+      draggedNode = e.target;
+      dragStartRank = effectiveRank(e.target.id());
+      dragStartPos = { x: e.target.position('x'), y: e.target.position('y') };
+      dragBandSnapshot = getLayerBandRanges();
+    }
+
+    function onLayerDragging(e) {
+      if (!layersActive || !draggedNode) return;
+      const modelY = draggedNode.position('y');
+      const targetRank = rankAtYFromSnapshot(modelY);
+      if (cy) cy.nodes('[?isLayerBand]').forEach(b => {
+        const bandRank = b.data('layerRank');
+        if (bandRank === targetRank && targetRank !== dragStartRank) {
+          b.addClass('layer-band-hover');
+        } else {
+          b.removeClass('layer-band-hover');
+        }
+      });
+    }
+
+    function onLayerDragFree(e) {
+      if (!layersActive || !cy) return;
+      const node = e.target;
+      if (node.data('isLayerBand')) return;
+      const dropY = node.position('y');
+      const targetRank = rankAtYFromSnapshot(dropY);
+
+      if (cy) cy.nodes('[?isLayerBand]').removeClass('layer-band-hover');
+      draggedNode = null;
+      dragBandSnapshot = null;
+
+      // If barely moved (just a click), snap back
+      if (dragStartPos) {
+        const dx = Math.abs(node.position('x') - dragStartPos.x);
+        const dy = Math.abs(node.position('y') - dragStartPos.y);
+        if (dx < 5 && dy < 5) { node.position(dragStartPos); refreshLayers(); return; }
+      }
+
+      if (targetRank === null || targetRank === dragStartRank) {
+        refreshLayers(); return;
+      }
+
+      // Assign to new layer
+      layerOverrides[node.id()] = targetRank;
+      refreshLayers();
+    }
+
+    function installLayerDragHandlers() {
+      if (!cy) return;
+      removeLayerDragHandlers();
+      cy.on('grab', 'node', onLayerDragStart);
+      cy.on('drag', 'node', onLayerDragging);
+      cy.on('free', 'node', onLayerDragFree);
+    }
+
+    function removeLayerDragHandlers() {
+      if (cy) {
+        cy.off('grab', 'node', onLayerDragStart);
+        cy.off('drag', 'node', onLayerDragging);
+        cy.off('free', 'node', onLayerDragFree);
+      }
+      draggedNode = null;
+      dragStartRank = null;
+      dragBandSnapshot = null;
+      if (cy) cy.nodes('[?isLayerBand]').removeClass('layer-band-hover');
+    }
+
+    // Apply layers button
+    document.getElementById('btnApplyLayers').addEventListener('click', () => {
+      const raw = document.getElementById('layerInput').value.trim();
+      const newLayers = raw ? raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : null;
+      if (layersActive) {
+        // Clean up current layers state without wiping userLayers
+        stopViolationPulse();
+        removeLayerDragHandlers();
+        if (cy) {
+          cy.edges('.violation').removeClass('violation');
+          cy.nodes('.violation-endpoint').removeClass('violation-endpoint');
+          clearLayerBands();
+        }
+        clearLayerLabels();
+        layerOverrides = {};
+
+        // Set the new layers and re-activate
+        userLayers = newLayers;
+        const nodeCount = cy.nodes().length;
+        const positions = computeLayerPositions();
+        if (!positions || Object.keys(positions).length === 0) return;
+        markViolationEdges();
+        cy.style(baseStyles.concat(layerStyles(nodeCount)));
+        cy.batch(() => {
+          cy.nodes().forEach(n => {
+            const pos = positions[n.id()];
+            if (pos) n.position(pos);
+          });
+        });
+        cy.fit(60);
+        drawLayerBands(positions);
+        drawLayerLabels(positions);
+        startViolationPulse();
+        populateLayersInfo();
+        installLayerDragHandlers();
+      } else {
+        userLayers = newLayers;
+      }
+    });
+    document.getElementById('layerInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btnApplyLayers').click();
+    });
+
+    // ── Tree direction toggles ───────────────────────────────────
     document.getElementById('btnTreeDown').addEventListener('click', () => {
       treeDirection = 'downstream';
       document.getElementById('btnTreeDown').classList.add('active');
@@ -1140,6 +2126,44 @@ export class GraphWebviewProvider {
         }
       }
       return wrap;
+    }
+
+    function createPickerFileItem(n) {
+      const item = document.createElement('div');
+      item.className = 'tree-file-picker-item';
+      const id = n.data.id;
+
+      // File type badge
+      const ext = getFileExt(id);
+      const iconInfo = FILE_TYPE_ICONS[ext];
+      const badge = document.createElement('span');
+      badge.className = 'tree-picker-item-badge';
+      if (iconInfo) {
+        badge.textContent = iconInfo.label;
+        badge.style.background = iconInfo.bg;
+        if (iconInfo.color) badge.style.color = iconInfo.color;
+      } else {
+        badge.textContent = ext.substring(0, 2).toUpperCase() || '?';
+        badge.style.background = '#6b7280';
+      }
+      item.appendChild(badge);
+
+      // File name (just base name)
+      const baseName = id.includes('/') ? id.split('/').pop() : id;
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'tree-picker-item-name';
+      nameSpan.textContent = baseName;
+      item.appendChild(nameSpan);
+
+      // Full path as muted suffix
+      const pathSpan = document.createElement('span');
+      pathSpan.className = 'tree-picker-item-path';
+      pathSpan.textContent = id;
+      item.appendChild(pathSpan);
+
+      item.title = id;
+      item.addEventListener('click', () => { treeRootNode = id; renderTree(); });
+      return item;
     }
 
     function renderTreeNode(node, depth) {
@@ -1358,24 +2382,143 @@ export class GraphWebviewProvider {
         if (backBtn) backBtn.style.display = 'none';
       }
 
-      // No root — show file picker
+      // No root — show searchable, folder-grouped file picker
       if (!treeRootNode) {
-        const empty = document.createElement('div');
-        empty.className = 'tree-empty';
-        empty.innerHTML = '<div class="tree-empty-title">Select a root file</div>' +
-          '<div class="tree-empty-desc">Click a file below, or switch to Graph view and click a node.</div>';
-        container.appendChild(empty);
+        const prompt = document.createElement('div');
+        prompt.className = 'tree-empty';
+        prompt.innerHTML = '<div class="tree-empty-title">Select a root file</div>' +
+          '<div class="tree-empty-desc">Type to search, or browse by folder below.</div>';
+        container.appendChild(prompt);
 
-        const picker = document.createElement('div');
-        picker.className = 'tree-file-picker';
-        graphData.nodes.slice().sort((a,b) => a.data.id.localeCompare(b.data.id)).forEach(n => {
-          const item = document.createElement('div');
-          item.className = 'tree-file-picker-item';
-          item.textContent = n.data.id;
-          item.addEventListener('click', () => { treeRootNode = n.data.id; renderTree(); });
-          picker.appendChild(item);
+        // Search input
+        const searchWrap = document.createElement('div');
+        searchWrap.className = 'tree-picker-search-wrap';
+        const searchIcon = document.createElement('span');
+        searchIcon.className = 'tree-picker-search-icon';
+        searchIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
+        searchWrap.appendChild(searchIcon);
+        const searchInput = document.createElement('input');
+        searchInput.className = 'tree-picker-search';
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search files\u2026';
+        searchInput.setAttribute('autocomplete', 'off');
+        searchInput.setAttribute('spellcheck', 'false');
+        searchWrap.appendChild(searchInput);
+        container.appendChild(searchWrap);
+
+        // Sort all nodes
+        const sorted = graphData.nodes.slice().sort((a, b) => a.data.id.localeCompare(b.data.id));
+
+        // Group by folder
+        const folders = {};
+        sorted.forEach(n => {
+          const id = n.data.id;
+          const lastSlash = id.lastIndexOf('/');
+          const folder = lastSlash >= 0 ? id.substring(0, lastSlash) : '.';
+          if (!folders[folder]) folders[folder] = [];
+          folders[folder].push(n);
         });
-        container.appendChild(picker);
+        const folderNames = Object.keys(folders).sort();
+
+        // Build the grouped picker
+        const pickerList = document.createElement('div');
+        pickerList.className = 'tree-file-picker';
+
+        // Flat results area (shown during search)
+        const searchResults = document.createElement('div');
+        searchResults.className = 'tree-picker-results';
+        searchResults.style.display = 'none';
+        pickerList.appendChild(searchResults);
+
+        // Folder groups area (shown when not searching)
+        const foldersArea = document.createElement('div');
+        foldersArea.className = 'tree-picker-folders';
+
+        folderNames.forEach(folderName => {
+          const group = document.createElement('div');
+          group.className = 'tree-picker-folder-group';
+
+          const header = document.createElement('div');
+          header.className = 'tree-picker-folder-header';
+          const arrow = document.createElement('span');
+          arrow.className = 'tree-picker-folder-arrow';
+          arrow.textContent = '\u25B6';
+          header.appendChild(arrow);
+          const folderIcon = document.createElement('span');
+          folderIcon.className = 'tree-picker-folder-icon';
+          folderIcon.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>';
+          header.appendChild(folderIcon);
+          const folderLabel = document.createElement('span');
+          folderLabel.className = 'tree-picker-folder-name';
+          folderLabel.textContent = folderName;
+          header.appendChild(folderLabel);
+          const countBadge = document.createElement('span');
+          countBadge.className = 'tree-picker-folder-count';
+          countBadge.textContent = String(folders[folderName].length);
+          header.appendChild(countBadge);
+
+          const fileListInner = document.createElement('div');
+          fileListInner.className = 'tree-picker-folder-files';
+          fileListInner.style.display = 'none';
+
+          folders[folderName].forEach(n => {
+            const item = createPickerFileItem(n);
+            fileListInner.appendChild(item);
+          });
+
+          header.addEventListener('click', () => {
+            const isOpen = fileListInner.style.display !== 'none';
+            fileListInner.style.display = isOpen ? 'none' : '';
+            arrow.textContent = isOpen ? '\u25B6' : '\u25BC';
+            group.classList.toggle('tree-picker-folder-open', !isOpen);
+          });
+
+          group.appendChild(header);
+          group.appendChild(fileListInner);
+          foldersArea.appendChild(group);
+        });
+
+        pickerList.appendChild(foldersArea);
+        container.appendChild(pickerList);
+
+        // If only one folder, auto-expand it
+        if (folderNames.length === 1) {
+          const singleHeader = foldersArea.querySelector('.tree-picker-folder-header');
+          if (singleHeader) singleHeader.click();
+        }
+
+        // Search behavior
+        searchInput.oninput = () => {
+          const q = searchInput.value.toLowerCase().trim();
+          if (!q) {
+            searchResults.style.display = 'none';
+            searchResults.innerHTML = '';
+            foldersArea.style.display = '';
+            return;
+          }
+          foldersArea.style.display = 'none';
+          searchResults.style.display = '';
+          searchResults.innerHTML = '';
+          let count = 0;
+          sorted.forEach(n => {
+            if (count >= 30) return;
+            if (n.data.id.toLowerCase().includes(q)) {
+              const item = createPickerFileItem(n);
+              searchResults.appendChild(item);
+              count++;
+            }
+          });
+          if (count === 0) {
+            const noMatch = document.createElement('div');
+            noMatch.className = 'tree-picker-no-match';
+            noMatch.textContent = 'No files match "' + searchInput.value + '"';
+            searchResults.appendChild(noMatch);
+          }
+        };
+
+        // Auto-focus the search input
+        requestAnimationFrame(() => { searchInput.focus(); });
+
         return;
       }
 

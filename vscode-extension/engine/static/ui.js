@@ -19,10 +19,7 @@ function toggleTheme() {
     document.documentElement.setAttribute('data-theme', n);
     localStorage.setItem('theme', n);
     applyThemeIcon(n);
-    // Refresh compound styles for theme-aware colors
-    if (_compound && _compound.active && typeof cy !== 'undefined' && cy) {
-        cy.style(_compoundStyles());
-    }
+    // (compound style refresh removed — directory graph view disabled)
 }
 
 window.addEventListener('DOMContentLoaded', () => applyThemeIcon(document.documentElement.getAttribute('data-theme')));
