@@ -2,6 +2,8 @@
 
 DepGraph is a lightweight tool for exploring source file dependencies as an interactive graph. It scans source trees or uploaded archives, builds a dependency graph, highlights circular dependencies, and provides deep analysis tools — in a browser UI, from the command line, or directly inside VS Code.
 
+The link to the online webapp is https://dep-graph.onrender.com
+
 ## Supported Languages
 
 - **C / C++** — `#include` directives (`.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hxx`)
