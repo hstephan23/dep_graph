@@ -375,3 +375,6 @@ This runs 57 tests covering the query parser, depth warning computation, project
 - Haskell `import Module.Name` resolves module paths to filesystem paths (e.g. `Models.User` → `Models/User.hs`), probing `src/` and `lib/` prefixes. Standard library modules (Data.*, Control.*, System.*, etc.) are classified as external.
 - R `source("file.R")` resolves file paths relative to the source file. `library()` and `require()` calls are treated as external package imports. Base R and common CRAN packages are classified as external.
 - The frontend depends on Cytoscape.js, cytoscape-dagre, and Prism.js from CDNs.
+
+
+## TODO's:
