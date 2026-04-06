@@ -52,6 +52,7 @@ function fisheyeToggle() {
         // Store original node sizes
         _fisheye.restoreData = {};
         cy.nodes().forEach(n => {
+            if (n.data('isLayerBand')) return; // skip layer band parent nodes
             _fisheye.restoreData[n.id()] = {
                 width: n.style('width'),
                 height: n.style('height'),

@@ -25,6 +25,12 @@ const Tour = (() => {
             placement: 'bottom-start',
         },
         {
+            target: '.btn-insights',
+            label: 'Insights',
+            desc: 'Get a high-level health report for your project — complexity scores, coupling hotspots, risk distribution, and actionable recommendations at a glance.',
+            placement: 'bottom',
+        },
+        {
             target: '.btn[onclick*="toggleQueryTerminal"]',
             label: 'Query Terminal',
             desc: 'Write powerful queries like \u201Cfiles where inbound > 3\u201D or \u201Cfiles in cycles\u201D to filter and highlight matching nodes.',
@@ -52,6 +58,12 @@ const Tour = (() => {
             target: '#themeToggle',
             label: 'Theme',
             desc: 'Toggle light and dark mode. Your preference is saved automatically.',
+            placement: 'bottom-end',
+        },
+        {
+            target: '.btn-timeline',
+            label: 'Timeline',
+            desc: 'Replay how your dependency graph grew over time. Each frame adds one file in the order it was first imported, so you can see how complexity evolved.',
             placement: 'bottom-end',
         },
 
@@ -188,7 +200,12 @@ const Tour = (() => {
                 <div class="tour-tooltip-label"></div>
                 <div class="tour-tooltip-desc"></div>
                 <div class="tour-tooltip-footer">
-                    <div class="tour-dots"></div>
+                    <div class="tour-progress-row">
+                        <div class="tour-progress-track">
+                            <div class="tour-progress-fill"></div>
+                        </div>
+                        <span class="tour-progress-label"></span>
+                    </div>
                     <div class="tour-tooltip-nav">
                         <button class="tour-btn tour-btn-back">Back</button>
                         <button class="tour-btn tour-btn-next tour-btn-primary">Next</button>
@@ -208,15 +225,7 @@ const Tour = (() => {
             close();
         });
 
-        // Build dots
-        const dotsWrap = overlayEl.querySelector('.tour-dots');
-        steps.forEach((_, i) => {
-            const dot = document.createElement('button');
-            dot.className = 'tour-dot';
-            dot.setAttribute('aria-label', `Step ${i + 1}`);
-            dot.addEventListener('click', () => goTo(i));
-            dotsWrap.appendChild(dot);
-        });
+        // (progress bar is non-interactive — navigation via buttons + arrow keys)
 
         document.body.appendChild(overlayEl);
     }
@@ -239,7 +248,6 @@ const Tour = (() => {
         const target = document.querySelector(step.target);
 
         // Update text
-        overlayEl.querySelector('.tour-tooltip-step').textContent = `${current + 1} of ${steps.length}`;
         overlayEl.querySelector('.tour-tooltip-label').textContent = step.label;
         overlayEl.querySelector('.tour-tooltip-desc').textContent = step.desc;
 
@@ -249,11 +257,14 @@ const Tour = (() => {
         backBtn.style.visibility = current === 0 ? 'hidden' : 'visible';
         nextBtn.textContent = current === steps.length - 1 ? 'Done' : 'Next';
 
-        // Update dots
-        overlayEl.querySelectorAll('.tour-dot').forEach((d, i) => {
-            d.classList.toggle('active', i === current);
-            d.classList.toggle('visited', i < current);
-        });
+        // Update progress bar
+        const fill = overlayEl.querySelector('.tour-progress-fill');
+        const progLabel = overlayEl.querySelector('.tour-progress-label');
+        if (fill) {
+            const pct = steps.length > 1 ? (current / (steps.length - 1)) * 100 : 100;
+            fill.style.width = pct + '%';
+        }
+        if (progLabel) progLabel.textContent = (current + 1) + ' / ' + steps.length;
 
         // Position spotlight
         const spotlight = overlayEl.querySelector('.tour-spotlight');

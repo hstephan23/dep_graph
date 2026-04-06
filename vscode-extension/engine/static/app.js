@@ -348,10 +348,7 @@ function renderGraph(data) {
 
     if (cy) cy.destroy();
 
-    // --- Always start in flat files view (no auto-collapse) ---
-    _compound.active = false;
-    _compound.raw = null;
-    _compound.collapsed = new Set();
+    // (compound directory view removed — always flat files mode)
 
     // If churn data came bundled (GitHub clone), use it directly; otherwise reset
     if (data.churn && data.churn.files) {
@@ -396,16 +393,11 @@ function renderGraph(data) {
     // Attach minimap listeners
     attachMinimapListeners();
 
-    // Show/hide the scope toggle and sync radio state
-    pdUpdateToggle();
-    const pdRadio = document.getElementById(_compound.active ? 'pdViewDirs' : 'pdViewFiles');
-    if (pdRadio) pdRadio.checked = true;
-
     // Show graph status bar, path hint, and color legend
     if (data.nodes && data.nodes.length) {
         document.getElementById('graphStatusBar').style.display = 'flex';
         document.getElementById('pathHint').style.display = 'block';
-        if (!_compound.active) buildColorKey(data.nodes);
+        buildColorKey(data.nodes);
         updatePathDatalist();
     }
 
