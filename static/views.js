@@ -176,6 +176,45 @@ function _treeRiskSummary(childNodes) {
     return wrap;
 }
 
+// Helper: create a file item for the tree root picker
+function _createPickerFileItem(n) {
+    var item = document.createElement('div');
+    item.className = 'tree-file-picker-item';
+    var id = n.data.id;
+
+    // File type badge
+    var ext = _treeGetFileExt(id);
+    var iconInfo = _treeFileTypeIcons[ext];
+    var badge = document.createElement('span');
+    badge.className = 'tree-picker-item-badge';
+    if (iconInfo) {
+        badge.textContent = iconInfo.label;
+        badge.style.background = iconInfo.bg;
+        if (iconInfo.color) badge.style.color = iconInfo.color;
+    } else {
+        badge.textContent = ext.substring(0, 2).toUpperCase() || '?';
+        badge.style.background = '#6b7280';
+    }
+    item.appendChild(badge);
+
+    // File name (just base name)
+    var baseName = id.includes('/') ? id.split('/').pop() : id;
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'tree-picker-item-name';
+    nameSpan.textContent = baseName;
+    item.appendChild(nameSpan);
+
+    // Full path as muted suffix
+    var pathSpan = document.createElement('span');
+    pathSpan.className = 'tree-picker-item-path';
+    pathSpan.textContent = id;
+    item.appendChild(pathSpan);
+
+    item.title = id;
+    item.onclick = function() { _treeRootNode = id; renderTree(); };
+    return item;
+}
+
 // Helpers called from the static tree toolbar in index.html
 function treeSetDirection(dir) {
     _treeDirection = dir;
@@ -254,29 +293,146 @@ function renderTree(rootNodeId) {
     // Show the back button only when a root is selected
     if (treeBackBtn) treeBackBtn.style.display = _treeRootNode ? '' : 'none';
 
-    // No root selected — show prompt
+    // No root selected — show prompt with searchable, folder-grouped picker
     if (!_treeRootNode) {
         var prompt = document.createElement('div');
         prompt.className = 'tree-empty';
         prompt.innerHTML = '<div class="tree-empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="12" y1="14" x2="6" y2="20"/><line x1="12" y1="14" x2="18" y2="20"/></svg></div>' +
             '<div class="tree-empty-title">Select a root file</div>' +
-            '<div class="tree-empty-desc">Switch to Graph view and click a node, then come back to Tree view to see its dependency tree.</div>';
+            '<div class="tree-empty-desc">Type to search, or browse by folder below.</div>';
         container.appendChild(prompt);
 
-        // Also show a clickable file list for convenience
-        var fileList = document.createElement('div');
-        fileList.className = 'tree-file-picker';
+        // Search input
+        var searchWrap = document.createElement('div');
+        searchWrap.className = 'tree-picker-search-wrap';
+        var searchIcon = document.createElement('span');
+        searchIcon.className = 'tree-picker-search-icon';
+        searchIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
+        searchWrap.appendChild(searchIcon);
+        var searchInput = document.createElement('input');
+        searchInput.className = 'tree-picker-search';
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search files…';
+        searchInput.setAttribute('autocomplete', 'off');
+        searchInput.setAttribute('spellcheck', 'false');
+        searchWrap.appendChild(searchInput);
+        container.appendChild(searchWrap);
+
+        // Sort all nodes
         var sorted = currentGraphData.nodes.slice().sort(function(a, b) {
             return a.data.id.localeCompare(b.data.id);
         });
+
+        // Group by folder
+        var folders = {};
         sorted.forEach(function(n) {
-            var item = document.createElement('div');
-            item.className = 'tree-file-picker-item';
-            item.textContent = n.data.id;
-            item.onclick = function() { _treeRootNode = n.data.id; renderTree(); };
-            fileList.appendChild(item);
+            var id = n.data.id;
+            var lastSlash = id.lastIndexOf('/');
+            var folder = lastSlash >= 0 ? id.substring(0, lastSlash) : '.';
+            if (!folders[folder]) folders[folder] = [];
+            folders[folder].push(n);
         });
-        container.appendChild(fileList);
+        var folderNames = Object.keys(folders).sort();
+
+        // Build the grouped picker
+        var pickerList = document.createElement('div');
+        pickerList.className = 'tree-file-picker';
+
+        // Flat results area (shown during search)
+        var searchResults = document.createElement('div');
+        searchResults.className = 'tree-picker-results';
+        searchResults.style.display = 'none';
+        pickerList.appendChild(searchResults);
+
+        // Folder groups area (shown when not searching)
+        var foldersArea = document.createElement('div');
+        foldersArea.className = 'tree-picker-folders';
+
+        folderNames.forEach(function(folderName) {
+            var group = document.createElement('div');
+            group.className = 'tree-picker-folder-group';
+
+            var header = document.createElement('div');
+            header.className = 'tree-picker-folder-header';
+            var arrow = document.createElement('span');
+            arrow.className = 'tree-picker-folder-arrow';
+            arrow.textContent = '▶';
+            header.appendChild(arrow);
+            var folderIcon = document.createElement('span');
+            folderIcon.className = 'tree-picker-folder-icon';
+            folderIcon.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>';
+            header.appendChild(folderIcon);
+            var folderLabel = document.createElement('span');
+            folderLabel.className = 'tree-picker-folder-name';
+            folderLabel.textContent = folderName;
+            header.appendChild(folderLabel);
+            var countBadge = document.createElement('span');
+            countBadge.className = 'tree-picker-folder-count';
+            countBadge.textContent = folders[folderName].length;
+            header.appendChild(countBadge);
+
+            var fileListInner = document.createElement('div');
+            fileListInner.className = 'tree-picker-folder-files';
+            fileListInner.style.display = 'none';
+
+            folders[folderName].forEach(function(n) {
+                var item = _createPickerFileItem(n);
+                fileListInner.appendChild(item);
+            });
+
+            header.onclick = function() {
+                var isOpen = fileListInner.style.display !== 'none';
+                fileListInner.style.display = isOpen ? 'none' : '';
+                arrow.textContent = isOpen ? '▶' : '▼';
+                group.classList.toggle('tree-picker-folder-open', !isOpen);
+            };
+
+            group.appendChild(header);
+            group.appendChild(fileListInner);
+            foldersArea.appendChild(group);
+        });
+
+        pickerList.appendChild(foldersArea);
+        container.appendChild(pickerList);
+
+        // If only one folder, auto-expand it
+        if (folderNames.length === 1) {
+            var singleHeader = foldersArea.querySelector('.tree-picker-folder-header');
+            if (singleHeader) singleHeader.click();
+        }
+
+        // Search behavior
+        searchInput.oninput = function() {
+            var q = searchInput.value.toLowerCase().trim();
+            if (!q) {
+                searchResults.style.display = 'none';
+                searchResults.innerHTML = '';
+                foldersArea.style.display = '';
+                return;
+            }
+            foldersArea.style.display = 'none';
+            searchResults.style.display = '';
+            searchResults.innerHTML = '';
+            var count = 0;
+            sorted.forEach(function(n) {
+                if (count >= 30) return; // cap results
+                if (n.data.id.toLowerCase().includes(q)) {
+                    var item = _createPickerFileItem(n);
+                    searchResults.appendChild(item);
+                    count++;
+                }
+            });
+            if (count === 0) {
+                var noMatch = document.createElement('div');
+                noMatch.className = 'tree-picker-no-match';
+                noMatch.textContent = 'No files match "' + searchInput.value + '"';
+                searchResults.appendChild(noMatch);
+            }
+        };
+
+        // Auto-focus the search input
+        requestAnimationFrame(function() { searchInput.focus(); });
+
         return;
     }
 
@@ -363,6 +519,34 @@ function _positionTreeHbars(root) {
         var firstCenter = cols[0].offsetLeft + cols[0].offsetWidth / 2;
         var lastCenter = cols[cols.length - 1].offsetLeft + cols[cols.length - 1].offsetWidth / 2;
 
+        // --- Align anchor child directly beneath parent stem ---
+        // The parent stem drops at rowW/2 (align-items:center on .tree-branch).
+        // For asymmetric subtrees the center child drifts away from rowW/2.
+        // Shift the entire row so the anchor child sits under the stem.
+        //
+        // Anchor: center child for odd counts, midpoint of two center
+        //         children for even counts.
+        var midIdx = Math.floor(cols.length / 2);
+        var anchorX;
+        if (cols.length % 2 === 1) {
+            anchorX = cols[midIdx].offsetLeft + cols[midIdx].offsetWidth / 2;
+        } else {
+            var lc = cols[midIdx - 1].offsetLeft + cols[midIdx - 1].offsetWidth / 2;
+            var rc = cols[midIdx].offsetLeft + cols[midIdx].offsetWidth / 2;
+            anchorX = (lc + rc) / 2;
+        }
+
+        var offset = rowW / 2 - anchorX;
+        if (Math.abs(offset) > 0.5) {
+            row.style.transform = 'translateX(' + offset + 'px)';
+        } else {
+            row.style.transform = '';
+        }
+
+        // Position hbar from first to last child center.
+        // After the transform the parent stem lands at anchorX in the row's
+        // local coordinate space, which is always between firstCenter and
+        // lastCenter, so the hbar naturally covers the stem junction.
         hbar.style.left = firstCenter + 'px';
         hbar.style.right = (rowW - lastCenter) + 'px';
     });
