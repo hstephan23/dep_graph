@@ -35,10 +35,14 @@ Language detection is automatic — DepGraph scans the target directory and enab
 - **Adaptive layout** — the force-directed layout adjusts repulsion, gravity, and edge length based on graph density, keeping dense graphs readable and sparse graphs cohesive
 - **Logarithmic node sizing** — node diameter uses a square-root scale (60–200px) based on inbound references, preventing high-degree hubs from dominating the view
 - Directory collapsing — toggle between a directory-level overview and the full file-level graph, with click-to-expand/collapse on any folder
-- **Tree view** — a spacious hierarchical view showing downstream or upstream dependencies for any file, with risk indicators and file-type badges
+- **Tree view** — a spacious hierarchical view showing downstream or upstream dependencies for any file, with risk indicators, file-type badges, and a searchable folder-grouped file picker
+- **Layers architecture view** — a swim-lane layout that organizes files into horizontal depth layers, highlights wrong-direction dependencies with pulsing violation edges, and supports drag-to-reassign for reclassifying files into custom layers
+- **Guided tour** — an interactive step-by-step walkthrough that introduces the UI, highlighting each feature with contextual descriptions
+- **Timeline / Diff view** — compare two graph snapshots side by side to see added, removed, and changed dependencies over time
 - Focus lens — a fisheye distortion that magnifies nodes near the cursor while shrinking distant ones (toggle with `L`)
 - Minimap for orientation in large graphs with click-to-pan
 - Inline source preview with syntax highlighting (double-click any node)
+- **Responsive toolbar** — the toolbar adapts to narrow viewports by collapsing controls into an overflow menu
 - Smooth loading transitions with spinner overlay when switching layouts or views
 
 ### Analysis Tools
@@ -71,7 +75,7 @@ The toolbar is split into two rows. The top row holds the brand, action buttons 
 - **Filters** dropdown — filter by subdirectory, toggle system/external imports and isolated nodes, select language mode (language filter works with local directories, uploads, and GitHub clones — switching languages re-scans instantly without re-uploading)
 - **Layout** pills — Force, Hierarchy, Concentric, plus a focus lens toggle
 - **Scope** pills — toggle between Directories and All Files (when in directory view)
-- **View** pills — Graph and Tree
+- **View** pills — Graph, Tree, and Layers
 - **Search** input — find and center the graph on a file
 
 Additional navigation: Quick Jump (`Cmd+K` / `Ctrl+K`) for instant file search, graph diff view to compare snapshots, and click-to-center from any sidebar list.
@@ -109,6 +113,7 @@ DepGraph/
 │   ├── query.js        — mini query language parser and execution
 │   ├── exports.js      — JSON, PNG, DOT, Mermaid export
 │   ├── timeline.js     — diff/timeline view for snapshot comparison
+│   ├── layers.js       — layers architecture view (swim-lanes, violations, drag-to-reassign)
 │   ├── state.js        — shared global state and helpers
 │   ├── tour.js         — guided tour system
 │   ├── style.css       — UI styles with light/dark theme
@@ -242,7 +247,7 @@ DepGraph includes a VS Code extension that brings dependency analysis directly i
 
 Open the command palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and search for "DepGraph":
 
-- **Show Dependency Graph** — opens an interactive Cytoscape.js graph in a webview panel with force, hierarchy, and concentric layouts, search, and right-click context menu
+- **Show Dependency Graph** — opens an interactive Cytoscape.js graph in a webview panel with force, hierarchy, and concentric layouts, a layers architecture view with swim-lane bands and violation detection, a searchable folder-grouped file picker for tree view, and right-click context menu
 - **Find Dependency Cycles** — lists detected cycles in a quick-pick menu
 - **Show Dependents / Dependencies** — quick-pick lists of files that import or are imported by the current file
 - **Blast Radius** — highlights all transitive dependents of the current file
@@ -301,7 +306,7 @@ The sidebar has ten panels organized in three groups:
 
 **Inspect:** Refs (reference counts and cycle list), Analysis (directory coupling and per-node metrics like depth, impact, stability), Unused (zero-inbound files), Blast Radius (transitive impact of a selected file).
 
-**Tools:** Layers (architectural layer violations), Rules (custom forbidden/required dependency patterns), Path Finder (shortest path between two files), Diff (compare two graph snapshots), Simulate (model file removals and preview impact, plus merge/split what-if analysis).
+**Tools:** Layers (architectural layer configuration, violation summary with worst offenders, per-layer breakdown with directory composition, and click-to-zoom navigation), Rules (custom forbidden/required dependency patterns), Path Finder (shortest path between two files), Diff (compare two graph snapshots), Simulate (model file removals and preview impact, plus merge/split what-if analysis).
 
 **More:** Story Mode (generated walkthrough of the dependency structure).
 
