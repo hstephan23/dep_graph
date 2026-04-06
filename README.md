@@ -18,6 +18,10 @@ DepGraph is a lightweight tool for exploring source file dependencies as an inte
 - **PHP** — `use`, `require`, `include`, and `require_once`/`include_once` with PSR-4 namespace resolution (`.php`)
 - **Dart** — `import` declarations for package and relative imports (`.dart`)
 - **Elixir** — `alias`, `import`, `require`, and `use` (`.ex`, `.exs`)
+- **Lua** — `require("module")` (`.lua`)
+- **Zig** — `@import("file.zig")` (`.zig`)
+- **Haskell** — `import Module.Name` (`.hs`)
+- **R** — `library()`, `require()`, and `source()` (`.R`, `.r`)
 
 Language detection is automatic — DepGraph scans the target directory and enables the relevant parsers based on which file types are present.
 
@@ -30,8 +34,6 @@ Language detection is automatic — DepGraph scans the target directory and enab
 - **Weighted edges** — edge thickness, color, and opacity scale with target importance (blend of in-degree and reach percentage), so critical dependency paths stand out visually
 - **Adaptive layout** — the force-directed layout adjusts repulsion, gravity, and edge length based on graph density, keeping dense graphs readable and sparse graphs cohesive
 - **Logarithmic node sizing** — node diameter uses a square-root scale (60–200px) based on inbound references, preventing high-degree hubs from dominating the view
-- Treemap view for a heat-map style overview sized by file count and colored by a chosen metric (inbound, outbound, depth, impact, instability)
-- Matrix view showing an N×N dependency grid with directory boundary markers
 - Directory collapsing — toggle between a directory-level overview and the full file-level graph, with click-to-expand/collapse on any folder
 - **Tree view** — a spacious hierarchical view showing downstream or upstream dependencies for any file, with risk indicators and file-type badges
 - Focus lens — a fisheye distortion that magnifies nodes near the cursor while shrinking distant ones (toggle with `L`)
@@ -69,7 +71,7 @@ The toolbar is split into two rows. The top row holds the brand, action buttons 
 - **Filters** dropdown — filter by subdirectory, toggle system/external imports and isolated nodes, select language mode (language filter works with local directories, uploads, and GitHub clones — switching languages re-scans instantly without re-uploading)
 - **Layout** pills — Force, Hierarchy, Concentric, plus a focus lens toggle
 - **Scope** pills — toggle between Directories and All Files (when in directory view)
-- **View** pills — Graph, Treemap, Matrix, with a metric selector for treemap
+- **View** pills — Graph and Tree
 - **Search** input — find and center the graph on a file
 
 Additional navigation: Quick Jump (`Cmd+K` / `Ctrl+K`) for instant file search, graph diff view to compare snapshots, and click-to-center from any sidebar list.
@@ -88,7 +90,7 @@ Press `?` in the UI to see all shortcuts. Highlights include: `1`/`2`/`3` for la
 DepGraph/
 ├── app.py              — Flask server, API routes, upload handling, security
 ├── graph.py            — core graph engine (build_graph, detect_languages, find_sccs)
-├── parsers.py          — language-specific import resolution for all 14 languages
+├── parsers.py          — language-specific import resolution for all 18 languages
 ├── cli.py              — CLI entry point (depgraph command)
 ├── pyproject.toml      — package config (pip install .)
 ├── requirements.txt    — Flask, Gunicorn, Werkzeug
@@ -102,7 +104,7 @@ DepGraph/
 │   ├── analysis.js     — dependency rules and depth warnings
 │   ├── story.js        — story mode walkthrough
 │   ├── tools.js        — path finder, blast radius, query tools
-│   ├── views.js        — treemap, matrix, and graph view switching
+│   ├── views.js        — graph and tree view switching
 │   ├── ui.js           — sidebar panels, refs, unused files, directory collapsing
 │   ├── query.js        — mini query language parser and execution
 │   ├── exports.js      — JSON, PNG, DOT, Mermaid export
@@ -256,7 +258,7 @@ Three tree views appear in the Explorer sidebar under a DepGraph section:
 
 ### Import Hover Preview
 
-Hover over any import statement to see a mini dependency graph for the imported file — its metrics (depth, impact, stability, blast radius), who imports it, and what it imports, with second-level dependencies shown inline. Cycle membership is flagged with a warning. Works across all 14 supported languages.
+Hover over any import statement to see a mini dependency graph for the imported file — its metrics (depth, impact, stability, blast radius), who imports it, and what it imports, with second-level dependencies shown inline. Cycle membership is flagged with a warning. Works across all 18 supported languages.
 
 ### CodeLens & Diagnostics
 
@@ -361,4 +363,8 @@ This runs 57 tests covering the query parser, depth warning computation, project
 - PHP `use` resolves PSR-4 namespace paths to files; `require`/`include` resolve literal paths. Standard library functions and common framework namespaces are classified as external.
 - Dart `import` resolves `package:` and relative paths. SDK packages (dart:core, dart:async, etc.) are classified as external.
 - Elixir `alias`, `import`, `require`, and `use` resolve module names to file paths following Mix project conventions. Standard library modules (Kernel, Enum, etc.) are classified as external.
+- Lua `require("module")` resolves dot-separated module paths to filesystem paths (e.g. `models.user` → `models/user.lua`). Standard library modules (coroutine, io, math, etc.) and Love2D modules are classified as external.
+- Zig `@import("file.zig")` resolves file paths relative to the source file. The standard library (`std`, `builtin`) is classified as external.
+- Haskell `import Module.Name` resolves module paths to filesystem paths (e.g. `Models.User` → `Models/User.hs`), probing `src/` and `lib/` prefixes. Standard library modules (Data.*, Control.*, System.*, etc.) are classified as external.
+- R `source("file.R")` resolves file paths relative to the source file. `library()` and `require()` calls are treated as external package imports. Base R and common CRAN packages are classified as external.
 - The frontend depends on Cytoscape.js, cytoscape-dagre, and Prism.js from CDNs.

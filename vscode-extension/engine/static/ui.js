@@ -560,18 +560,15 @@ const SHORTCUTS = [
     ]},
     { section: 'Graph', items: [
         { keys: 'q',           desc: 'Toggle query terminal',          action: () => toggleQueryTerminal() },
-        { keys: 'g',           desc: 'Generate graph',                 action: () => loadGraph() },
         { keys: 'p',           desc: 'Timeline play / pause',          action: () => { if (typeof _timeline !== 'undefined' && _timeline.active) timelinePlayPause(); else timelineOpen(); } },
         { keys: '/',           desc: 'Focus search',                   action: (e) => { e.preventDefault(); document.getElementById('searchInput').focus(); } },
-        { keys: 'd',           desc: 'Focus directory input',          action: () => document.getElementById('dirInput').focus() },
-        { keys: 'f',           desc: 'Fit graph to viewport',          action: () => { if (cy) cy.fit(undefined, 50); } },
+        { keys: 'f',           desc: 'Fit graph to viewport',          action: () => { if (cy) cy.fit(120); } },
         { keys: 'm',           desc: 'Toggle minimap',                  action: () => toggleMinimap() },
         { keys: 'z',           desc: 'Zoom to selected node',          action: () => { if (cy) { const sel = cy.nodes(':selected'); if (sel.length) cy.animate({ center: { eles: sel }, zoom: 2 }, { duration: 400 }); } } },
     ]},
     { section: 'Layout', items: [
         { keys: '1',           desc: 'Force layout',                   action: () => { changeLayout('cose'); document.getElementById('layoutCose').checked = true; showToast('Layout: Force'); } },
-        { keys: '2',           desc: 'Hierarchy layout',               action: () => { changeLayout('dagre'); document.getElementById('layoutDagre').checked = true; showToast('Layout: Hierarchy'); } },
-        { keys: '3',           desc: 'Concentric layout',              action: () => { changeLayout('concentric'); document.getElementById('layoutConcentric').checked = true; showToast('Layout: Concentric'); } },
+        { keys: 'a',           desc: 'Layers view',                    action: () => { document.getElementById('viewLayers').checked = true; switchView('layers'); } },
         { keys: 'l',           desc: 'Toggle focus lens',              action: () => fisheyeToggle() },
     ]},
     { section: 'Panels', items: [

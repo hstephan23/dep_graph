@@ -19,10 +19,7 @@ function toggleTheme() {
     document.documentElement.setAttribute('data-theme', n);
     localStorage.setItem('theme', n);
     applyThemeIcon(n);
-    // Refresh compound styles for theme-aware colors
-    if (_compound && _compound.active && typeof cy !== 'undefined' && cy) {
-        cy.style(_compoundStyles());
-    }
+    // (compound style refresh removed — directory graph view disabled)
 }
 
 window.addEventListener('DOMContentLoaded', () => applyThemeIcon(document.documentElement.getAttribute('data-theme')));
@@ -568,6 +565,7 @@ const SHORTCUTS = [
     ]},
     { section: 'Layout', items: [
         { keys: '1',           desc: 'Force layout',                   action: () => { changeLayout('cose'); document.getElementById('layoutCose').checked = true; showToast('Layout: Force'); } },
+        { keys: 'a',           desc: 'Layers view',                    action: () => { document.getElementById('viewLayers').checked = true; switchView('layers'); } },
         { keys: 'l',           desc: 'Toggle focus lens',              action: () => fisheyeToggle() },
     ]},
     { section: 'Panels', items: [

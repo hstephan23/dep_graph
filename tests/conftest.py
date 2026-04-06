@@ -101,3 +101,23 @@ def test_dart_dir(fixtures_dir):
 @pytest.fixture
 def test_elixir_dir(fixtures_dir):
     return os.path.join(fixtures_dir, "test_elixir")
+
+
+@pytest.fixture
+def test_lua_dir(fixtures_dir):
+    return os.path.join(fixtures_dir, "test_lua")
+
+
+@pytest.fixture
+def test_zig_dir(fixtures_dir):
+    return os.path.join(fixtures_dir, "test_zig")
+
+
+@pytest.fixture
+def test_haskell_dir(fixtures_dir):
+    return os.path.join(fixtures_dir, "test_haskell")
+
+
+@pytest.fixture
+def test_r_dir(fixtures_dir):
+    return os.path.join(fixtures_dir, "test_r")

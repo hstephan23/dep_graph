@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 server = ["gunicorn>=21.0"]
 test = ["pytest>=7.0"]
+dev = ["mypy>=1.8", "pytest>=7.0"]
 
 [project.scripts]
 depgraph = "cli:main"
@@ -28,3 +29,19 @@ py-modules = ["app", "cli", "graph", "parsers"]
 
 [tool.setuptools.package-data]
 "*" = ["static/**/*", "templates/**/*"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["flask.*", "werkzeug.*", "gunicorn.*"]
+ignore_missing_imports = true

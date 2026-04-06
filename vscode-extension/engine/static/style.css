@@ -136,6 +136,7 @@ body {
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
+    min-width: 0;
 }
 
 .toolbar-zone {
@@ -147,11 +148,14 @@ body {
     border-radius: 12px;
     padding: 0.35rem 0.6rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    min-width: 0;
 }
 
 .toolbar-zone-right {
-    flex-shrink: 0;
+    flex-shrink: 1;
+    flex-wrap: wrap;
     gap: 0.35rem;
+    min-width: 0;
 }
 
 .toolbar-controls {
@@ -165,6 +169,8 @@ body {
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba(0, 0, 0, 0.03);
+    /* Fixed height prevents reflow when toggling tree/graph controls */
+    min-height: 34px;
 }
 
 .toolbar-controls-spacer {
@@ -173,7 +179,7 @@ body {
 }
 
 .input-search-controls {
-    width: 240px;
+    width: 180px;
     min-width: 150px;
     flex-shrink: 1;
     margin-left: auto;
@@ -258,7 +264,7 @@ body {
     box-sizing: border-box;
 }
 
-/* Inside the controls row, groups are transparent — the label + pill-group do the work */
+/* Inside the controls row, groups are transparent — the pill-group does the work */
 .toolbar-controls .toolbar-group {
     background: transparent;
     border: none;
@@ -268,13 +274,56 @@ body {
     height: auto;
 }
 
+/* Compact groups: no label overhead, tighter spacing */
+.toolbar-group-compact {
+    gap: 0.3rem !important;
+}
+.toolbar-group-compact .toolbar-group-label {
+    display: none;
+}
+
+/* Thin vertical separator between control groups */
+.controls-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    flex-shrink: 0;
+    opacity: 0.5;
+}
+
+/* Inline icon button next to pill group — match pill-group height */
+.btn-icon-inline {
+    width: 26px;
+    height: 26px;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all var(--transition);
+    flex-shrink: 0;
+}
+.btn-icon-inline:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.btn-icon-inline.active {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
 /* Pill-groups inside the controls row get the polished treatment */
 .toolbar-controls .pill-group {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-xs);
-    height: 30px;
+    height: 26px;
     align-items: center;
 }
 
@@ -282,15 +331,9 @@ body {
     background: var(--bg-elevated);
 }
 
-/* Dividers between control groups */
+/* Dividers between control groups — now handled by .controls-sep elements */
 .toolbar-controls .toolbar-group + .toolbar-group::before {
-    content: '';
-    display: block;
-    width: 1px;
-    height: 20px;
-    background: var(--border);
-    margin-right: 0.1rem;
-    flex-shrink: 0;
+    display: none;
 }
 
 /* btn-icon inside controls toolbar-group needs its own subtle bg */
@@ -298,8 +341,8 @@ body {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    width: 30px;
-    height: 30px;
+    width: 26px;
+    height: 26px;
     box-shadow: var(--shadow-xs);
 }
 .toolbar-controls .toolbar-group .btn-icon:hover {
@@ -308,7 +351,7 @@ body {
 
 /* Filters dropdown matches pill-group styling in the controls row */
 .toolbar-controls > details.dropdown > summary {
-    height: 30px;
+    height: 26px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -355,20 +398,13 @@ body {
     display: none;
 }
 
-/* Inline wrapper for treemap metric selector inside the View group */
-.treemap-metric-inline {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
 /* ================================================================
    INPUTS & BUTTONS
    ================================================================ */
 .input-wrap {
     display: flex;
     align-items: center;
-    height: 30px;
+    height: 26px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -683,11 +719,17 @@ details.dropdown .dropdown-body {
 }
 
 .detected-label {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--text-muted);
-    padding: 0.25rem 0.5rem;
-    background: var(--bg);
+    padding: 0.15rem 0.5rem;
+    background: transparent;
     border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    letter-spacing: 0.02em;
+}
+.detected-label.visible {
+    opacity: 1;
 }
 
 /* ================================================================
@@ -726,7 +768,9 @@ details.dropdown .dropdown-body {
     cursor: grab;
     background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
     background-size: 28px 28px;
-    transition: opacity 0.2s ease;
+    /* opacity transition managed inline by switchView() — no persistent rule here */
+    /* Extra breathing room so nodes aren't flush against the toolbar */
+    padding-top: 16px;
 }
 
 #cy:active { cursor: grabbing; }
@@ -1296,6 +1340,7 @@ body.sidebar-hidden .query-terminal {
     inset: 0;
     background: var(--loading-bg);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     z-index: 20;
@@ -1307,16 +1352,17 @@ body.sidebar-hidden .query-terminal {
 
 .loading-overlay.active { opacity: 1; pointer-events: all; }
 
-.spinner {
-    width: 36px;
-    height: 36px;
-    border: 3px solid var(--border);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+.loading-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 22%;
+    animation: breathe 1.8s ease-in-out infinite;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes breathe {
+    0%, 100% { transform: scale(1);    opacity: 0.55; }
+    50%      { transform: scale(1.10); opacity: 1;    }
+}
 
 .empty-state {
     display: none;
@@ -1435,8 +1481,10 @@ body.sidebar-hidden .query-terminal {
     flex-direction: column;
     gap: 1px;
     padding: 0 0.5rem 0.4rem;
-    max-height: 180px;
+    max-height: min(50vh, 400px);
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
 }
 
 .folder-key-entry {
@@ -2265,7 +2313,11 @@ body.sidebar-hidden .query-terminal {
     .toolbar-zone-right .btn-upload > span,
     .toolbar-zone-right details > summary > span,
     #fisheyeToggle > span { display: none; }
+    /* Shrink GitHub input on smaller screens */
+    #githubUrlInput { width: 140px !important; min-width: 100px !important; }
+    #githubGoBtn > span { display: none; }
     .toolbar-controls { gap: 0.35rem; padding: 0.2rem 0.6rem 0.3rem; }
+    .toolbar-controls .controls-sep { display: none; }
     .input-search-controls { width: 140px; min-width: 100px; }
 
     /* Bottom row inputs become fluid */
@@ -2274,7 +2326,7 @@ body.sidebar-hidden .query-terminal {
 
     /* Compact layout/filter controls */
     .toolbar-group-label { display: none; }
-    .toolbar-group { flex-wrap: wrap; padding: 0 0.4rem; height: auto; min-height: 28px; }
+    .toolbar-group { flex-wrap: wrap; padding: 0 0.4rem; height: auto; min-height: 30px; }
     .pill-group label { padding: 0.25rem 0.4rem; font-size: 0.68rem; }
 
     /* Filters dropdown text */
@@ -2302,10 +2354,15 @@ body.sidebar-hidden .query-terminal {
     /* Action buttons (theme, help, sidebar toggle) shrink */
     .btn-icon { width: 28px; height: 28px; }
 
+    /* Hide GitHub form on phones — not enough room */
+    #githubForm { display: none !important; }
+
     /* On phones, hide control groups but keep search visible */
     .toolbar-controls { justify-content: flex-end; }
     .toolbar-controls .toolbar-group,
     .toolbar-controls > details.dropdown,
+    .toolbar-controls .controls-sep,
+    .toolbar-controls .detected-label,
     .toolbar-controls-spacer { display: none; }
     .input-search-controls { width: 100%; }
 
@@ -2522,6 +2579,30 @@ body.sidebar-hidden .query-terminal {
     overflow-y: auto;
     padding: 1.5rem;
     animation: shortcut-modal-in 0.15s ease;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.shortcut-modal::-webkit-scrollbar {
+    width: 6px;
+    background: transparent;
+}
+
+.shortcut-modal::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.shortcut-modal::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.shortcut-modal::-webkit-scrollbar-thumb:hover {
+    background: var(--border-hover);
+}
+
+@supports (overflow-y: overlay) {
+    .shortcut-modal { overflow-y: overlay; }
 }
 
 @keyframes shortcut-modal-in {
@@ -2672,12 +2753,7 @@ body.sidebar-hidden .query-terminal {
 }
 
 .minimap-viewport {
-    position: absolute;
-    border: 2px solid var(--primary);
-    background: rgba(99, 102, 241, 0.08);
-    border-radius: 3px;
-    pointer-events: none;
-    transition: none;
+    display: none;
 }
 
 [data-theme="dark"] .minimap-viewport {
@@ -3020,6 +3096,146 @@ body.sidebar-hidden .query-terminal {
 }
 .ref-dir-file-row {
     padding-left: 1.8rem !important;
+}
+
+/* --- Search/filter input --- */
+.ref-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+.ref-search-wrap svg { color: var(--text-muted); flex-shrink: 0; }
+.ref-search-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.72rem;
+    outline: none;
+    padding: 0.15rem 0;
+    font-family: inherit;
+}
+.ref-search-input::placeholder { color: var(--text-muted); }
+
+/* --- File type badge --- */
+.ref-file-type-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 14px;
+    border-radius: 3px;
+    font-size: 0.5rem;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+    line-height: 1;
+}
+
+/* --- Risk dot (small secondary indicator) --- */
+.ref-risk-dot {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* --- Inline reference bar --- */
+.ref-row-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+.ref-bar-wrap {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--bg-sunken);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.ref-bar {
+    height: 100%;
+    border-radius: 2px;
+    min-width: 1px;
+    transition: width 0.3s ease;
+}
+
+/* --- Risk summary dots on directory header --- */
+.ref-risk-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+.ref-risk-summary-dot {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+}
+.ref-risk-summary-more {
+    font-size: 0.5rem;
+    color: var(--text-muted);
+    margin-left: 1px;
+}
+
+/* --- Focus directory button --- */
+.ref-dir-focus-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.ref-dir-header:hover .ref-dir-focus-btn { opacity: 1; }
+.ref-dir-focus-btn:hover { background: var(--primary-soft); color: var(--primary); }
+
+/* --- Drag handle --- */
+.ref-dir-drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    line-height: 1;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+    user-select: none;
+    padding: 0 2px;
+}
+.ref-dir-header:hover .ref-dir-drag-handle { opacity: 0.6; }
+.ref-dir-drag-handle:active { cursor: grabbing; }
+
+/* --- Drag visual feedback --- */
+.ref-dir-dragging { opacity: 0.4; }
+.ref-dir-drop-above { box-shadow: inset 0 2px 0 var(--primary); }
+
+/* --- Expand-on-hover for file names --- */
+.ref-file-name-hover {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+    transition: max-width 0.25s ease;
+}
+.ref-dir-file-row:hover .ref-file-name-hover {
+    max-width: 300px;
+    overflow: visible;
+    text-overflow: unset;
 }
 
 /* Thin vertical divider between tab groups in the same row */
@@ -3423,183 +3639,6 @@ body.sidebar-hidden .query-terminal {
 }
 
 /* ================================================================
-   TREEMAP VIEW
-   ================================================================ */
-.treemap-container {
-    flex: 1;
-    min-width: 0;
-    position: relative;
-    z-index: 1;
-    overflow: hidden;
-    background: var(--bg);
-    transition: opacity 0.2s ease;
-}
-
-.treemap-metric-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-.treemap-metric-select {
-    font-family: inherit;
-    font-size: 0.72rem;
-    font-weight: 500;
-    padding: 0.2rem 0.4rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-elevated);
-    color: var(--text);
-    cursor: pointer;
-    outline: none;
-    transition: border-color var(--transition);
-}
-
-/* When metric select is inside a toolbar-group, lighten the border */
-.toolbar-group .treemap-metric-select {
-    border-color: transparent;
-    background: transparent;
-}
-
-.toolbar-group .treemap-metric-select:hover {
-    background: var(--bg-elevated);
-    border-color: var(--border);
-}
-
-.treemap-metric-select:hover {
-    border-color: var(--border-hover);
-}
-
-.treemap-metric-select:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px var(--primary-glow);
-}
-
-/* Individual treemap cell */
-.tm-cell {
-    position: absolute;
-    overflow: hidden;
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    cursor: pointer;
-    transition: filter 0.15s ease, border-color 0.15s ease;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-}
-
-.tm-cell:hover {
-    filter: brightness(1.15);
-    border-color: var(--text);
-    z-index: 5;
-}
-
-.tm-cell-label {
-    padding: 3px 5px;
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: #fff;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    pointer-events: none;
-}
-
-.tm-cell-value {
-    padding: 0 5px 3px;
-    font-size: 0.58rem;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.8);
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-    pointer-events: none;
-}
-
-/* Directory group header */
-.tm-group {
-    position: absolute;
-    overflow: hidden;
-    border: 2px solid rgba(0, 0, 0, 0.2);
-    border-radius: 3px;
-}
-
-.tm-group-label {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    padding: 2px 6px;
-    font-size: 0.62rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: rgba(255, 255, 255, 0.9);
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.25), transparent);
-    pointer-events: none;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Treemap tooltip */
-.tm-tooltip {
-    position: fixed;
-    z-index: 1000;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 0.5rem 0.7rem;
-    box-shadow: var(--shadow-md);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.12s ease;
-    max-width: 280px;
-}
-
-.tm-tooltip.visible {
-    opacity: 1;
-}
-
-.tm-tooltip-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 0.25rem;
-    word-break: break-all;
-}
-
-.tm-tooltip-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    font-size: 0.68rem;
-    color: var(--text-secondary);
-    padding: 0.1rem 0;
-}
-
-.tm-tooltip-val {
-    font-weight: 600;
-    color: var(--text);
-}
-
-[data-theme="dark"] .tm-cell {
-    border-color: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme="dark"] .tm-group {
-    border-color: rgba(255, 255, 255, 0.15);
-}
-
-@media (max-width: 900px) {
-    .treemap-container {
-        width: 100%;
-    }
-    .treemap-metric-wrap {
-        display: none;
-    }
-}
-
-/* ================================================================
    GUIDED TOUR (step-by-step)
    ================================================================ */
 .tour-overlay {
@@ -3639,11 +3678,13 @@ body.sidebar-hidden .query-terminal {
     position: fixed;
     z-index: 10003;
     width: 320px;
+    max-width: calc(100vw - 24px);
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 1rem 1.15rem 0.85rem;
     box-shadow: var(--shadow-lg);
+    box-sizing: border-box;
     opacity: 0;
     transition: opacity 0.2s ease, top 0.35s ease, left 0.35s ease;
 }
@@ -3680,24 +3721,31 @@ body.sidebar-hidden .query-terminal {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.5rem;
+    min-width: 0;
 }
 
 .tour-dots {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
+    flex-wrap: wrap;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 55%;
+    row-gap: 3px;
 }
 
 .tour-dot {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     border: none;
     padding: 0;
     background: var(--border-hover);
     cursor: pointer;
     transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 .tour-dot:hover {
@@ -3718,6 +3766,7 @@ body.sidebar-hidden .query-terminal {
 .tour-tooltip-nav {
     display: flex;
     gap: 0.4rem;
+    flex-shrink: 0;
 }
 
 /* ---- Buttons ---- */
@@ -3783,296 +3832,6 @@ body.sidebar-hidden .query-terminal {
     .tour-tooltip {
         width: calc(100vw - 32px);
         max-width: 320px;
-    }
-}
-
-/* ================================================================
-   MATRIX VIEW
-   ================================================================ */
-.matrix-container {
-    flex: 1;
-    min-width: 0;
-    position: relative;
-    z-index: 1;
-    display: none;
-    flex-direction: column;
-    background: var(--bg);
-    overflow: hidden;
-}
-
-.matrix-wrapper {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    position: relative;
-}
-
-/* ---- Stats bar ---- */
-.matrix-stats {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.5rem 1rem;
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-}
-
-.matrix-stat {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-}
-
-.matrix-stat-hint {
-    font-weight: 500;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.matrix-stat-sep {
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    flex-shrink: 0;
-}
-
-/* ---- Scroll area ----
-   Single scroll container. Top row (col labels) and row labels
-   use sticky positioning so headers stay visible while scrolling. */
-.matrix-scroll {
-    flex: 1;
-    overflow: auto;
-    position: relative;
-}
-
-.matrix-top-row {
-    display: flex;
-    position: sticky;
-    top: 0;
-    z-index: 3;
-    background: var(--bg);
-}
-
-.matrix-body-row {
-    display: flex;
-}
-
-/* ---- Corner cell ---- */
-.matrix-corner {
-    flex-shrink: 0;
-    width: 180px;
-    min-width: 180px;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    padding-bottom: 0.4rem;
-    background: var(--bg);
-    border-right: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    left: 0;
-    z-index: 4;
-}
-
-.matrix-corner-label {
-    font-size: 0.62rem;
-    color: var(--text-muted);
-    text-align: center;
-    line-height: 1.3;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-}
-
-/* ---- Column labels (top) ---- */
-.matrix-col-labels {
-    position: relative;
-    flex-shrink: 0;
-    border-bottom: 1px solid var(--border);
-    overflow: hidden;
-}
-
-.matrix-col-label {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    display: flex;
-    align-items: flex-end;
-    justify-content: flex-start;
-    padding-bottom: 4px;
-    overflow: hidden;
-}
-
-.matrix-col-label .matrix-label-text {
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    white-space: nowrap;
-    font-size: 0.73rem;
-    color: var(--text-secondary);
-    max-height: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.matrix-col-label.matrix-label-boundary {
-    border-left: 1px solid rgba(99, 102, 241, 0.25);
-}
-
-.matrix-col-label.matrix-label-active .matrix-label-text {
-    color: var(--text);
-    font-weight: 600;
-}
-
-/* ---- Row labels (left side) ---- */
-.matrix-row-labels {
-    flex-shrink: 0;
-    width: 180px;
-    min-width: 180px;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg);
-    border-right: 1px solid var(--border);
-    position: sticky;
-    left: 0;
-    z-index: 2;
-}
-
-.matrix-row-label {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 0 0.5rem 0 0.35rem;
-    overflow: hidden;
-}
-
-.matrix-row-label.matrix-label-boundary {
-    border-top: 1px solid rgba(99, 102, 241, 0.25);
-}
-
-.matrix-row-label.matrix-label-active {
-    background: var(--primary-soft);
-}
-
-.matrix-row-label.matrix-label-active .matrix-label-text {
-    color: var(--text);
-    font-weight: 600;
-}
-
-.matrix-label-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.matrix-label-text {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    transition: color 0.1s ease;
-}
-
-/* ---- Canvas grid ---- */
-.matrix-canvas-wrap {
-    position: relative;
-    flex-shrink: 0;
-}
-
-.matrix-canvas {
-    display: block;
-    cursor: crosshair;
-}
-
-/* ---- Crosshair highlights ---- */
-.matrix-highlight-row,
-.matrix-highlight-col {
-    position: absolute;
-    pointer-events: none;
-    display: none;
-    z-index: 1;
-}
-
-.matrix-highlight-row {
-    left: 0;
-    width: 100%;
-    background: var(--primary-soft);
-    border-top: 1px solid var(--primary);
-    border-bottom: 1px solid var(--primary);
-    opacity: 0.5;
-}
-
-.matrix-highlight-col {
-    top: 0;
-    height: 100%;
-    background: var(--primary-soft);
-    border-left: 1px solid var(--primary);
-    border-right: 1px solid var(--primary);
-    opacity: 0.5;
-}
-
-/* ---- Tooltip ---- */
-.matrix-tip {
-    display: none;
-    position: absolute;
-    z-index: 10;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 0.5rem 0.65rem;
-    box-shadow: var(--shadow-md);
-    pointer-events: none;
-    min-width: 160px;
-}
-
-.matrix-tip-files {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 0.2rem;
-}
-
-.matrix-tip-arrow {
-    color: var(--text-muted);
-    font-size: 0.85rem;
-}
-
-.matrix-tip-status {
-    font-size: 0.68rem;
-    color: var(--text-muted);
-}
-
-.matrix-tip-yes {
-    color: var(--primary);
-    font-weight: 500;
-}
-
-.matrix-tip-mutual {
-    color: var(--warning);
-    font-weight: 500;
-}
-
-.matrix-tip-no {
-    color: var(--text-muted);
-}
-
-@media (max-width: 900px) {
-    .matrix-corner,
-    .matrix-row-labels {
-        width: 120px;
-        min-width: 120px;
-    }
-    .matrix-label-text {
-        font-size: 0.68rem;
     }
 }
 
@@ -4466,6 +4225,21 @@ body.sidebar-hidden .query-terminal {
     background: var(--border);
 }
 
+[data-theme="dark"] .controls-sep {
+    background: var(--border);
+    opacity: 0.4;
+}
+
+[data-theme="dark"] .btn-icon-inline {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+[data-theme="dark"] .btn-icon-inline:hover {
+    background: rgba(139, 143, 255, 0.1);
+    border-color: rgba(139, 143, 255, 0.25);
+}
+
 /* --- Buttons: glow on hover --- */
 [data-theme="dark"] .btn-primary {
     background: linear-gradient(135deg, #7c7fff 0%, #8b8fff 100%);
@@ -4642,10 +4416,7 @@ body.sidebar-hidden .query-terminal {
     -webkit-backdrop-filter: blur(8px) saturate(1.2);
 }
 
-[data-theme="dark"] .spinner {
-    border-color: rgba(139, 143, 255, 0.15);
-    border-top-color: var(--primary);
-}
+/* .loading-logo needs no dark-mode override — same breathe animation works on both themes */
 
 /* --- Toast & tooltip: glass style --- */
 [data-theme="dark"] .toast {
@@ -4739,15 +4510,6 @@ body.sidebar-hidden .query-terminal {
     background: rgba(255, 255, 255, 0.14);
 }
 
-/* --- Treemap dark refinements --- */
-[data-theme="dark"] .tm-cell {
-    border-color: rgba(255, 255, 255, 0.06);
-}
-
-[data-theme="dark"] .tm-group {
-    border-color: rgba(255, 255, 255, 0.12);
-}
-
 /* ================================================================
    DEPTH WARNING BANNER
    ================================================================ */
@@ -4802,3 +4564,689 @@ body.sidebar-hidden .query-terminal {
 [data-theme="dark"] .depth-warning-row:hover { background:rgba(255,255,255,0.05); }
 [data-theme="dark"] .modal-overlay { background:rgba(0,0,0,0.6); }
 [data-theme="dark"] .depth-settings-row input[type="range"] { background:var(--border); }
+
+/* ================================================================
+   TREE VIEW
+   ================================================================ */
+
+/* ================================================================
+   TREE VIEW — Container & Toolbar
+   ================================================================ */
+.tree-container {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+    display: none;
+    flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+}
+
+.tree-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 1rem;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.tree-dir-toggle { display: flex; gap: 0; }
+
+.tree-dir-btn {
+    padding: 0.28rem 0.7rem;
+    font-size: 0.72rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.01em;
+}
+.tree-dir-btn:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.tree-dir-btn:last-child  { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border-left: none; }
+.tree-dir-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+.tree-dir-btn:hover:not(.active) { background: var(--bg-hover); }
+
+.tree-root-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: var(--bg-sunken);
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-sm);
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ================================================================
+   TREE VIEW — Empty State
+   ================================================================ */
+.tree-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 1rem 2rem;
+    color: var(--text-secondary);
+    text-align: center;
+    gap: 0.6rem;
+}
+.tree-empty-icon { opacity: 0.2; }
+.tree-empty-title { font-size: 1.05rem; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+.tree-empty-desc { font-size: 0.8rem; max-width: 320px; line-height: 1.55; }
+
+.tree-file-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    padding: 0.5rem 1.5rem 2rem;
+    justify-content: center;
+    max-width: 720px;
+    margin: 0 auto;
+    overflow-y: auto;
+    max-height: 50vh;
+}
+
+.tree-file-picker-item {
+    padding: 0.25rem 0.55rem;
+    font-size: 0.68rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.15s;
+}
+.tree-file-picker-item:hover {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(99,102,241,0.2);
+}
+
+/* ================================================================
+   TREE VIEW — Graph Canvas
+   ================================================================ */
+.tree-graph {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+    cursor: grab;
+    /* Dot grid matching the graph view */
+    background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+    background-size: 28px 28px;
+}
+.tree-graph-grabbing {
+    cursor: grabbing;
+    user-select: none;
+}
+.tree-graph .tree-node { cursor: pointer; }
+
+/* Zoom layer — wraps all tree content, scaled via JS transform */
+.tree-zoom-layer {
+    display: inline-flex;
+    justify-content: center;
+    align-items: flex-start;
+    transform-origin: center top;
+    /* No CSS transition — applied instantly to avoid stutter on load
+       and lag during scroll-wheel zoom. */
+    /* Always wider and taller than viewport so drag/scroll works in all directions */
+    min-width: calc(100% + 1400px);
+    min-height: calc(100% + 1200px);
+    padding: 160px 700px 600px;
+}
+
+/* Zoom controls — bottom-right overlay */
+.tree-zoom-controls {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: var(--bg-elevated, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,.08));
+    z-index: 20;
+    user-select: none;
+}
+.tree-zoom-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary, #64748b);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+}
+.tree-zoom-btn:hover {
+    background: var(--bg-hover, #f1f5f9);
+    color: var(--text-primary, #1e293b);
+}
+.tree-zoom-level {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    color: var(--text-tertiary, #94a3b8);
+    min-width: 38px;
+    text-align: center;
+}
+.tree-zoom-reset {
+    font-size: 14px;
+    margin-left: 2px;
+}
+
+/* ================================================================
+   UML Vertical Cascade Layout
+
+           [ parent ]
+        ──────┬──────
+        ↓     ↓     ↓
+     [child][child][child]
+              ─┬─
+              ↓
+          [grandchild]
+   ================================================================ */
+
+/* Branch = vertical column, centered */
+.tree-branch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+}
+
+/* Vertical stem from card center down to children row */
+.tree-stem {
+    width: 2px;
+    height: 36px;
+    background: var(--primary);
+    opacity: 0.3;
+}
+
+/* Children row: horizontal layout of child columns */
+.tree-children-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 28px;
+    position: relative;
+}
+
+/* Horizontal bar positioned via JS from center of first child to center of last */
+.tree-hbar {
+    position: absolute;
+    top: 0;
+    height: 2px;
+    background: var(--primary);
+    opacity: 0.3;
+    /* left/right set by _positionTreeHbars() */
+}
+.tree-children-row-multi {
+    position: relative;
+}
+
+/* Each child column: drop arrow + child branch, centered */
+.tree-child-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Drop arrow: vertical line + triangle arrowhead */
+.tree-drop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.tree-drop::before {
+    content: '';
+    width: 2px;
+    height: 28px;
+    background: var(--primary);
+    opacity: 0.3;
+}
+.tree-drop::after {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 8px solid var(--primary);
+    opacity: 0.5;
+    margin-bottom: 3px;
+}
+
+/* ================================================================
+   TREE VIEW — Node Cards
+   ================================================================ */
+.tree-node {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    position: relative;
+    min-width: 0;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-xs);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.tree-node:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary-soft), var(--shadow-sm);
+    transform: translateY(-1px);
+}
+.tree-node-root {
+    font-weight: 600;
+    border-color: var(--primary);
+    background: linear-gradient(180deg, var(--bg-elevated), var(--primary-soft));
+    box-shadow: 0 0 0 1px var(--primary), var(--shadow-md);
+    padding: 0.65rem 1rem;
+}
+.tree-node-root:hover {
+    transform: none;
+}
+.tree-node-root .tree-node-name {
+    font-size: 0.92rem;
+}
+
+.tree-node-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.5);
+}
+
+.tree-node-name {
+    font-size: 0.85rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--text);
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+}
+
+.tree-node-badge {
+    font-size: 0.6rem;
+    font-weight: 700;
+    background: var(--primary-soft);
+    color: var(--primary);
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    letter-spacing: 0.02em;
+}
+
+/* ---- Node inner layout ---- */
+.tree-node-left {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+    flex: 1;
+}
+.tree-node-right {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+/* ---- File type badge ---- */
+.tree-file-type-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 18px;
+    border-radius: 4px;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+    letter-spacing: 0.03em;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+/* ---- Search/filter ---- */
+.tree-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.tree-search-icon {
+    position: absolute;
+    left: 8px;
+    opacity: 0.35;
+    pointer-events: none;
+}
+.tree-search-input {
+    padding: 0.28rem 0.5rem 0.28rem 1.5rem;
+    font-size: 0.7rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+    width: 140px;
+    transition: border-color 0.15s, width 0.2s, box-shadow 0.15s;
+}
+.tree-search-input:focus {
+    border-color: var(--primary);
+    width: 180px;
+    box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.tree-search-input::placeholder { color: var(--text-muted); }
+
+/* ---- Focus graph button ---- */
+.tree-focus-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: all 0.15s;
+}
+.tree-node:hover .tree-focus-btn { opacity: 0.7; }
+.tree-focus-btn:hover { opacity: 1 !important; background: var(--primary-soft); color: var(--primary); }
+
+/* ---- Expand-on-hover file names ---- */
+.tree-name-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
+    transition: max-width 0.3s ease;
+}
+.tree-node:hover .tree-name-truncate {
+    max-width: 400px;
+    overflow: visible;
+    text-overflow: unset;
+}
+
+/* ---- Risk summary dots ---- */
+.tree-risk-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+}
+.tree-risk-summary-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+.tree-risk-summary-more {
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    margin-left: 2px;
+}
+
+/* ================================================================
+   TREE VIEW — Dark Theme
+   ================================================================ */
+[data-theme="dark"] .tree-dir-btn { border-color: var(--border); background: var(--bg-elevated); }
+[data-theme="dark"] .tree-dir-btn.active { background: var(--primary); border-color: var(--primary); }
+[data-theme="dark"] .tree-file-picker-item { background: rgba(255,255,255,0.03); }
+[data-theme="dark"] .tree-file-picker-item:hover { box-shadow: 0 2px 8px rgba(139,143,255,0.2); }
+[data-theme="dark"] .tree-search-input { background: var(--bg-sunken); }
+[data-theme="dark"] .tree-root-label { background: rgba(255,255,255,0.05); }
+[data-theme="dark"] .tree-node {
+    background: var(--bg-elevated);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+[data-theme="dark"] .tree-node:hover {
+    box-shadow: 0 0 0 1px var(--primary-soft), 0 4px 12px rgba(0,0,0,0.3);
+}
+[data-theme="dark"] .tree-node-root {
+    background: linear-gradient(135deg, var(--bg-elevated), rgba(139,143,255,0.08));
+    box-shadow: 0 0 0 1px var(--primary), 0 4px 16px rgba(139,143,255,0.15);
+}
+[data-theme="dark"] .tree-node-dot { box-shadow: 0 0 0 2px rgba(0,0,0,0.3); }
+[data-theme="dark"] .tree-node-badge { background: rgba(139,143,255,0.1); color: var(--primary); }
+/* Connector colors in dark mode */
+[data-theme="dark"] .tree-stem { background: var(--primary); opacity: 0.2; }
+[data-theme="dark"] .tree-hbar { background: var(--primary); opacity: 0.2; }
+[data-theme="dark"] .tree-drop::before { background: var(--primary); opacity: 0.2; }
+[data-theme="dark"] .tree-drop::after { border-top-color: var(--primary); opacity: 0.4; }
+[data-theme="dark"] .tree-zoom-controls { background: var(--bg-elevated); border-color: var(--border); }
+[data-theme="dark"] .tree-zoom-btn { color: var(--text-secondary); }
+[data-theme="dark"] .tree-zoom-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+[data-theme="dark"] .tree-zoom-level { color: var(--text-tertiary); }
+
+/* ==================================================================
+   LAYERED ARCHITECTURE VIEW
+   ================================================================== */
+
+/* Swim-lane depth labels — pinned to left edge, track pan/zoom */
+.layer-swim-label {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+    z-index: 6;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+.layer-depth-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 24px;
+    border-radius: 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    padding: 0 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* Stats bar at top of the graph container */
+#layerStatsBar {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 18px;
+    border-radius: 20px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    font-size: 0.74rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    pointer-events: none;
+}
+.layer-stat { white-space: nowrap; }
+.layer-stat-sep { opacity: 0.3; font-size: 0.8em; }
+.layer-stat-warn { color: #f59e0b; font-weight: 600; }
+
+/* File count badge next to layer label */
+.layer-depth-count {
+    font-size: 0.62rem;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    opacity: 0.7;
+}
+
+/* Violation count badge on layer label */
+.layer-violation-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background: #f59e0b;
+    color: #fff;
+    font-size: 0.58rem;
+    font-weight: 700;
+    padding: 0 5px;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+/* Dark theme overrides */
+[data-theme="dark"] .layer-depth-num {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+    color: var(--text-muted);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+[data-theme="dark"] #layerStatsBar {
+    background: rgba(14,16,25,0.85);
+    border-color: rgba(255,255,255,0.08);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+[data-theme="dark"] .layer-violation-badge {
+    box-shadow: 0 0 6px rgba(245,158,11,0.4);
+}
+
+/* Layers sidebar panel — section headers */
+.panel-section-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    padding: 0.5rem 0.65rem 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    border-radius: 9px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0 5px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+.count-badge-red {
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+/* Layers sidebar — violation groups */
+.layers-violation-group {
+    margin-bottom: 2px;
+}
+.layers-violation-src {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--danger);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background var(--transition);
+}
+.layers-violation-src:hover { background: var(--danger-soft); }
+.layers-violation-src svg { flex-shrink: 0; opacity: 0.7; }
+
+.layers-violation-edge {
+    padding: 0.25rem 0.65rem 0.25rem 2.2rem;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition);
+}
+.layers-violation-edge:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* ---- Layer drag-and-drop simulation ---- */
+.layer-band-hover {
+    background: rgba(99,102,241,0.18) !important;
+    border-top: 2px solid rgba(99,102,241,0.45) !important;
+    transition: background 0.12s ease;
+}
+[data-theme="dark"] .layer-band-hover {
+    background: rgba(129,140,248,0.15) !important;
+    border-top: 2px solid rgba(129,140,248,0.4) !important;
+}
+
+/* Override indicator badge on sidebar */
+.layer-overrides-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.6rem;
+    margin: 0.4rem 0;
+    background: var(--accent-soft);
+    border-radius: 6px;
+    font-size: 0.7rem;
+    color: var(--text-primary);
+}
+.layer-overrides-bar button {
+    padding: 0.2rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 0.65rem;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.layer-overrides-bar button:hover {
+    background: var(--danger-soft, rgba(239,68,68,0.1));
+    color: var(--danger, #ef4444);
+}

@@ -1,6 +1,19 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as path from 'path';
 import { getGraph, getBlastRadius, getDependents, getDependencies, getChurn, getChurnFromRemote } from './engine';
+
+// Load shared constants — single source of truth with the Python backend and web UI.
+const SHARED_CONSTANTS_PATH = path.join(__dirname, '..', 'shared', 'constants.json');
+let _sharedConstants: { risk_colors: Record<string, string>; risk_labels: Record<string, string> };
+try {
+  _sharedConstants = JSON.parse(fs.readFileSync(SHARED_CONSTANTS_PATH, 'utf-8'));
+} catch {
+  _sharedConstants = {
+    risk_colors: { critical: '#ef4444', high: '#f97316', warning: '#eab308', normal: '#3b82f6', entry: '#22c55e', system: '#6b7280' },
+    risk_labels: { critical: 'Critical / God file', high: 'High influence', warning: 'High dependency', normal: 'Normal', entry: 'Entry point / leaf', system: 'System / external' },
+  };
+}
 
 export class GraphWebviewProvider {
   public static currentPanel: GraphWebviewProvider | undefined;
@@ -157,7 +170,7 @@ export class GraphWebviewProvider {
              font-src https://fonts.gstatic.com;
              img-src data: ${this.panel.webview.cspSource};">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.23.0/cytoscape.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.31.0/cytoscape.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -541,10 +554,7 @@ export class GraphWebviewProvider {
     let colorMode = 'risk'; // 'risk', 'directory', or 'churn'
     let churnData = null;
 
-    const RISK_COLORS = {
-      critical: '#ef4444', high: '#f97316', warning: '#eab308',
-      normal: '#3b82f6', entry: '#22c55e', system: '#6b7280',
-    };
+    const RISK_COLORS = ${JSON.stringify(_sharedConstants.risk_colors)};
 
     function lerpColor(a, b, t) {
       var pa = [parseInt(a.slice(1,3),16), parseInt(a.slice(3,5),16), parseInt(a.slice(5,7),16)];

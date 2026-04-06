@@ -26,3 +26,10 @@ venv/
 .claude/
 
 AGENTS.md
+
+# VS Code extension — engine files are synced from project root at build time
+vscode-extension/engine/*.py
+vscode-extension/engine/static/
+
+# VS Code extension build artifacts
+vscode-extension/*.vsix

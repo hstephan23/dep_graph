@@ -1,8 +1,8 @@
 /**
  * views.js - View rendering and switching logic
  *
- * This module handles switching between graph, treemap, and tree views,
- * and contains all the rendering logic for treemap and tree visualizations.
+ * This module handles switching between graph and tree views,
+ * and contains all the rendering logic for the tree visualization.
  *
  * Dependencies:
  * - state.js (globals: _currentView, currentGraphData, cy)
@@ -17,358 +17,83 @@ function switchView(view) {
     _currentView = view;
     const cyEl = document.getElementById('cy');
     const trEl = document.getElementById('treeContainer');
-
-    // Graph-only overlays: hide when not on graph
-    const graphOnly = document.querySelectorAll('#folderColorKey, #graphStatusBar, #pathHint, #minimap, .input-search-controls, #layoutGroup, #pdViewToggle');
-    const isGraph = view === 'graph';
-    graphOnly.forEach(el => el.style.display = isGraph ? '' : 'none');
-
-    // Tree-only controls: show only in tree view
+    const isGraph = view === 'graph' || view === 'layers';
     const isTree = view === 'tree';
-    ['treeToolbar', 'treeFilterWrap', 'treeBackBtn'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = isTree ? '' : 'none';
-    });
+
+    // Deactivate layers view if switching away from it
+    if (view !== 'layers' && typeof _layersActive !== 'undefined' && _layersActive) {
+        deactivateLayersView();
+    }
 
     const panels = [cyEl, trEl];
     const outgoing = panels.filter(el => el.style.display !== 'none' && el.offsetHeight > 0);
+    const incoming = view === 'tree' ? trEl : cyEl;
+    const fadeMs = 120;
 
-    function _showTarget() {
-        // Hide all panels (no opacity tricks — just display)
+    // Toggle toolbar controls — called when content is invisible (during swap)
+    function _updateToolbar() {
+        const graphOnly = document.querySelectorAll('#folderColorKey, #graphStatusBar, #pathHint, #minimap, .input-search-controls, #fisheyeToggle');
+        graphOnly.forEach(el => el.style.display = isGraph ? '' : 'none');
+        if (view === 'layers') {
+            const hide = document.querySelectorAll('#minimap');
+            hide.forEach(el => el.style.display = 'none');
+        }
+        ['treeToolbar', 'treeFilterWrap', 'treeBackBtn'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = isTree ? '' : 'none';
+        });
+        const dirFloat = document.getElementById('treeDirectionFloat');
+        if (dirFloat) dirFloat.style.display = isTree ? 'flex' : 'none';
+    }
+
+    function _activateTarget() {
         cyEl.style.display = 'none';
         trEl.style.display = 'none';
 
-        // Show the target view
         if (view === 'tree') {
             trEl.style.display = 'flex';
             renderTree();
-        } else {
+        } else if (view === 'layers') {
             cyEl.style.display = '';
             if (cy) cy.resize();
+            activateLayersView();
+        } else {
+            cyEl.style.display = '';
+            if (cy) {
+                cy.resize();
+                cy.style(_normalStyles());
+                const config = getLayoutConfig(currentLayout);
+                config.animate = false;
+                config.fit = true;
+                cy.layout(config).run();
+            }
         }
     }
 
-    // If there's a visible outgoing panel, crossfade; otherwise show immediately
     if (outgoing.length > 0) {
-        const fadeMs = 150;
-        const incoming = view === 'tree' ? trEl : cyEl;
         outgoing.forEach(el => { el.style.transition = `opacity ${fadeMs}ms ease`; el.style.opacity = '0'; });
         setTimeout(() => {
-            // Clean outgoing styles
             outgoing.forEach(el => { el.style.transition = ''; el.style.opacity = ''; });
-            // Prepare incoming: hidden at opacity 0
+            incoming.style.transition = 'none';
             incoming.style.opacity = '0';
-            _showTarget();
-            // Fade in
+            // Batch toolbar + panel swap into one rAF so the browser reflows once
             requestAnimationFrame(() => {
-                incoming.style.transition = `opacity ${fadeMs}ms ease`;
-                incoming.style.opacity = '1';
-                setTimeout(() => { incoming.style.transition = ''; incoming.style.opacity = ''; }, fadeMs + 50);
+                _updateToolbar();
+                _activateTarget();
+                // Fade in after next frame (layout has settled)
+                requestAnimationFrame(() => {
+                    incoming.style.transition = `opacity ${fadeMs}ms ease`;
+                    incoming.style.opacity = '1';
+                    setTimeout(() => { incoming.style.transition = ''; incoming.style.opacity = ''; }, fadeMs + 50);
+                });
             });
         }, fadeMs);
     } else {
-        // First load or no outgoing panel — just show immediately, no animation
-        _showTarget();
+        // First load — update toolbar and show immediately
+        _updateToolbar();
+        _activateTarget();
     }
 }
-
-// ================================================================
-// TREEMAP VIEW
-// ================================================================
-
-// Tooltip singleton
-const _tmTooltip = document.createElement('div');
-_tmTooltip.className = 'tm-tooltip';
-document.body.appendChild(_tmTooltip);
-
-function _tmShowTooltip(e, data) {
-    const metricLabel = document.getElementById('treemapMetric').selectedOptions[0].text;
-    _tmTooltip.innerHTML =
-        '<div class="tm-tooltip-title">' + _escapeHtml(data.id) + '</div>'
-        + '<div class="tm-tooltip-row"><span>Directory</span><span class="tm-tooltip-val">' + _escapeHtml(data.dir) + '</span></div>'
-        + '<div class="tm-tooltip-row"><span>' + _escapeHtml(metricLabel) + '</span><span class="tm-tooltip-val">' + data.sizeValue + '</span></div>'
-        + '<div class="tm-tooltip-row"><span>Inbound</span><span class="tm-tooltip-val">' + data.inbound + '</span></div>'
-        + '<div class="tm-tooltip-row"><span>Outbound</span><span class="tm-tooltip-val">' + data.outbound + '</span></div>'
-        + '<div class="tm-tooltip-row"><span>Impact</span><span class="tm-tooltip-val">' + data.impact + '</span></div>'
-        + '<div class="tm-tooltip-row"><span>Stability</span><span class="tm-tooltip-val">' + data.stability + '</span></div>';
-    _tmTooltip.classList.add('visible');
-    _positionTooltip(e);
-}
-
-function _positionTooltip(e) {
-    var tt = _tmTooltip;
-    var pad = 12;
-    var x = e.clientX + pad;
-    var y = e.clientY + pad;
-    var w = tt.offsetWidth || 200;
-    var h = tt.offsetHeight || 100;
-    if (x + w > window.innerWidth - pad) x = e.clientX - w - pad;
-    if (y + h > window.innerHeight - pad) y = e.clientY - h - pad;
-    tt.style.left = x + 'px';
-    tt.style.top = y + 'px';
-}
-
-function _tmHideTooltip() {
-    _tmTooltip.classList.remove('visible');
-}
-
-// --- Squarified Treemap Layout ---
-function _squarify(items, x, y, w, h) {
-    var rects = [];
-    if (!items.length || w <= 0 || h <= 0) return rects;
-
-    var totalArea = w * h;
-    var totalValue = items.reduce(function(s, it) { return s + it.value; }, 0);
-    if (totalValue <= 0) return rects;
-
-    var scaled = items.map(function(it) {
-        var copy = {};
-        for (var k in it) copy[k] = it[k];
-        copy.area = (it.value / totalValue) * totalArea;
-        return copy;
-    });
-
-    _layoutStrip(scaled, rects, x, y, w, h);
-    return rects;
-}
-
-function _layoutStrip(items, rects, x, y, w, h) {
-    if (!items.length) return;
-    if (items.length === 1) {
-        var it = items[0];
-        it.x = x; it.y = y; it.w = w; it.h = h;
-        rects.push(it);
-        return;
-    }
-
-    var isHoriz = w >= h;
-    var total = items.reduce(function(s, it) { return s + it.area; }, 0);
-
-    var stripSum = 0;
-    var stripItems = [];
-    var bestWorst = Infinity;
-
-    for (var i = 0; i < items.length; i++) {
-        var testSum = stripSum + items[i].area;
-        var testItems = stripItems.concat([items[i]]);
-        var worst = _worstAspect(testItems, testSum, isHoriz ? h : w, total, isHoriz ? w : h);
-
-        if (worst <= bestWorst || stripItems.length === 0) {
-            bestWorst = worst;
-            stripSum = testSum;
-            stripItems = testItems;
-        } else {
-            var stripSize = isHoriz
-                ? (stripSum / total) * w
-                : (stripSum / total) * h;
-
-            _placeStrip(stripItems, rects, x, y, isHoriz, stripSize, isHoriz ? h : w);
-
-            var remaining = items.slice(i);
-            if (isHoriz) {
-                _layoutStrip(remaining, rects, x + stripSize, y, w - stripSize, h);
-            } else {
-                _layoutStrip(remaining, rects, x, y + stripSize, w, h - stripSize);
-            }
-            return;
-        }
-    }
-
-    // All items in one strip
-    _placeStrip(stripItems, rects, x, y, isHoriz, isHoriz ? w : h, isHoriz ? h : w);
-}
-
-function _placeStrip(items, rects, x, y, isHoriz, stripLen, crossLen) {
-    var totalArea = items.reduce(function(s, it) { return s + it.area; }, 0);
-    var offset = 0;
-
-    items.forEach(function(it) {
-        var ratio = it.area / totalArea;
-        var len = ratio * crossLen;
-
-        if (isHoriz) {
-            it.x = x; it.y = y + offset; it.w = stripLen; it.h = len;
-        } else {
-            it.x = x + offset; it.y = y; it.w = len; it.h = stripLen;
-        }
-        rects.push(it);
-        offset += len;
-    });
-}
-
-function _worstAspect(items, stripSum, sideLen, totalArea, mainLen) {
-    var stripRealLen = (stripSum / totalArea) * mainLen;
-    if (stripRealLen <= 0) return Infinity;
-    var worst = 0;
-    items.forEach(function(it) {
-        var itemLen = (it.area / stripSum) * sideLen;
-        if (itemLen <= 0) return;
-        var aspect = Math.max(stripRealLen / itemLen, itemLen / stripRealLen);
-        if (aspect > worst) worst = aspect;
-    });
-    return worst;
-}
-
-// --- Render Treemap ---
-function renderTreemap() {
-    if (!currentGraphData || !currentGraphData.nodes.length) return;
-
-    var container = document.getElementById('treemapContainer');
-    container.innerHTML = '';
-    var rect = container.getBoundingClientRect();
-    var W = rect.width;
-    var H = rect.height;
-    if (W <= 0 || H <= 0) return;
-
-    var metric = document.getElementById('treemapMetric').value;
-
-    // Build metrics
-    var inDeg = {};
-    var outDeg = {};
-    currentGraphData.nodes.forEach(function(n) { inDeg[n.data.id] = 0; outDeg[n.data.id] = 0; });
-    currentGraphData.edges.forEach(function(e) {
-        if (inDeg[e.data.target] !== undefined) inDeg[e.data.target]++;
-        if (outDeg[e.data.source] !== undefined) outDeg[e.data.source]++;
-    });
-
-    // Group files by directory
-    var dirGroups = {};
-    currentGraphData.nodes.forEach(function(n) {
-        var id = n.data.id;
-        var dir = id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.';
-        if (!dirGroups[dir]) dirGroups[dir] = { files: [], color: n.data.color };
-
-        var inb = inDeg[id] || 0;
-        var outb = outDeg[id] || 0;
-        var sizeVal;
-        switch (metric) {
-            case 'inbound':   sizeVal = inb; break;
-            case 'outbound':  sizeVal = outb; break;
-            case 'impact':    sizeVal = n.data.impact || 0; break;
-            case 'depth':     sizeVal = n.data.depth || 0; break;
-            case 'stability': sizeVal = parseFloat(n.data.stability) || 0; break;
-            default:          sizeVal = inb + outb; break;
-        }
-        dirGroups[dir].files.push({
-            id: id,
-            dir: dir,
-            value: Math.max(sizeVal, 0.3),
-            sizeValue: sizeVal,
-            inbound: inb,
-            outbound: outb,
-            impact: n.data.impact || 0,
-            stability: n.data.stability || 0,
-            color: n.data.color
-        });
-    });
-
-    // Sort dirs by total value
-    var dirNames = Object.keys(dirGroups).sort(function(a, b) {
-        var sumA = dirGroups[a].files.reduce(function(s, f) { return s + f.value; }, 0);
-        var sumB = dirGroups[b].files.reduce(function(s, f) { return s + f.value; }, 0);
-        return sumB - sumA;
-    });
-
-    // Top-level items: one per directory
-    var topItems = dirNames.map(function(dir) {
-        return {
-            dir: dir,
-            value: dirGroups[dir].files.reduce(function(s, f) { return s + f.value; }, 0),
-            color: dirGroups[dir].color,
-            files: dirGroups[dir].files.sort(function(a, b) { return b.value - a.value; })
-        };
-    });
-
-    // Layout directories
-    var pad = 2;
-    var dirRects = _squarify(topItems, pad, pad, W - pad * 2, H - pad * 2);
-
-    // For each directory, sub-layout files
-    dirRects.forEach(function(dr) {
-        // Directory group container
-        var groupEl = document.createElement('div');
-        groupEl.className = 'tm-group';
-        groupEl.style.cssText = 'left:' + dr.x + 'px;top:' + dr.y + 'px;width:' + dr.w + 'px;height:' + dr.h + 'px;';
-
-        var headerH = 18;
-        if (dr.w > 40 && dr.h > 20) {
-            var label = document.createElement('div');
-            label.className = 'tm-group-label';
-            label.textContent = dr.dir;
-            label.style.background = 'linear-gradient(to bottom, ' + _adjustColor(dr.color, -30) + ', transparent)';
-            groupEl.appendChild(label);
-        }
-
-        container.appendChild(groupEl);
-
-        // Sub-layout files
-        var innerPad = 1;
-        var innerY = dr.y + headerH;
-        var innerH = dr.h - headerH;
-        if (innerH < 4) return;
-
-        var fileRects = _squarify(dr.files, dr.x + innerPad, innerY + innerPad, dr.w - innerPad * 2, innerH - innerPad * 2);
-
-        fileRects.forEach(function(fr) {
-            var cell = document.createElement('div');
-            cell.className = 'tm-cell';
-            cell.style.cssText = 'left:' + fr.x + 'px;top:' + fr.y + 'px;width:' + fr.w + 'px;height:' + fr.h + 'px;background:' + fr.color + ';';
-
-            // Label if large enough
-            if (fr.w > 50 && fr.h > 24) {
-                var fname = fr.id.includes('/') ? fr.id.substring(fr.id.lastIndexOf('/') + 1) : fr.id;
-                var lbl = document.createElement('div');
-                lbl.className = 'tm-cell-label';
-                lbl.textContent = fname;
-                cell.appendChild(lbl);
-
-                if (fr.h > 38) {
-                    var val = document.createElement('div');
-                    val.className = 'tm-cell-value';
-                    val.textContent = metric === 'stability' ? parseFloat(fr.sizeValue).toFixed(2) : fr.sizeValue;
-                    cell.appendChild(val);
-                }
-            }
-
-            // Tooltip
-            cell.addEventListener('mouseenter', function(e) { _tmShowTooltip(e, fr); });
-            cell.addEventListener('mousemove', function(e) { _positionTooltip(e); });
-            cell.addEventListener('mouseleave', _tmHideTooltip);
-
-            // Click: switch to graph and zoom to node
-            cell.addEventListener('click', function() {
-                switchView('graph');
-                document.getElementById('viewGraph').checked = true;
-                setTimeout(function() {
-                    if (cy) {
-                        var node = cy.getElementById(fr.id);
-                        if (node.length) {
-                            highlightPaths(fr.id);
-                            showBlastRadius(fr.id);
-                            cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 400 });
-                        }
-                    }
-                }, 100);
-            });
-
-            container.appendChild(cell);
-        });
-    });
-}
-
-function _adjustColor(hex, amount) {
-    hex = hex.replace('#', '');
-    var num = parseInt(hex, 16);
-    var r = Math.min(255, Math.max(0, ((num >> 16) & 0xff) + amount));
-    var g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amount));
-    var b = Math.min(255, Math.max(0, (num & 0xff) + amount));
-    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-}
-
-// Re-render views on resize
-window.addEventListener('resize', function() {
-    if (_currentView === 'treemap') renderTreemap();
-});
 
 function getCssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();

@@ -1,3 +1,6 @@
+# AUTO-SYNCED from project root — do not edit this copy.
+# Source: ../parsers.py
+
 """Language-specific import/include regex patterns and resolution functions.
 
 Each ``_resolve_*`` function takes an import path (and context like the source
@@ -5,9 +8,12 @@ file, project directory, and set of known files) and returns a tuple of
 ``(resolved_path, is_external)``.
 """
 
+from __future__ import annotations
+
 import os
 import re
 from functools import lru_cache
+from typing import Match
 
 # =========================================================================
 # Regex patterns
@@ -105,6 +111,29 @@ ELIXIR_ALIAS_RE = re.compile(
     r'^\s*(?:alias|import|use|require)\s+([\w.]+)', re.MULTILINE
 )
 
+# Lua: require("module"), require "module", require 'module'
+LUA_REQUIRE_RE = re.compile(
+    r'''require\s*[\(]?\s*['"]([^'"]+)['"]\s*[\)]?''', re.MULTILINE
+)
+
+# Zig: @import("file.zig"), @import("std")
+ZIG_IMPORT_RE = re.compile(
+    r'@import\s*\(\s*"([^"]+)"\s*\)', re.MULTILINE
+)
+
+# Haskell: import Module.Name, import qualified Module.Name as Alias
+HASKELL_IMPORT_RE = re.compile(
+    r'^\s*import\s+(?:qualified\s+)?([\w.]+)', re.MULTILINE
+)
+
+# R: library(pkg), require(pkg), source("file.R")
+R_LIBRARY_RE = re.compile(
+    r'''^\s*(?:library|require)\s*\(\s*(?:['"]?([\w.]+)['"]?)\s*\)''', re.MULTILINE
+)
+R_SOURCE_RE = re.compile(
+    r'''^\s*source\s*\(\s*['"]([^'"]+)['"]\s*\)''', re.MULTILINE
+)
+
 
 # =========================================================================
 # File extension groups
@@ -126,6 +155,10 @@ SCALA_EXTENSIONS = ('.scala', '.sc')
 PHP_EXTENSIONS = ('.php',)
 DART_EXTENSIONS = ('.dart',)
 ELIXIR_EXTENSIONS = ('.ex', '.exs')
+LUA_EXTENSIONS = ('.lua',)
+ZIG_EXTENSIONS = ('.zig',)
+HASKELL_EXTENSIONS = ('.hs',)
+R_EXTENSIONS = ('.R', '.r')
 
 
 # =========================================================================
@@ -236,6 +269,70 @@ RUBY_STDLIB = frozenset([
     'sinatra', 'rspec', 'nokogiri', 'httparty', 'faraday', 'devise',
 ])
 
+LUA_STDLIB = frozenset([
+    'coroutine', 'debug', 'io', 'math', 'os', 'package', 'string',
+    'table', 'utf8', 'bit32', 'bit',
+    # Common third-party / engine modules treated as external
+    'lfs', 'socket', 'ssl', 'mime', 'ltn12', 'lpeg', 'cjson',
+    'love', 'love.audio', 'love.data', 'love.event', 'love.filesystem',
+    'love.font', 'love.graphics', 'love.image', 'love.joystick',
+    'love.keyboard', 'love.math', 'love.mouse', 'love.physics',
+    'love.sound', 'love.system', 'love.thread', 'love.timer',
+    'love.touch', 'love.video', 'love.window',
+])
+
+ZIG_STDLIB = frozenset([
+    'std', 'builtin',
+])
+
+HASKELL_STDLIB = frozenset([
+    'Prelude', 'Control.Applicative', 'Control.Arrow', 'Control.Category',
+    'Control.Concurrent', 'Control.Exception', 'Control.Monad',
+    'Control.Monad.IO.Class', 'Control.Monad.Fix', 'Control.Monad.Fail',
+    'Control.Monad.ST', 'Control.Monad.Zip',
+    'Data.Bits', 'Data.Bool', 'Data.Char', 'Data.Complex', 'Data.Data',
+    'Data.Dynamic', 'Data.Either', 'Data.Eq', 'Data.Fixed', 'Data.Foldable',
+    'Data.Function', 'Data.Functor', 'Data.IORef', 'Data.Int', 'Data.Ix',
+    'Data.Kind', 'Data.List', 'Data.Map', 'Data.Maybe', 'Data.Monoid',
+    'Data.Ord', 'Data.Proxy', 'Data.Ratio', 'Data.STRef', 'Data.Semigroup',
+    'Data.Sequence', 'Data.Set', 'Data.String', 'Data.Traversable',
+    'Data.Tuple', 'Data.Typeable', 'Data.Unique', 'Data.Void', 'Data.Word',
+    'Data.ByteString', 'Data.Text', 'Data.Map.Strict', 'Data.Map.Lazy',
+    'Data.IntMap', 'Data.IntSet', 'Data.HashMap.Strict', 'Data.HashSet',
+    'Data.Vector', 'Data.Aeson', 'Data.Time',
+    'Debug.Trace',
+    'Foreign', 'Foreign.C', 'Foreign.Marshal', 'Foreign.Ptr',
+    'Foreign.StablePtr', 'Foreign.Storable',
+    'GHC.Base', 'GHC.Generics', 'GHC.IO', 'GHC.TypeLits',
+    'Numeric', 'Numeric.Natural',
+    'System.Directory', 'System.Environment', 'System.Exit', 'System.IO',
+    'System.Info', 'System.Mem', 'System.Posix', 'System.Process',
+    'System.Random', 'System.Timeout',
+    'Text.ParserCombinators.ReadP', 'Text.Printf', 'Text.Read',
+    'Text.Show', 'Text.Megaparsec', 'Text.Parsec',
+    'Network.HTTP', 'Network.Socket', 'Network.URI',
+    'Test.HUnit', 'Test.QuickCheck', 'Test.Hspec',
+])
+
+# Haskell: top-level module prefixes that indicate stdlib/external
+HASKELL_STDLIB_PREFIXES = (
+    'Control.', 'Data.', 'Debug.', 'Foreign.', 'GHC.', 'Numeric.',
+    'System.', 'Text.', 'Network.', 'Test.',
+)
+
+R_STDLIB = frozenset([
+    'base', 'compiler', 'datasets', 'grDevices', 'graphics', 'grid',
+    'methods', 'parallel', 'splines', 'stats', 'stats4', 'tcltk',
+    'tools', 'utils',
+    # Common CRAN/external packages treated as external
+    'ggplot2', 'dplyr', 'tidyr', 'readr', 'purrr', 'tibble', 'stringr',
+    'forcats', 'lubridate', 'tidyverse', 'shiny', 'knitr', 'rmarkdown',
+    'devtools', 'testthat', 'roxygen2', 'magrittr', 'rlang', 'glue',
+    'httr', 'jsonlite', 'xml2', 'rvest', 'plyr', 'reshape2', 'data.table',
+    'caret', 'randomForest', 'xgboost', 'e1071', 'MASS', 'lattice',
+    'survival', 'nlme', 'lme4', 'Matrix',
+])
+
 
 # =========================================================================
 # Helper functions
@@ -243,7 +340,7 @@ RUBY_STDLIB = frozenset([
 
 def collapse_py_multiline_imports(source: str) -> str:
     """Replace parenthesised import lists with single-line equivalents."""
-    def _repl(m):
+    def _repl(m: Match[str]) -> str:
         prefix = m.group(1)             # "from foo import "
         body = m.group(2)               # "a,\n    b,\n    c\n"
         names = ', '.join(
@@ -278,20 +375,20 @@ class ResolutionCache:
 
     __slots__ = ('_store',)
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._store = {}
 
-    def get(self, resolver, import_path, source_file=None):
+    def get(self, resolver: str, import_path: str, source_file: str | None = None) -> object | None:
         return self._store.get((resolver, import_path, source_file))
 
-    def put(self, resolver, import_path, source_file, value):
+    def put(self, resolver: str, import_path: str, source_file: str | None, value: object) -> None:
         self._store[(resolver, import_path, source_file)] = value
 
-    def clear(self):
+    def clear(self) -> None:
         self._store.clear()
 
     @property
-    def size(self):
+    def size(self) -> int:
         return len(self._store)
 
 
@@ -299,7 +396,7 @@ class ResolutionCache:
 # Resolution functions
 # =========================================================================
 
-def resolve_js_import(import_path, source_file, directory, known_files):
+def resolve_js_import(import_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Try to resolve a JS/TS import path to a real file in the project.
 
     Handles bare specifiers (treated as external / node_modules — skipped when
@@ -333,7 +430,7 @@ def resolve_js_import(import_path, source_file, directory, known_files):
     return candidate, False
 
 
-def resolve_py_import(module_path, source_file, directory, known_files):
+def resolve_py_import(module_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Python import to a file path.
 
     *module_path* is the dotted module string (e.g. ``foo.bar`` or ``.bar``
@@ -376,7 +473,7 @@ def resolve_py_import(module_path, source_file, directory, known_files):
     return candidate_file, False
 
 
-def resolve_java_import(import_path, directory, known_files):
+def resolve_java_import(import_path: str, directory: str, known_files: set[str]) -> list[tuple[str, bool]]:
     """Resolve a Java import to source files.
 
     Returns a list of ``(resolved_path, is_external)`` tuples.
@@ -400,7 +497,7 @@ def resolve_java_import(import_path, directory, known_files):
         return [(import_path, True)]
 
 
-def parse_go_mod(directory):
+def parse_go_mod(directory: str) -> str | None:
     """Read go.mod and return the module path, or None."""
     go_mod = os.path.join(directory, 'go.mod')
     if not os.path.isfile(go_mod):
@@ -413,7 +510,7 @@ def parse_go_mod(directory):
     return None
 
 
-def resolve_go_import(import_path, directory, known_files, module_path):
+def resolve_go_import(import_path: str, directory: str, known_files: set[str], module_path: str | None) -> tuple[str, bool]:
     """Resolve a Go import path.
 
     Returns ``(resolved_path, is_external)``.
@@ -435,7 +532,7 @@ def resolve_go_import(import_path, directory, known_files, module_path):
     return import_path, True
 
 
-def resolve_rust_mod(mod_name, source_file, directory, known_files):
+def resolve_rust_mod(mod_name: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Rust ``mod foo;`` declaration.
 
     Follows Rust conventions: ``foo.rs`` or ``foo/mod.rs`` relative to the
@@ -453,7 +550,7 @@ def resolve_rust_mod(mod_name, source_file, directory, known_files):
     return os.path.join(source_dir, mod_name + '.rs'), False
 
 
-def build_cs_namespace_map(directory, known_files):
+def build_cs_namespace_map(directory: str, known_files: set[str]) -> tuple[dict[str, list[str]], dict[str, str]]:
     """Pre-scan .cs files to build a map of declared namespace → [file paths].
 
     Also builds a class-name → file path map for individual type resolution.
@@ -492,8 +589,8 @@ def build_cs_namespace_map(directory, known_files):
     return ns_map, class_map
 
 
-def resolve_cs_using(namespace, directory, known_files, ns_map=None,
-                     class_map=None):
+def resolve_cs_using(namespace: str, directory: str, known_files: set[str], ns_map: dict[str, list[str]] | None = None,
+                     class_map: dict[str, str] | None = None) -> tuple[list[str], bool]:
     """Resolve a C# ``using`` directive to project file(s) if possible.
 
     C# using directives reference namespaces, not files directly.  Resolution
@@ -532,7 +629,7 @@ def resolve_cs_using(namespace, directory, known_files, ns_map=None,
     # --- Strategy 2: path heuristics (fallback) ---
     parts = namespace.split('.')
 
-    def _normalize(s):
+    def _normalize(s: str) -> str:
         """Normalise a string for fuzzy directory matching."""
         return s.lower().replace('-', '_')
 
@@ -577,7 +674,7 @@ def resolve_cs_using(namespace, directory, known_files, ns_map=None,
     return [namespace], True
 
 
-def resolve_swift_import(module_name, source_file, directory, known_files):
+def resolve_swift_import(module_name: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Swift import to a local file or mark as external.
 
     Swift imports reference modules (not files directly).  For local project
@@ -611,8 +708,7 @@ def resolve_swift_import(module_name, source_file, directory, known_files):
     return module_name, True
 
 
-def resolve_ruby_require(req_path, source_file, directory, known_files,
-                         relative=False):
+def resolve_ruby_require(req_path: str, source_file: str, directory: str, known_files: set[str], relative: bool = False) -> tuple[str, bool]:
     """Resolve a Ruby require/require_relative to a project file.
 
     Returns ``(resolved, is_external)``.
@@ -647,7 +743,7 @@ def resolve_ruby_require(req_path, source_file, directory, known_files,
     return candidate_rb, False
 
 
-def resolve_kotlin_import(import_path, directory, known_files):
+def resolve_kotlin_import(import_path: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Kotlin import to source files.
 
     Returns ``(resolved_path, is_external)``.
@@ -685,7 +781,7 @@ def resolve_kotlin_import(import_path, directory, known_files):
         return import_path, True
 
 
-def resolve_scala_import(import_path, directory, known_files):
+def resolve_scala_import(import_path: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Scala import to source files.
 
     Returns ``(resolved_path, is_external)``.
@@ -724,7 +820,7 @@ def resolve_scala_import(import_path, directory, known_files):
     return import_path, True
 
 
-def build_php_namespace_map(directory, known_files):
+def build_php_namespace_map(directory: str, known_files: set[str]) -> tuple[dict[str, list[str]], dict[str, str]]:
     """Pre-scan .php files to build a map of declared namespace → [file paths].
 
     Returns ``(ns_map, class_map)`` where *ns_map* maps a full namespace string
@@ -760,8 +856,8 @@ def build_php_namespace_map(directory, known_files):
     return ns_map, class_map
 
 
-def resolve_php_use(namespace, directory, known_files, ns_map=None,
-                    class_map=None):
+def resolve_php_use(namespace: str, directory: str, known_files: set[str], ns_map: dict[str, list[str]] | None = None,
+                    class_map: dict[str, str] | None = None) -> tuple[str, bool]:
     """Resolve a PHP ``use`` statement to project file(s) if possible.
 
     Returns ``(resolved_path, is_external)``.
@@ -804,7 +900,7 @@ def resolve_php_use(namespace, directory, known_files, ns_map=None,
     return namespace, True
 
 
-def resolve_php_require(req_path, source_file, directory, known_files):
+def resolve_php_require(req_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a PHP require/include to a project file.
 
     Returns ``(resolved_path, is_external)``.
@@ -822,7 +918,7 @@ def resolve_php_require(req_path, source_file, directory, known_files):
     return candidate, False
 
 
-def resolve_dart_import(import_path, source_file, directory, known_files):
+def resolve_dart_import(import_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve a Dart import to a project file.
 
     Returns ``(resolved_path, is_external)``.
@@ -861,7 +957,7 @@ def resolve_dart_import(import_path, source_file, directory, known_files):
     return candidate, False
 
 
-def resolve_elixir_module(module_name, source_file, directory, known_files):
+def resolve_elixir_module(module_name: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
     """Resolve an Elixir module reference to a project file.
 
     Elixir modules map to files via snake_case conversion:
@@ -911,3 +1007,142 @@ def resolve_elixir_module(module_name, source_file, directory, known_files):
             return f, False
 
     return module_name, True
+
+
+def resolve_lua_require(req_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
+    """Resolve a Lua ``require("module")`` to a project file.
+
+    Lua's ``require`` uses dot-separated module paths that map to directories
+    (e.g. ``require("models.user")`` → ``models/user.lua``).
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # Check stdlib / well-known external modules
+    top = req_path.split('.')[0]
+    if top in LUA_STDLIB or req_path in LUA_STDLIB:
+        return req_path, True
+
+    # Convert dot-separated path to filesystem path
+    candidate = req_path.replace('.', os.sep) + '.lua'
+    if candidate in known_files:
+        return candidate, False
+
+    # Try init.lua (package-style: models/init.lua)
+    init_candidate = os.path.join(req_path.replace('.', os.sep), 'init.lua')
+    if init_candidate in known_files:
+        return init_candidate, False
+
+    # Try relative to source file
+    source_dir = os.path.dirname(source_file)
+    rel_candidate = os.path.normpath(os.path.join(source_dir, candidate))
+    if rel_candidate in known_files:
+        return rel_candidate, False
+
+    # Try as bare filename
+    bare = req_path + '.lua'
+    if bare in known_files:
+        return bare, False
+
+    return req_path, True
+
+
+def resolve_zig_import(import_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
+    """Resolve a Zig ``@import("file.zig")`` to a project file.
+
+    Zig imports reference files directly (``@import("file.zig")``) or the
+    standard library (``@import("std")``).
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # Check stdlib
+    if import_path in ZIG_STDLIB:
+        return import_path, True
+
+    # Direct file reference — resolve relative to source file
+    source_dir = os.path.dirname(source_file)
+    candidate = os.path.normpath(os.path.join(source_dir, import_path))
+    if candidate in known_files:
+        return candidate, False
+
+    # Try from project root
+    if import_path in known_files:
+        return import_path, False
+
+    # Try adding .zig extension if not present
+    if not import_path.endswith('.zig'):
+        probe = candidate + '.zig'
+        if probe in known_files:
+            return probe, False
+        probe_root = import_path + '.zig'
+        if probe_root in known_files:
+            return probe_root, False
+
+    return import_path, True
+
+
+def resolve_haskell_import(module_name: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
+    """Resolve a Haskell ``import Module.Name`` to a project file.
+
+    Haskell modules map to files via path conversion:
+    ``Data.Models.User`` → ``Data/Models/User.hs``
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # Check stdlib by exact match
+    if module_name in HASKELL_STDLIB:
+        return module_name, True
+
+    # Check stdlib by prefix
+    for prefix in HASKELL_STDLIB_PREFIXES:
+        if module_name.startswith(prefix):
+            return module_name, True
+
+    # Check single-word well-known module
+    if module_name == 'Prelude':
+        return module_name, True
+
+    # Convert module path to filesystem path
+    candidate = module_name.replace('.', os.sep) + '.hs'
+    if candidate in known_files:
+        return candidate, False
+
+    # Try src/ prefix (common Haskell project layout)
+    src_candidate = os.path.join('src', candidate)
+    if src_candidate in known_files:
+        return src_candidate, False
+
+    # Try lib/ prefix
+    lib_candidate = os.path.join('lib', candidate)
+    if lib_candidate in known_files:
+        return lib_candidate, False
+
+    # Try app/ prefix (stack projects)
+    app_candidate = os.path.join('app', candidate)
+    if app_candidate in known_files:
+        return app_candidate, False
+
+    # Try just the last component as a filename
+    base = module_name.split('.')[-1] + '.hs'
+    for f in known_files:
+        if os.path.basename(f) == base:
+            return f, False
+
+    return module_name, True
+
+
+def resolve_r_source(source_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
+    """Resolve an R ``source("file.R")`` to a project file.
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # Resolve relative to source file
+    source_dir = os.path.dirname(source_file)
+    candidate = os.path.normpath(os.path.join(source_dir, source_path))
+    if candidate in known_files:
+        return candidate, False
+
+    # Try from project root
+    if source_path in known_files:
+        return source_path, False
+
+    return candidate, False

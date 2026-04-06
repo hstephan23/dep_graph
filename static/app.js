@@ -77,22 +77,11 @@ function _handleApiError(err, fallbackMsg = 'Something went wrong.') {
 // COLOR MODE — risk vs language
 // ============================================================
 
-const RISK_PALETTE = {
-    critical: '#ef4444',
-    high:     '#f97316',
-    warning:  '#eab308',
-    normal:   '#3b82f6',
-    entry:    '#22c55e',
-    system:   '#6b7280',
-};
-const RISK_LABELS = {
-    critical: 'Critical / God file',
-    high:     'High influence',
-    warning:  'High dependency',
-    normal:   'Normal',
-    entry:    'Entry point / leaf',
-    system:   'System / external',
-};
+// RISK_PALETTE and RISK_LABELS are loaded from constants.js (generated from shared/constants.json)
+
+// Below this count, list items render as plain DOM rows.
+// Above it, virtual scrolling kicks in to keep the UI responsive.
+const VIRTUAL_THRESHOLD = 200;
 
 let _colorMode = 'risk';  // 'risk', 'directory', or 'churn'
 let _churnData = null;     // cached churn API response
@@ -168,8 +157,9 @@ function changeColorMode(mode) {
         });
     });
 
-    // Update the legend
+    // Update the legend and minimap
     buildColorKey(currentGraphData.nodes);
+    renderMinimap();
 }
 
 function _applyChurnColors() {
@@ -185,6 +175,7 @@ function _applyChurnColors() {
     console.log('[DepGraph] Churn applied: ' + matched + '/' + total + ' nodes matched. Sample IDs:', cy.nodes().slice(0,3).map(function(n){return n.data('id');}));
     console.log('[DepGraph] Sample churn keys:', Object.keys(_churnData.files || {}).slice(0, 3));
     buildColorKey(currentGraphData.nodes);
+    renderMinimap();
 }
 
 function _applyChurnColorToNode(n) {
@@ -357,10 +348,7 @@ function renderGraph(data) {
 
     if (cy) cy.destroy();
 
-    // --- Always start in flat files view (no auto-collapse) ---
-    _compound.active = false;
-    _compound.raw = null;
-    _compound.collapsed = new Set();
+    // (compound directory view removed — always flat files mode)
 
     // If churn data came bundled (GitHub clone), use it directly; otherwise reset
     if (data.churn && data.churn.files) {
@@ -405,16 +393,11 @@ function renderGraph(data) {
     // Attach minimap listeners
     attachMinimapListeners();
 
-    // Show/hide the scope toggle and sync radio state
-    pdUpdateToggle();
-    const pdRadio = document.getElementById(_compound.active ? 'pdViewDirs' : 'pdViewFiles');
-    if (pdRadio) pdRadio.checked = true;
-
     // Show graph status bar, path hint, and color legend
     if (data.nodes && data.nodes.length) {
         document.getElementById('graphStatusBar').style.display = 'flex';
         document.getElementById('pathHint').style.display = 'block';
-        if (!_compound.active) buildColorKey(data.nodes);
+        buildColorKey(data.nodes);
         updatePathDatalist();
     }
 
@@ -876,10 +859,10 @@ function refilterGraph() {
                 showToast('Error: ' + (d.suggestion || d.error), 4000);
                 document.getElementById('loading').classList.remove('active');
             } else {
+                currentUploadToken = d.upload_token || currentUploadToken;
+                showDetectedLanguages(d.detected);
                 try {
-                    currentUploadToken = d.upload_token || currentUploadToken;
                     renderGraph(d);
-                    showDetectedLanguages(d.detected);
                     showDepthWarnings(d);
                 } catch (renderErr) {
                     console.error('Render error after re-filter:', renderErr);
@@ -924,10 +907,10 @@ function loadFromGitHub() {
                 document.getElementById('loading').classList.remove('active');
                 if (!currentGraphData) loadDemoGraph();
             } else {
+                currentUploadToken = d.upload_token || null;
+                showDetectedLanguages(d.detected);
                 try {
-                    currentUploadToken = d.upload_token || null;
-                    renderGraph(d);  // churn data is extracted inside renderGraph
-                    showDetectedLanguages(d.detected);
+                    renderGraph(d);
                     showDepthWarnings(d);
                 } catch (renderErr) {
                     console.error('Render error after GitHub clone:', renderErr);
@@ -954,14 +937,13 @@ function uploadZip() {
         .then(r => r.json()).then(d => {
             if (d.error) { showToast('Error: ' + (d.suggestion || d.error), 5000); document.getElementById('loading').classList.remove('active'); }
             else {
+                currentUploadToken = d.upload_token || null;
+                showDetectedLanguages(d.detected);
                 try {
-                    currentUploadToken = d.upload_token || null;
                     renderGraph(d);
-                    showDetectedLanguages(d.detected);
                     showDepthWarnings(d);
                 } catch (renderErr) {
                     console.error('Render error after successful upload:', renderErr);
-                    // Don't show "Upload failed" — the upload was fine, just rendering had an issue
                 }
             }
         }).catch(err => { _handleApiError(err, 'Upload failed.'); document.getElementById('loading').classList.remove('active'); });
@@ -986,12 +968,12 @@ function getFilterValues() {
     const m = _selectedLang;
     const common = { hide_system: document.getElementById('hideSystemHeaders').checked, hide_isolated: document.getElementById('hideIsolated').checked, filter_dir: document.getElementById('filterDirInput').value };
     if (m === 'auto') return { mode: 'auto', ...common };
-    return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust', show_cs: m === 'cs', show_swift: m === 'swift', show_ruby: m === 'ruby', show_kotlin: m === 'kotlin', show_scala: m === 'scala', show_php: m === 'php', show_dart: m === 'dart', show_elixir: m === 'elixir' };
+    return { ...common, show_c: m === 'c' || m === 'cpp', show_h: m === 'c' || m === 'cpp', show_cpp: m === 'cpp', show_js: m === 'js', show_py: m === 'py', show_java: m === 'java', show_go: m === 'go', show_rust: m === 'rust', show_cs: m === 'cs', show_swift: m === 'swift', show_ruby: m === 'ruby', show_kotlin: m === 'kotlin', show_scala: m === 'scala', show_php: m === 'php', show_dart: m === 'dart', show_elixir: m === 'elixir', show_lua: m === 'lua', show_zig: m === 'zig', show_haskell: m === 'haskell', show_r: m === 'r' };
 }
 
 function showDetectedLanguages(det) {
     const el = document.getElementById('detectedLangs');
-    if (!det) { el.style.display = 'none'; return; }
+    if (!det) { el.classList.remove('visible'); return; }
     const langMap = [
         ['has_c', 'C'], ['has_h', 'Headers'], ['has_cpp', 'C++'],
         ['has_js', 'JS/TS'], ['has_py', 'Python'], ['has_java', 'Java'],
@@ -999,10 +981,13 @@ function showDetectedLanguages(det) {
         ['has_swift', 'Swift'], ['has_ruby', 'Ruby'],
         ['has_kotlin', 'Kotlin'], ['has_scala', 'Scala'],
         ['has_php', 'PHP'], ['has_dart', 'Dart'], ['has_elixir', 'Elixir'],
+        ['has_lua', 'Lua'], ['has_zig', 'Zig'], ['has_haskell', 'Haskell'], ['has_r', 'R'],
     ];
     const langs = langMap.filter(([k]) => det[k]).map(([, v]) => v);
-    el.textContent = langs.length ? 'Detected: ' + langs.join(', ') : 'No supported files detected';
+    if (!langs.length) { el.classList.remove('visible'); return; }
+    el.textContent = langs.join(' · ');
     el.style.display = '';
+    requestAnimationFrame(() => el.classList.add('visible'));
 }
 
 function loadGraph() {
@@ -1021,9 +1006,9 @@ function loadGraph() {
                 // Fall back to demo graph if no real graph loaded yet
                 if (!currentGraphData) loadDemoGraph();
             } else {
+                showDetectedLanguages(d.detected);
                 try {
                     renderGraph(d);
-                    showDetectedLanguages(d.detected);
                     showDepthWarnings(d);
                 } catch (renderErr) {
                     console.error('Render error after successful load:', renderErr);

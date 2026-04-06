@@ -8,7 +8,16 @@
 const Tour = (() => {
     'use strict';
 
+    // Steps ordered for a natural spatial sweep:
+    // Top-left → controls row (left to right) → top-right actions →
+    // canvas center → bottom-left legend → bottom-right minimap →
+    // right sidebar (tabs → simulator)
+    // Steps ordered for a natural spatial sweep:
+    // Top-left → top-right (left to right) → controls row (left to right) →
+    // canvas center → bottom-left legend → bottom-left status bar →
+    // bottom-right minimap → right sidebar (tabs → simulator)
     const steps = [
+        // ── Top bar, left to right ──
         {
             target: '.brand',
             label: 'Welcome to DepGraph',
@@ -16,40 +25,22 @@ const Tour = (() => {
             placement: 'bottom-start',
         },
         {
-            target: '.toolbar-top .dropdown:first-of-type',
-            label: 'Filters',
-            desc: 'Toggle languages, hide system imports, filter by subdirectory, or isolate specific parts of your codebase.',
-            placement: 'bottom-start',
-        },
-        {
-            target: '.toolbar-group:has([name="layoutMode"])',
-            label: 'Layout Modes',
-            desc: 'Choose how nodes are arranged: Force (organic), Hierarchy (top-down DAG), or Concentric (rings). The lens icon enables focus-magnification.',
-            placement: 'bottom',
-        },
-        {
-            target: '.toolbar-group:has([name="viewMode"])',
-            label: 'View Modes',
-            desc: 'Switch between an interactive Graph, a Treemap heat-map, or a Matrix grid showing every file-to-file dependency at a glance.',
-            placement: 'bottom',
-        },
-        {
-            target: '#cy',
-            label: 'Graph Canvas',
-            desc: 'The main stage. Click a node to trace dependencies, double-click to preview source code, scroll to zoom, and drag to rearrange.',
-            placement: 'center',
-        },
-        {
             target: '.btn[onclick*="toggleQueryTerminal"]',
             label: 'Query Terminal',
             desc: 'Write powerful queries like \u201Cfiles where inbound > 3\u201D or \u201Cfiles in cycles\u201D to filter and highlight matching nodes.',
-            placement: 'bottom-end',
+            placement: 'bottom',
         },
         {
             target: '.btn-upload',
             label: 'Upload',
             desc: 'Drop in a ZIP or individual source files to generate a dependency graph from any project \u2014 no server access needed.',
-            placement: 'bottom-end',
+            placement: 'bottom',
+        },
+        {
+            target: '#githubForm',
+            label: 'GitHub Import',
+            desc: 'Paste an owner/repo or full GitHub URL to clone and analyze any repository. Runs 100% locally \u2014 your code never leaves your machine. Works with private repos you have access to.',
+            placement: 'bottom',
         },
         {
             target: '.dropdown:has(.export-menu)',
@@ -58,33 +49,49 @@ const Tour = (() => {
             placement: 'bottom-end',
         },
         {
-            target: '#sidebar .sidebar-tabs-wrap',
-            label: 'Sidebar Tools',
-            desc: 'Deep-dive tools in two rows \u2014 Inspect (Refs, Analysis, Unused, Blast) and Tools (Layers, Rules, Path, Diff, Simulate, Story).',
-            placement: 'left',
+            target: '#themeToggle',
+            label: 'Theme',
+            desc: 'Toggle light and dark mode. Your preference is saved automatically.',
+            placement: 'bottom-end',
+        },
+
+        // ── Controls row, left to right ──
+        {
+            target: '.toolbar-controls .dropdown:first-of-type',
+            label: 'Filters',
+            desc: 'Toggle languages, hide system imports, filter by subdirectory, or isolate specific parts of your codebase.',
+            placement: 'bottom-start',
         },
         {
-            target: '#minimap',
-            label: 'Minimap',
-            desc: 'A bird\u2019s-eye view of the full graph. Drag the viewport rectangle to navigate large codebases quickly.',
-            placement: 'left',
+            target: '.toolbar-group-compact:has([name="colorMode"])',
+            label: 'Color Modes',
+            desc: 'Color nodes by Risk (complexity & coupling), Directory (folder grouping), or Churn (git commit frequency).',
+            placement: 'bottom',
         },
+        {
+            target: '.toolbar-group-compact:has([name="viewMode"])',
+            label: 'View & Lens',
+            desc: 'Switch between an interactive Graph or a Tree view. The magnifying glass enables a focus lens that magnifies nodes under your cursor.',
+            placement: 'bottom',
+        },
+
+        // ── Main canvas ──
+        {
+            target: '#cy',
+            label: 'Graph Canvas',
+            desc: 'The main stage. Click a node to trace dependencies, double-click to preview source code, scroll to zoom, and drag to rearrange.',
+            placement: 'center',
+        },
+
+        // ── Bottom overlays, left to right ──
         {
             target: '#folderColorKey',
-            label: 'Legend',
-            desc: 'Two legends live here. The color key (top) shows node risk levels — red for critical, green for entry points. The status bar (bottom) shows edge and selection colors when you interact with the graph.',
+            label: 'Color Legend',
+            desc: 'Shows what each node color means. In Risk mode: red for critical files, orange for high influence, blue for normal, and green for entry points or leaves.',
             placement: 'top',
             before() {
-                // Force-show the color legend
                 const key = document.getElementById('folderColorKey');
                 if (key) key.style.display = 'flex';
-
-                // Force-show the edge/selection status bar
-                const bar = document.getElementById('graphStatusBar');
-                if (bar) bar.style.display = 'flex';
-
-                // If the legend list is empty (no graph loaded), populate
-                // with the risk palette so the user sees something useful
                 const list = document.getElementById('folderKeyList');
                 if (list && list.children.length === 0) {
                     const palette = [
@@ -104,22 +111,45 @@ const Tour = (() => {
                 }
             },
             after() {
-                // If no graph is loaded, hide both legends when leaving this step
                 const hasGraph = typeof currentGraphData !== 'undefined' && currentGraphData
                     && currentGraphData.nodes && currentGraphData.nodes.length;
                 if (!hasGraph) {
                     const key = document.getElementById('folderColorKey');
                     if (key) key.style.display = 'none';
+                }
+            },
+        },
+        {
+            target: '#graphStatusBar',
+            label: 'Selection & Edges',
+            desc: 'When you click a node, this bar shows what the highlight colors mean \u2014 purple for upstream dependencies, orange for downstream, yellow for the selected node, and red lines for cycles.',
+            placement: 'top',
+            before() {
+                const bar = document.getElementById('graphStatusBar');
+                if (bar) bar.style.display = 'flex';
+            },
+            after() {
+                const hasGraph = typeof currentGraphData !== 'undefined' && currentGraphData
+                    && currentGraphData.nodes && currentGraphData.nodes.length;
+                if (!hasGraph) {
                     const bar = document.getElementById('graphStatusBar');
                     if (bar) bar.style.display = 'none';
                 }
             },
         },
         {
-            target: '#themeToggle',
-            label: 'Theme',
-            desc: 'Toggle light and dark mode. Your preference is saved automatically.',
-            placement: 'bottom-end',
+            target: '#minimap',
+            label: 'Minimap',
+            desc: 'A bird\u2019s-eye view of the full graph. Drag the viewport rectangle to navigate large codebases quickly.',
+            placement: 'left',
+        },
+
+        // ── Right sidebar ──
+        {
+            target: '#sidebar .sidebar-tabs-wrap',
+            label: 'Sidebar Tools',
+            desc: 'Deep-dive tools in two rows \u2014 Inspect (Refs, Analysis, Unused, Blast) and Tools (Layers, Rules, Path, Diff, Simulate, Story).',
+            placement: 'left',
         },
         {
             target: '#panel-simulate',

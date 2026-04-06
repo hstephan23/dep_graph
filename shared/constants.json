@@ -1,0 +1,18 @@
+{
+  "risk_colors": {
+    "critical": "#ef4444",
+    "high":     "#f97316",
+    "warning":  "#eab308",
+    "normal":   "#3b82f6",
+    "entry":    "#22c55e",
+    "system":   "#6b7280"
+  },
+  "risk_labels": {
+    "critical": "Critical / God file",
+    "high":     "High influence",
+    "warning":  "High dependency",
+    "normal":   "Normal",
+    "entry":    "Entry point / leaf",
+    "system":   "System / external"
+  }
+}

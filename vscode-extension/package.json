@@ -1,6 +1,6 @@
 {
   "name": "dep-graph",
-  "displayName": "DepGraph",
+  "displayName": "Dep Graph",
   "description": "Visualize and analyze source file dependencies directly in VS Code",
   "version": "1.2.0",
   "publisher": "depgraph",
@@ -32,7 +32,11 @@
     "workspaceContains:**/*.scala",
     "workspaceContains:**/*.php",
     "workspaceContains:**/*.dart",
-    "workspaceContains:**/*.ex"
+    "workspaceContains:**/*.ex",
+    "workspaceContains:**/*.lua",
+    "workspaceContains:**/*.zig",
+    "workspaceContains:**/*.hs",
+    "workspaceContains:**/*.R"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -128,7 +132,11 @@
             "scala",
             "php",
             "dart",
-            "elixir"
+            "elixir",
+            "lua",
+            "zig",
+            "haskell",
+            "r"
           ],
           "description": "Language mode for dependency analysis"
         },
@@ -184,7 +192,8 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "sync-engine": "bash sync-engine.sh",
+    "vscode:prepublish": "npm run sync-engine && npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
