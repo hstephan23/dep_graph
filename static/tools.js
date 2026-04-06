@@ -52,6 +52,7 @@ function fisheyeToggle() {
         // Store original node sizes
         _fisheye.restoreData = {};
         cy.nodes().forEach(n => {
+            if (n.data('isLayerBand')) return; // skip layer band parent nodes
             _fisheye.restoreData[n.id()] = {
                 width: n.style('width'),
                 height: n.style('height'),
@@ -750,10 +751,15 @@ function exitDiffMode() {
 function searchNode() {
     if (!cy) return;
     const q = document.getElementById('searchInput').value.toLowerCase();
+    const inLayers = typeof _layersActive !== 'undefined' && _layersActive;
     if (!q) {
         cy.nodes().style({ 'border-width': 0, 'border-color': 'transparent' });
         cy.nodes().style('opacity', 1);
         cy.edges().style('opacity', 0.7);
+        // Restore violation edge styling in layers mode
+        if (inLayers) {
+            cy.edges('.violation').style('opacity', 0.85);
+        }
         return;
     }
     const matches = cy.nodes().filter(n => n.id().toLowerCase().includes(q));
@@ -770,6 +776,20 @@ function searchNode() {
         'border-style': 'solid',
         opacity: 1
     });
+
+    // In layers mode, keep violation edges involving matched nodes visible
+    if (inLayers) {
+        cy.edges('.violation').forEach(e => {
+            const sMatch = matches.contains(e.source());
+            const tMatch = matches.contains(e.target());
+            if (sMatch || tMatch) {
+                e.style('opacity', 0.9);
+                // Also keep the connected non-match node semi-visible
+                if (sMatch && !tMatch) e.target().style('opacity', 0.5);
+                if (tMatch && !sMatch) e.source().style('opacity', 0.5);
+            }
+        });
+    }
 
     if (matches.length) {
         cy.animate({ center: { eles: matches[0] }, zoom: 1.5 }, { duration: 500 });

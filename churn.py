@@ -23,6 +23,7 @@ import tempfile
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 log = logging.getLogger("depgraph.churn")
 
@@ -30,7 +31,7 @@ log = logging.getLogger("depgraph.churn")
 # Public API
 # ---------------------------------------------------------------------------
 
-def get_churn(directory: str, *, days: int = 365, recent_days: int = 90) -> dict:
+def get_churn(directory: str, *, days: int = 365, recent_days: int = 90) -> dict[str, Any]:
     """Return churn data for every tracked file under *directory*.
 
     Parameters
@@ -100,7 +101,7 @@ def get_churn(directory: str, *, days: int = 365, recent_days: int = 90) -> dict
     }
 
 
-def get_churn_from_remote(git_url: str, *, days: int = 365, recent_days: int = 90) -> dict:
+def get_churn_from_remote(git_url: str, *, days: int = 365, recent_days: int = 90) -> dict[str, Any]:
     """Clone a remote git repo (bare) and return churn data.
 
     Only HTTPS URLs to GitHub, GitLab, and Bitbucket are accepted.

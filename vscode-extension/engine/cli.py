@@ -1,3 +1,6 @@
+# AUTO-SYNCED from project root — do not edit this copy.
+# Source: ../cli.py
+
 #!/usr/bin/env python3
 """DepGraph CLI — analyze source file dependencies from the terminal.
 
@@ -11,11 +14,15 @@ Usage:
     depgraph ./src --serve             # launch web UI
 """
 
+from __future__ import annotations
+
 import argparse
 import json
+import logging
 import os
 import sys
 import webbrowser
+from typing import Any
 
 # Import the core graph engine (same module powers the web UI)
 from graph import build_graph as _build_graph, detect_languages as _detect_languages
@@ -28,24 +35,37 @@ from graph import build_graph as _build_graph, detect_languages as _detect_langu
 _USE_COLOR = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
 
-def _c(code, text):
+def _c(code: str, text: str) -> str:
     return f"\033[{code}m{text}\033[0m" if _USE_COLOR else text
 
 
-def _bold(t):    return _c("1", t)
-def _dim(t):     return _c("2", t)
-def _red(t):     return _c("31", t)
-def _green(t):   return _c("32", t)
-def _yellow(t):  return _c("33", t)
-def _cyan(t):    return _c("36", t)
-def _magenta(t): return _c("35", t)
+def _bold(t: str) -> str:
+    return _c("1", t)
+
+def _dim(t: str) -> str:
+    return _c("2", t)
+
+def _red(t: str) -> str:
+    return _c("31", t)
+
+def _green(t: str) -> str:
+    return _c("32", t)
+
+def _yellow(t: str) -> str:
+    return _c("33", t)
+
+def _cyan(t: str) -> str:
+    return _c("36", t)
+
+def _magenta(t: str) -> str:
+    return _c("35", t)
 
 
 # ---------------------------------------------------------------------------
 # Output formatters
 # ---------------------------------------------------------------------------
 
-def _format_tree(result, directory):
+def _format_tree(result: dict[str, Any], directory: str) -> None:
     """Print a coloured dependency tree to stdout.
 
     Node colours follow the risk classification so your eye goes straight
@@ -126,7 +146,7 @@ def _format_tree(result, directory):
     # Print tree
     visited = set()
 
-    def _print_node(node_id, prefix="", is_last=True, depth=0):
+    def _print_node(node_id: str, prefix: str = "", is_last: bool = True, depth: int = 0) -> None:
         if depth > 8:
             print(f"{prefix}{'└── ' if is_last else '├── '}{_dim('...')}")
             return
@@ -202,12 +222,12 @@ def _format_tree(result, directory):
     print()
 
 
-def _format_json(result):
+def _format_json(result: dict[str, Any]) -> str:
     """Return pretty-printed JSON string."""
     return json.dumps(result, indent=2)
 
 
-def _format_dot(result, color_by="risk"):
+def _format_dot(result: dict[str, Any], color_by: str = "risk") -> str:
     """Return a Graphviz DOT representation.
 
     *color_by* controls the colour scheme:
@@ -233,7 +253,7 @@ def _format_dot(result, color_by="risk"):
         folder = parts[0] if len(parts) > 1 else "(root)"
         dir_nodes.setdefault(folder, []).append(n)
 
-    def _node_attrs(n):
+    def _node_attrs(n: dict[str, Any]) -> str:
         """Build DOT attribute string for one node."""
         nd = n["data"]
         nid = nd["id"]
@@ -325,7 +345,7 @@ def _format_dot(result, color_by="risk"):
     return "\n".join(lines)
 
 
-def _format_diff(old_result, new_result):
+def _format_diff(old_result: dict[str, Any], new_result: dict[str, Any]) -> str:
     """Return a Markdown-formatted dependency diff between two graph results."""
     old_nodes = {n["data"]["id"] for n in old_result["nodes"]}
     new_nodes = {n["data"]["id"] for n in new_result["nodes"]}
@@ -420,7 +440,7 @@ def _format_diff(old_result, new_result):
     return "\n".join(lines)
 
 
-def _format_mermaid(result, color_by="risk"):
+def _format_mermaid(result: dict[str, Any], color_by: str = "risk") -> str:
     """Return a Mermaid flowchart.
 
     *color_by* controls the colour scheme (``"risk"`` or ``"directory"``).
@@ -430,7 +450,7 @@ def _format_mermaid(result, color_by="risk"):
     lines = ["graph LR"]
 
     # Sanitise IDs for Mermaid (replace slashes, dots, hyphens)
-    def _mid(s):
+    def _mid(s: str) -> str:
         return s.replace("/", "_").replace(".", "_").replace("-", "_")
 
     # Group nodes by directory for subgraph support
@@ -472,7 +492,7 @@ def _format_mermaid(result, color_by="risk"):
     for e in result["edges"]:
         src = _mid(e["data"]["source"])
         tgt = _mid(e["data"]["target"])
-        is_cycle = "classes" in e and "cycle" in e.get("classes", "")
+        is_cycle = "classes" in e.get("data", {}) and "cycle" in e["data"].get("classes", "")
         if is_cycle:
             lines.append(f"  {src} -.->|cycle| {tgt}")
         else:
@@ -523,7 +543,7 @@ def _format_mermaid(result, color_by="risk"):
 # CLI entry point
 # ---------------------------------------------------------------------------
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         prog="depgraph",
         description="Analyze and visualize source file dependencies.",
@@ -578,12 +598,36 @@ def main():
     parser.add_argument("--port", type=int, default=8080,
                         help="port for --serve mode (default: 8080)")
 
+    # Dev mode (show search bar, dir input, generate button)
+    parser.add_argument("--dev", action="store_true",
+                        help="enable developer UI (search bar, directory input, generate button)")
+
+    # Verbosity
+    parser.add_argument("--verbose", "-v", action="count", default=0,
+                        help="increase output verbosity (-v info, -vv debug)")
+
     args = parser.parse_args()
+
+    # ── Configure logging ─────────────────────────────────────────
+    log_level = logging.WARNING  # default: only warnings & errors
+    if args.verbose >= 2:
+        log_level = logging.DEBUG
+    elif args.verbose >= 1:
+        log_level = logging.INFO
+
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s  %(levelname)-8s  [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    log = logging.getLogger("depgraph.cli")
 
     directory = os.path.abspath(args.directory)
     if not os.path.isdir(directory):
         print(f"Error: '{args.directory}' is not a directory.", file=sys.stderr)
         sys.exit(1)
+
+    log.info("Target directory: %s", directory)
 
     # --diff: compare two directories and output Markdown diff
     if args.diff:
@@ -600,8 +644,7 @@ def main():
         merged = {k: detected_base.get(k, False) or detected_head.get(k, False)
                   for k in all_langs}
 
-        base_flags = {
-            "hide_system": args.hide_external,
+        lang_flags = {
             "show_c": merged.get("has_c", False),
             "show_h": merged.get("has_h", False),
             "show_cpp": merged.get("has_cpp", False),
@@ -618,12 +661,26 @@ def main():
             "show_php": merged.get("has_php", False),
             "show_dart": merged.get("has_dart", False),
             "show_elixir": merged.get("has_elixir", False),
-            "hide_isolated": args.hide_isolated,
-            "filter_dir": args.filter_dir,
         }
 
-        base_result = _build_graph(base_dir, **base_flags)
-        head_result = _build_graph(directory, **base_flags)
+        import time as _time
+        log.info("Diff mode: base=%s  head=%s", base_dir, directory)
+
+        t0 = _time.monotonic()
+        base_result = _build_graph(base_dir, lang_flags=lang_flags,
+                                    hide_system=args.hide_external,
+                                    hide_isolated=args.hide_isolated,
+                                    filter_dir=args.filter_dir)
+        log.info("Base graph built in %.2fs  (%d nodes)",
+                 _time.monotonic() - t0, len(base_result.get("nodes", [])))
+
+        t0 = _time.monotonic()
+        head_result = _build_graph(directory, lang_flags=lang_flags,
+                                    hide_system=args.hide_external,
+                                    hide_isolated=args.hide_isolated,
+                                    filter_dir=args.filter_dir)
+        log.info("Head graph built in %.2fs  (%d nodes)",
+                 _time.monotonic() - t0, len(head_result.get("nodes", [])))
 
         output = _format_diff(base_result, head_result)
 
@@ -636,17 +693,19 @@ def main():
             print(output)
         return
 
-    # --serve: start the Flask web UI
+    # --serve: start the Flask web UI (logging configured by app.py)
     if args.serve:
-        os.environ.setdefault("FLASK_DEBUG", "true")
+        os.environ["FLASK_DEBUG"] = "true" if args.dev else "false"
         os.environ["DEPGRAPH_BASE_DIR"] = directory
         from app import app
         url = f"http://localhost:{args.port}"
         print(f"Starting DepGraph web UI at {_bold(url)}")
         print(f"Analyzing: {directory}")
+        if args.dev:
+            print(_dim("Developer mode enabled"))
         print(_dim("Press Ctrl+C to stop.\n"))
         webbrowser.open(url)
-        app.run(host="0.0.0.0", port=args.port, debug=True)
+        app.run(host="0.0.0.0", port=args.port, debug=args.dev)
         return
 
     # Detect languages
@@ -660,53 +719,64 @@ def main():
         lang = "cs"
 
     if lang == "auto":
-        show_c = detected["has_c"]
-        show_h = detected["has_h"]
-        show_cpp = detected["has_cpp"]
-        show_js = detected["has_js"]
-        show_py = detected["has_py"]
-        show_java = detected["has_java"]
-        show_go = detected["has_go"]
-        show_rust = detected["has_rust"]
-        show_cs = detected["has_cs"]
-        show_swift = detected.get("has_swift", False)
-        show_ruby = detected.get("has_ruby", False)
-        show_kotlin = detected.get("has_kotlin", False)
-        show_scala = detected.get("has_scala", False)
-        show_php = detected.get("has_php", False)
-        show_dart = detected.get("has_dart", False)
-        show_elixir = detected.get("has_elixir", False)
+        lang_flags = {
+            "show_c": detected.get("has_c", False),
+            "show_h": detected.get("has_h", False),
+            "show_cpp": detected.get("has_cpp", False),
+            "show_js": detected.get("has_js", False),
+            "show_py": detected.get("has_py", False),
+            "show_java": detected.get("has_java", False),
+            "show_go": detected.get("has_go", False),
+            "show_rust": detected.get("has_rust", False),
+            "show_cs": detected.get("has_cs", False),
+            "show_swift": detected.get("has_swift", False),
+            "show_ruby": detected.get("has_ruby", False),
+            "show_kotlin": detected.get("has_kotlin", False),
+            "show_scala": detected.get("has_scala", False),
+            "show_php": detected.get("has_php", False),
+            "show_dart": detected.get("has_dart", False),
+            "show_elixir": detected.get("has_elixir", False),
+        }
     else:
-        show_c = lang == "c"
-        show_h = lang in ("c", "cpp")
-        show_cpp = lang == "cpp"
-        show_js = lang == "js"
-        show_py = lang == "py"
-        show_java = lang == "java"
-        show_go = lang == "go"
-        show_rust = lang == "rust"
-        show_cs = lang == "cs"
-        show_swift = lang == "swift"
-        show_ruby = lang == "ruby"
-        show_kotlin = lang == "kotlin"
-        show_scala = lang == "scala"
-        show_php = lang == "php"
-        show_dart = lang == "dart"
-        show_elixir = lang == "elixir"
+        lang_flags = {
+            "show_c": lang == "c",
+            "show_h": lang in ("c", "cpp"),
+            "show_cpp": lang == "cpp",
+            "show_js": lang == "js",
+            "show_py": lang == "py",
+            "show_java": lang == "java",
+            "show_go": lang == "go",
+            "show_rust": lang == "rust",
+            "show_cs": lang == "cs",
+            "show_swift": lang == "swift",
+            "show_ruby": lang == "ruby",
+            "show_kotlin": lang == "kotlin",
+            "show_scala": lang == "scala",
+            "show_php": lang == "php",
+            "show_dart": lang == "dart",
+            "show_elixir": lang == "elixir",
+        }
 
     # Build graph
+    import time as _time
+    active = [k for k, v in lang_flags.items() if v]
+    log.info("Building graph  langs=%s  hide_external=%s  hide_isolated=%s",
+             active, args.hide_external, args.hide_isolated)
+
+    t0 = _time.monotonic()
     result = _build_graph(
         directory,
+        lang_flags=lang_flags,
         hide_system=args.hide_external,
-        show_c=show_c, show_h=show_h, show_cpp=show_cpp,
-        show_js=show_js, show_py=show_py, show_java=show_java,
-        show_go=show_go, show_rust=show_rust, show_cs=show_cs,
-        show_swift=show_swift, show_ruby=show_ruby,
-        show_kotlin=show_kotlin, show_scala=show_scala,
-        show_php=show_php, show_dart=show_dart, show_elixir=show_elixir,
         hide_isolated=args.hide_isolated,
         filter_dir=args.filter_dir,
     )
+    elapsed = _time.monotonic() - t0
+    log.info("Graph built in %.2fs  (%d nodes, %d edges, %d cycles)",
+             elapsed,
+             len(result.get("nodes", [])),
+             len(result.get("edges", [])),
+             len(result.get("cycles", [])))
 
     if not result["nodes"]:
         print("No source files found.", file=sys.stderr)
@@ -718,6 +788,9 @@ def main():
         sys.exit(1)
 
     # Format output
+    fmt_name = "json" if args.json else "dot" if args.dot else "mermaid" if args.mermaid else "tree"
+    log.debug("Output format: %s  color_by=%s", fmt_name, args.color_by)
+
     color_by = args.color_by
     if args.json:
         output = _format_json(result)
@@ -735,6 +808,7 @@ def main():
         with open(args.output, "w") as f:
             f.write(output)
             f.write("\n")
+        log.info("Output written to %s", args.output)
         print(f"Written to {args.output}", file=sys.stderr)
     else:
         print(output)

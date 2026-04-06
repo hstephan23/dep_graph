@@ -1,3 +1,6 @@
+# AUTO-SYNCED from project root — do not edit this copy.
+# Source: ../graph.py
+
 """Core graph-building engine for DepGraph.
 
 Scans source files, resolves imports using the language-specific parsers from
@@ -7,9 +10,15 @@ Scans source files, resolves imports using the language-specific parsers from
 This module uses only the Python standard library (plus ``parsers``) so it can
 be imported by the CLI without Flask.
 """
+from __future__ import annotations
 
+import json
+import logging
 import os
 import hashlib
+from typing import Any, Optional, Dict, List, Set, Tuple
+
+log = logging.getLogger('depgraph.graph')
 
 from parsers import (
     # Regex patterns
@@ -26,12 +35,17 @@ from parsers import (
     PHP_USE_RE, PHP_REQUIRE_RE,
     DART_IMPORT_RE,
     ELIXIR_ALIAS_RE,
+    LUA_REQUIRE_RE,
+    ZIG_IMPORT_RE,
+    HASKELL_IMPORT_RE,
+    R_LIBRARY_RE, R_SOURCE_RE,
     # Extension tuples
     C_EXTENSIONS, H_EXTENSIONS, CPP_EXTENSIONS, JS_EXTENSIONS,
     PY_EXTENSIONS, JAVA_EXTENSIONS, GO_EXTENSIONS, RUST_EXTENSIONS,
     CS_EXTENSIONS, SWIFT_EXTENSIONS, RUBY_EXTENSIONS,
     KOTLIN_EXTENSIONS, SCALA_EXTENSIONS, PHP_EXTENSIONS,
     DART_EXTENSIONS, ELIXIR_EXTENSIONS,
+    LUA_EXTENSIONS, ZIG_EXTENSIONS, HASKELL_EXTENSIONS, R_EXTENSIONS,
     # Helpers
     collapse_py_multiline_imports,
     # Resolution functions
@@ -46,6 +60,12 @@ from parsers import (
     build_php_namespace_map, resolve_php_use, resolve_php_require,
     resolve_dart_import,
     resolve_elixir_module,
+    resolve_lua_require,
+    resolve_zig_import,
+    resolve_haskell_import,
+    resolve_r_source,
+    # Stdlib sets for library/require filtering
+    R_STDLIB,
     # Resolution cache
     ResolutionCache,
 )
@@ -81,6 +101,10 @@ LANGUAGE_COLORS = {
     "php":     "#777bb4",
     "dart":    "#0175c2",
     "elixir":  "#6e4a7e",
+    "lua":     "#000080",
+    "zig":     "#f7a41d",
+    "haskell": "#5e5086",
+    "r":       "#276dc3",
 }
 
 # =========================================================================
@@ -88,27 +112,27 @@ LANGUAGE_COLORS = {
 # =========================================================================
 # Color encodes importance + risk so your eyes go straight to problems.
 
-RISK_COLORS = {
-    "critical": "#ef4444",   # red — god files, cycle members, extreme inbound
-    "high":     "#f97316",   # orange — high influence, shared modules
-    "warning":  "#eab308",   # yellow — high outbound, too coupled
-    "normal":   "#3b82f6",   # blue — healthy, default
-    "entry":    "#22c55e",   # green — entry points, orphans, leaves
-    "system":   "#6b7280",   # dark gray — stdlib/external
-}
+# Load from shared/constants.json — single source of truth for all frontends.
+_SHARED_CONSTANTS_PATH = os.path.join(os.path.dirname(__file__), "shared", "constants.json")
+if os.path.isfile(_SHARED_CONSTANTS_PATH):
+    with open(_SHARED_CONSTANTS_PATH, "r") as _f:
+        _SHARED = json.loads(_f.read())
+    RISK_COLORS: Dict[str, str] = _SHARED["risk_colors"]
+    RISK_LABELS: Dict[str, str] = _SHARED["risk_labels"]
+else:
+    # Fallback so the module still works if the JSON file is missing.
+    RISK_COLORS = {
+        "critical": "#ef4444", "high": "#f97316", "warning": "#eab308",
+        "normal": "#3b82f6", "entry": "#22c55e", "system": "#6b7280",
+    }
+    RISK_LABELS = {
+        "critical": "Critical / God file", "high": "High influence",
+        "warning": "High dependency", "normal": "Normal",
+        "entry": "Entry point / leaf", "system": "System / external",
+    }
 
-# Human-readable labels for the legend.
-RISK_LABELS = {
-    "critical": "Critical / God file",
-    "high":     "High influence",
-    "warning":  "High dependency",
-    "normal":   "Normal",
-    "entry":    "Entry point / leaf",
-    "system":   "System / external",
-}
 
-
-def classify_node_risk(node_data, total_nodes):
+def classify_node_risk(node_data: Dict[str, Any], total_nodes: int) -> str:
     """Assign a risk category to a single node.
 
     Returns one of: ``"critical"``, ``"high"``, ``"warning"``, ``"normal"``,
@@ -161,18 +185,13 @@ def classify_node_risk(node_data, total_nodes):
     return "normal"
 
 
-def node_size_for_degree(in_degree, total_nodes):
+def node_size_for_degree(in_degree: int, total_nodes: int) -> int:
     """Return a node size (diameter) scaled by inbound degree.
 
-    Returns a value between 60 and 200, compatible with the existing
-    Cytoscape ``data(size)`` convention (baseline ~80).
+    Returns ``80 + in_degree * 40``, compatible with the existing
+    Cytoscape ``data(size)`` convention (baseline 80).
     """
-    if total_nodes <= 1:
-        return 80
-    import math
-    # sqrt scale so one mega-hub doesn't dwarf everything
-    t = min(in_degree / max(total_nodes * 0.3, 1), 1.0)
-    return int(60 + 140 * math.sqrt(t))
+    return 80 + in_degree * 40
 
 # =========================================================================
 # File filtering helpers
@@ -199,6 +218,10 @@ LANG_EXTENSION_TABLE = [
     ("show_php",     PHP_EXTENSIONS),
     ("show_dart",    DART_EXTENSIONS),
     ("show_elixir",  ELIXIR_EXTENSIONS),
+    ("show_lua",     LUA_EXTENSIONS),
+    ("show_zig",     ZIG_EXTENSIONS),
+    ("show_haskell", HASKELL_EXTENSIONS),
+    ("show_r",       R_EXTENSIONS),
 ]
 
 # Directories to skip when a given language flag is enabled.
@@ -215,6 +238,10 @@ LANG_SKIP_DIRS = {
     "show_php":    {'vendor'},
     "show_dart":   {'.dart_tool', 'build', '.pub-cache'},
     "show_elixir": {'_build', 'deps', '.elixir_ls'},
+    "show_lua":     {'luarocks', '.luarocks'},
+    "show_zig":     {'zig-cache', 'zig-out'},
+    "show_haskell": {'.stack-work', 'dist-newstyle', 'dist', '.cabal-sandbox'},
+    "show_r":       {'renv', 'packrat'},
 }
 
 # Map file extensions → short language key (used for node metadata).
@@ -225,20 +252,20 @@ for _flag, _exts in LANG_EXTENSION_TABLE:
         _EXT_TO_LANG[_ext] = _lang
 
 
-def _lang_for_path(filepath):
+def _lang_for_path(filepath: str) -> Optional[str]:
     """Return the short language key for *filepath*, or ``None``."""
     _, ext = os.path.splitext(filepath)
     return _EXT_TO_LANG.get(ext)
 
 
-def _dir_color(filepath):
+def _dir_color(filepath: str) -> str:
     """Return a deterministic color for *filepath*'s directory."""
     dirname = os.path.dirname(filepath) or "."
     hash_val = int(hashlib.md5(dirname.encode('utf-8')).hexdigest(), 16)
     return _PALETTE[hash_val % len(_PALETTE)]
 
 
-def _color_for_path(filepath):
+def _color_for_path(filepath: str) -> str:
     """Return a deterministic color for *filepath*.
 
     Uses the file's directory to pick a palette colour so files in the
@@ -247,19 +274,19 @@ def _color_for_path(filepath):
     return _dir_color(filepath)
 
 
-def _should_skip_dir(name):
+def _should_skip_dir(name: str) -> bool:
     """Return True for directories that should be excluded from scanning."""
     lower = name.lower()
     return lower.startswith('test') or 'test' in lower or 'cmake' in lower
 
 
-def _should_skip_file(name):
+def _should_skip_file(name: str) -> bool:
     """Return True for files that should be excluded from scanning."""
     lower = name.lower()
     return 'test' in lower or 'cmake' in lower
 
 
-def _wanted_extension(filename, lang_flags):
+def _wanted_extension(filename: str, lang_flags: Dict[str, bool]) -> bool:
     """Check whether *filename* has an extension enabled in *lang_flags*.
 
     *lang_flags* is a dict mapping ``show_*`` keys to booleans, e.g.
@@ -271,7 +298,7 @@ def _wanted_extension(filename, lang_flags):
     return False
 
 
-def _include_target_excluded(filename, lang_flags):
+def _include_target_excluded(filename: str, lang_flags: Dict[str, bool]) -> bool:
     """Return True if an include/import target should be excluded.
 
     A target is excluded when its extension belongs to a language group that
@@ -283,7 +310,12 @@ def _include_target_excluded(filename, lang_flags):
     return False
 
 
-def _resolve_c_include(included, source_file, known_files, _basename_index=None):
+def _resolve_c_include(
+    included: str,
+    source_file: str,
+    known_files: Set[str],
+    _basename_index: Optional[Dict[str, List[str]]] = None
+) -> Optional[str]:
     """Resolve a C/C++ #include path to a known project file.
 
     Search order:
@@ -326,7 +358,7 @@ def _resolve_c_include(included, source_file, known_files, _basename_index=None)
 # Tarjan's strongly-connected-components algorithm
 # =========================================================================
 
-def find_sccs(adj):
+def find_sccs(adj: Dict[str, List[str]]) -> List[List[str]]:
     """Compute SCCs using an iterative version of Tarjan's algorithm.
 
     The classic recursive formulation hits Python's default recursion limit
@@ -398,7 +430,7 @@ def find_sccs(adj):
 # Source file collection
 # =========================================================================
 
-def collect_source_files(directory, lang_flags):
+def collect_source_files(directory: str, lang_flags: Dict[str, bool]) -> List[str]:
     """Walk *directory* and return a list of source file paths to parse.
 
     *lang_flags* is a dict of ``show_*`` booleans produced by
@@ -426,34 +458,43 @@ def collect_source_files(directory, lang_flags):
 # Main graph builder
 # =========================================================================
 
-def _extract_lang_flags(**kwargs):
-    """Pull all ``show_*`` keys out of *kwargs* and return them as a dict.
-
-    This lets callers pass individual keyword arguments while internal code
-    works with a compact dict.
-    """
-    return {key: val for key, val in kwargs.items() if key.startswith('show_')}
 
 
-def build_graph(directory, hide_system=False, show_c=True, show_h=True,
-                show_cpp=True, show_js=False, show_py=False,
-                show_java=False, show_go=False, show_rust=False,
-                show_cs=False, show_swift=False, show_ruby=False,
-                show_kotlin=False, show_scala=False, show_php=False,
-                show_dart=False, show_elixir=False,
-                hide_isolated=False, filter_dir=""):
+def build_graph(
+    directory: str,
+    *,
+    lang_flags: Optional[Dict[str, bool]] = None,
+    hide_system: bool = False,
+    hide_isolated: bool = False,
+    filter_dir: str = "",
+    **legacy_kwargs: Any
+) -> Dict[str, Any]:
     """Parse source files and return the dependency graph as a dict.
 
     Returns a dict with keys ``nodes``, ``edges``, ``has_cycles``, ``cycles``,
     ``unused_files``, ``coupling``, and ``depth_warnings``.
+
+    Args:
+        directory: Root directory to scan for source files.
+        lang_flags: Dict mapping show_* flags to booleans. If None, extracted
+                   from legacy_kwargs for backward compatibility. Defaults to
+                   {"show_c": True, "show_h": True, "show_cpp": True}.
+        hide_system: If True, omit external/system imports from the graph.
+        hide_isolated: If True, omit files with no dependencies.
+        filter_dir: If set, only include files under this directory.
+        **legacy_kwargs: For backward compatibility, accepts individual
+                        show_* keyword arguments.
     """
-    lang_flags = _extract_lang_flags(
-        show_c=show_c, show_h=show_h, show_cpp=show_cpp, show_js=show_js,
-        show_py=show_py, show_java=show_java, show_go=show_go,
-        show_rust=show_rust, show_cs=show_cs, show_swift=show_swift,
-        show_ruby=show_ruby, show_kotlin=show_kotlin, show_scala=show_scala,
-        show_php=show_php, show_dart=show_dart, show_elixir=show_elixir,
-    )
+    if lang_flags is None:
+        lang_flags = {k: v for k, v in legacy_kwargs.items() if k.startswith('show_')}
+        if not lang_flags:
+            # Default: C/H/CPP enabled, everything else off
+            _DEFAULT_ON_LANGS = {'show_c', 'show_h', 'show_cpp'}
+            lang_flags = {flag: flag in _DEFAULT_ON_LANGS
+                         for flag, _ in LANG_EXTENSION_TABLE}
+
+    import time as _time
+    _t0 = _time.time()
 
     nodes = []
     edges = []
@@ -461,20 +502,24 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
 
     files_to_parse = collect_source_files(directory, lang_flags)
 
+    enabled_langs = [k[len('show_'):] for k, v in lang_flags.items() if v]
+    log.info('Scan started  dir=%s  files=%d  langs=%s',
+             directory, len(files_to_parse), ','.join(enabled_langs) or 'none')
+
     # Build a set of known relative paths for import resolution
     known_files = {os.path.relpath(fp, directory) for fp in files_to_parse}
 
     # Pre-read go.mod if Go is enabled
-    go_module_path = parse_go_mod(directory) if show_go else None
+    go_module_path = parse_go_mod(directory) if lang_flags.get('show_go') else None
 
     # Pre-scan C# namespace declarations for accurate resolution
     cs_ns_map, cs_class_map = (
-        build_cs_namespace_map(directory, known_files) if show_cs else ({}, {})
+        build_cs_namespace_map(directory, known_files) if lang_flags.get('show_cs') else ({}, {})
     )
 
     # Pre-scan PHP namespace declarations for accurate resolution
     php_ns_map, php_class_map = (
-        build_php_namespace_map(directory, known_files) if show_php else ({}, {})
+        build_php_namespace_map(directory, known_files) if lang_flags.get('show_php') else ({}, {})
     )
 
     # Per-build resolution cache — avoids re-resolving the same import string
@@ -487,7 +532,7 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         bn = os.path.basename(kf)
         _c_basename_idx.setdefault(bn, []).append(kf)
 
-    def _add_edge(source, target):
+    def _add_edge(source, target) -> None:
         edges.append({
             "data": {
                 "source": source,
@@ -499,68 +544,21 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
             nodes.append({"data": {"id": target, "color": _color_for_path(target)}})
             node_set.add(target)
 
-    for filepath in files_to_parse:
-        filename = os.path.relpath(filepath, directory)
+    # Build dispatch table of language handlers
+    _handlers = []
 
-        if filename not in node_set:
-            nodes.append({"data": {"id": filename, "color": _color_for_path(filename)}})
-            node_set.add(filename)
-
-        is_js_file = filepath.endswith(JS_EXTENSIONS)
-        is_py_file = filepath.endswith(PY_EXTENSIONS)
-        is_java_file = filepath.endswith(JAVA_EXTENSIONS)
-        is_go_file = filepath.endswith(GO_EXTENSIONS)
-        is_rust_file = filepath.endswith(RUST_EXTENSIONS)
-        is_cs_file = filepath.endswith(CS_EXTENSIONS)
-        is_swift_file = filepath.endswith(SWIFT_EXTENSIONS)
-        is_ruby_file = filepath.endswith(RUBY_EXTENSIONS)
-        is_kotlin_file = filepath.endswith(KOTLIN_EXTENSIONS)
-        is_scala_file = filepath.endswith(SCALA_EXTENSIONS)
-        is_php_file = filepath.endswith(PHP_EXTENSIONS)
-        is_dart_file = filepath.endswith(DART_EXTENSIONS)
-        is_elixir_file = filepath.endswith(ELIXIR_EXTENSIONS)
-
-        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
-
-        # --- Python imports ---
-        if is_py_file:
-            content = collapse_py_multiline_imports(content)
-            for m in PY_FROM_IMPORT_RE.finditer(content):
-                from_path = m.group(1)
-                names = m.group(2)
-                if from_path and not from_path.replace('.', ''):
-                    for name in names.split(','):
-                        name = name.strip()
-                        if not name or name == '*':
-                            continue
-                        mod = from_path + name
-                        cached = _cache.get('py', mod, filename)
-                        if cached is None:
-                            cached = resolve_py_import(
-                                mod, filename, directory, known_files
-                            )
-                            _cache.put('py', mod, filename, cached)
-                        resolved, is_external = cached
-                        if hide_system and is_external:
-                            continue
-                        _add_edge(filename, resolved)
-                else:
-                    cached = _cache.get('py', from_path, filename)
-                    if cached is None:
-                        cached = resolve_py_import(
-                            from_path, filename, directory, known_files
-                        )
-                        _cache.put('py', from_path, filename, cached)
-                    resolved, is_external = cached
-                    if hide_system and is_external:
+    def _handle_python(content, filename) -> None:
+        """Handle Python imports (from and import statements)."""
+        content = collapse_py_multiline_imports(content)
+        for m in PY_FROM_IMPORT_RE.finditer(content):
+            from_path = m.group(1)
+            names = m.group(2)
+            if from_path and not from_path.replace('.', ''):
+                for name in names.split(','):
+                    name = name.strip()
+                    if not name or name == '*':
                         continue
-                    _add_edge(filename, resolved)
-            for m in PY_IMPORT_RE.finditer(content):
-                for mod in m.group(1).split(','):
-                    mod = mod.strip()
-                    if not mod:
-                        continue
+                    mod = from_path + name
                     cached = _cache.get('py', mod, filename)
                     if cached is None:
                         cached = resolve_py_import(
@@ -571,42 +569,54 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                     if hide_system and is_external:
                         continue
                     _add_edge(filename, resolved)
-            continue
-
-        # --- Java imports ---
-        if is_java_file:
-            for m in JAVA_IMPORT_RE.finditer(content):
-                import_path = m.group(1)
-                cached = _cache.get('java', import_path)
+            else:
+                cached = _cache.get('py', from_path, filename)
                 if cached is None:
-                    cached = resolve_java_import(
-                        import_path, directory, known_files
+                    cached = resolve_py_import(
+                        from_path, filename, directory, known_files
                     )
-                    _cache.put('java', import_path, None, cached)
-                for resolved, is_external in cached:
-                    if hide_system and is_external:
-                        continue
-                    _add_edge(filename, resolved)
-            continue
+                    _cache.put('py', from_path, filename, cached)
+                resolved, is_external = cached
+                if hide_system and is_external:
+                    continue
+                _add_edge(filename, resolved)
+        for m in PY_IMPORT_RE.finditer(content):
+            for mod in m.group(1).split(','):
+                mod = mod.strip()
+                if not mod:
+                    continue
+                cached = _cache.get('py', mod, filename)
+                if cached is None:
+                    cached = resolve_py_import(
+                        mod, filename, directory, known_files
+                    )
+                    _cache.put('py', mod, filename, cached)
+                resolved, is_external = cached
+                if hide_system and is_external:
+                    continue
+                _add_edge(filename, resolved)
 
-        # --- Go imports ---
-        if is_go_file:
-            for m in GO_IMPORT_RE.finditer(content):
-                if m.group(1) is not None:
-                    for pm in GO_IMPORT_PATH_RE.finditer(m.group(1)):
-                        imp = pm.group(1)
-                        cached = _cache.get('go', imp)
-                        if cached is None:
-                            cached = resolve_go_import(
-                                imp, directory, known_files, go_module_path
-                            )
-                            _cache.put('go', imp, None, cached)
-                        resolved, is_external = cached
-                        if hide_system and is_external:
-                            continue
-                        _add_edge(filename, resolved)
-                else:
-                    imp = m.group(2)
+    def _handle_java(content, filename) -> None:
+        """Handle Java imports."""
+        for m in JAVA_IMPORT_RE.finditer(content):
+            import_path = m.group(1)
+            cached = _cache.get('java', import_path)
+            if cached is None:
+                cached = resolve_java_import(
+                    import_path, directory, known_files
+                )
+                _cache.put('java', import_path, None, cached)
+            for resolved, is_external in cached:
+                if hide_system and is_external:
+                    continue
+                _add_edge(filename, resolved)
+
+    def _handle_go(content, filename) -> None:
+        """Handle Go imports."""
+        for m in GO_IMPORT_RE.finditer(content):
+            if m.group(1) is not None:
+                for pm in GO_IMPORT_PATH_RE.finditer(m.group(1)):
+                    imp = pm.group(1)
                     cached = _cache.get('go', imp)
                     if cached is None:
                         cached = resolve_go_import(
@@ -617,225 +627,296 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
                     if hide_system and is_external:
                         continue
                     _add_edge(filename, resolved)
-            continue
-
-        # --- Rust imports ---
-        if is_rust_file:
-            for m in RUST_MOD_RE.finditer(content):
-                mod_name = m.group(1)
-                cached = _cache.get('rust_mod', mod_name, filename)
+            else:
+                imp = m.group(2)
+                cached = _cache.get('go', imp)
                 if cached is None:
-                    cached = resolve_rust_mod(
-                        mod_name, filename, directory, known_files
+                    cached = resolve_go_import(
+                        imp, directory, known_files, go_module_path
                     )
-                    _cache.put('rust_mod', mod_name, filename, cached)
+                    _cache.put('go', imp, None, cached)
                 resolved, is_external = cached
+                if hide_system and is_external:
+                    continue
                 _add_edge(filename, resolved)
-            for m in RUST_USE_RE.finditer(content):
-                use_path = m.group(1).rstrip(':')
-                top_crate = use_path.split('::')[0]
-                if top_crate in ('crate', 'self', 'super'):
-                    parts = [p for p in use_path.split('::') if p]
-                    if parts[0] == 'crate':
-                        parts = parts[1:]
-                    elif parts[0] == 'self':
-                        self_dir = os.path.dirname(filename)
-                        parts = [self_dir] + parts[1:] if self_dir else parts[1:]
-                    elif parts[0] == 'super':
-                        super_count = 0
-                        for p in parts:
-                            if p == 'super':
-                                super_count += 1
-                            else:
-                                break
-                        base = filename
-                        for _ in range(super_count + 1):
-                            base = os.path.dirname(base)
-                        parts = ([base] if base else []) + parts[super_count:]
-                    parts = [p for p in parts if p]
-                    if parts:
-                        candidate = os.path.join(*parts) + '.rs'
-                        if candidate in known_files:
-                            _add_edge(filename, candidate)
-                            continue
-                        candidate = os.path.join(*parts, 'mod.rs')
-                        if candidate in known_files:
-                            _add_edge(filename, candidate)
-                            continue
-                else:
-                    if hide_system:
+
+    def _handle_rust(content, filename) -> None:
+        """Handle Rust modules and use statements."""
+        for m in RUST_MOD_RE.finditer(content):
+            mod_name = m.group(1)
+            cached = _cache.get('rust_mod', mod_name, filename)
+            if cached is None:
+                cached = resolve_rust_mod(
+                    mod_name, filename, directory, known_files
+                )
+                _cache.put('rust_mod', mod_name, filename, cached)
+            resolved, is_external = cached
+            _add_edge(filename, resolved)
+        for m in RUST_USE_RE.finditer(content):
+            use_path = m.group(1).rstrip(':')
+            top_crate = use_path.split('::')[0]
+            if top_crate in ('crate', 'self', 'super'):
+                parts = [p for p in use_path.split('::') if p]
+                if parts[0] == 'crate':
+                    parts = parts[1:]
+                elif parts[0] == 'self':
+                    self_dir = os.path.dirname(filename)
+                    parts = [self_dir] + parts[1:] if self_dir else parts[1:]
+                elif parts[0] == 'super':
+                    super_count = 0
+                    for p in parts:
+                        if p == 'super':
+                            super_count += 1
+                        else:
+                            break
+                    base = filename
+                    for _ in range(super_count + 1):
+                        base = os.path.dirname(base)
+                    parts = ([base] if base else []) + parts[super_count:]
+                parts = [p for p in parts if p]
+                if parts:
+                    candidate = os.path.join(*parts) + '.rs'
+                    if candidate in known_files:
+                        _add_edge(filename, candidate)
                         continue
-                    _add_edge(filename, top_crate)
-            for m in RUST_EXTERN_RE.finditer(content):
-                crate_name = m.group(1)
+                    candidate = os.path.join(*parts, 'mod.rs')
+                    if candidate in known_files:
+                        _add_edge(filename, candidate)
+                        continue
+            else:
                 if hide_system:
                     continue
-                _add_edge(filename, crate_name)
-            continue
+                _add_edge(filename, top_crate)
+        for m in RUST_EXTERN_RE.finditer(content):
+            crate_name = m.group(1)
+            if hide_system:
+                continue
+            _add_edge(filename, crate_name)
 
-        # --- C# using directives ---
-        if is_cs_file:
-            for m in CS_USING_RE.finditer(content):
-                namespace = m.group(1)
-                cached = _cache.get('cs', namespace)
-                if cached is None:
-                    cached = resolve_cs_using(
-                        namespace, directory, known_files,
-                        ns_map=cs_ns_map, class_map=cs_class_map
-                    )
-                    _cache.put('cs', namespace, None, cached)
-                resolved_list, is_external = cached
-                if hide_system and is_external:
-                    continue
-                for resolved in resolved_list:
-                    if resolved != filename:
-                        _add_edge(filename, resolved)
-            continue
-
-        # --- Swift imports ---
-        if is_swift_file:
-            for m in SWIFT_IMPORT_RE.finditer(content):
-                module_name = m.group(1)
-                cached = _cache.get('swift', module_name, filename)
-                if cached is None:
-                    cached = resolve_swift_import(
-                        module_name, filename, directory, known_files
-                    )
-                    _cache.put('swift', module_name, filename, cached)
-                resolved, is_external = cached
-                if hide_system and is_external:
-                    continue
-                _add_edge(filename, resolved)
-            continue
-
-        # --- Ruby requires ---
-        if is_ruby_file:
-            for m in RUBY_REQUIRE_RELATIVE_RE.finditer(content):
-                req_path = m.group(1)
-                cached = _cache.get('ruby_rel', req_path, filename)
-                if cached is None:
-                    cached = resolve_ruby_require(
-                        req_path, filename, directory, known_files, relative=True
-                    )
-                    _cache.put('ruby_rel', req_path, filename, cached)
-                resolved, is_external = cached
-                if hide_system and is_external:
-                    continue
-                _add_edge(filename, resolved)
-            for m in RUBY_REQUIRE_RE.finditer(content):
-                req_path = m.group(1)
-                line_text = content[max(0, content.rfind('\n', 0, m.start())+1):m.end()]
-                if 'require_relative' in line_text:
-                    continue
-                cached = _cache.get('ruby', req_path)
-                if cached is None:
-                    cached = resolve_ruby_require(
-                        req_path, filename, directory, known_files, relative=False
-                    )
-                    _cache.put('ruby', req_path, None, cached)
-                resolved, is_external = cached
-                if hide_system and is_external:
-                    continue
-                _add_edge(filename, resolved)
-            continue
-
-        # --- Kotlin imports ---
-        if is_kotlin_file:
-            for m in KOTLIN_IMPORT_RE.finditer(content):
-                import_path = m.group(1)
-                cached = _cache.get('kotlin', import_path)
-                if cached is None:
-                    cached = resolve_kotlin_import(
-                        import_path, directory, known_files
-                    )
-                    _cache.put('kotlin', import_path, None, cached)
-                resolved, is_external = cached
-                if hide_system and is_external:
-                    continue
-                _add_edge(filename, resolved)
-            continue
-
-        # --- Scala imports ---
-        if is_scala_file:
-            for m in SCALA_IMPORT_RE.finditer(content):
-                import_path = m.group(1)
-                cached = _cache.get('scala', import_path)
-                if cached is None:
-                    cached = resolve_scala_import(
-                        import_path, directory, known_files
-                    )
-                    _cache.put('scala', import_path, None, cached)
-                resolved, is_external = cached
-                if hide_system and is_external:
-                    continue
-                _add_edge(filename, resolved)
-            continue
-
-        # --- PHP imports ---
-        if is_php_file:
-            for m in PHP_USE_RE.finditer(content):
-                namespace = m.group(1)
-                cached = _cache.get('php_use', namespace)
-                if cached is None:
-                    cached = resolve_php_use(
-                        namespace, directory, known_files,
-                        ns_map=php_ns_map, class_map=php_class_map
-                    )
-                    _cache.put('php_use', namespace, None, cached)
-                resolved, is_external = cached
-                if hide_system and is_external:
-                    continue
+    def _handle_cs(content, filename) -> None:
+        """Handle C# using directives."""
+        for m in CS_USING_RE.finditer(content):
+            namespace = m.group(1)
+            cached = _cache.get('cs', namespace)
+            if cached is None:
+                cached = resolve_cs_using(
+                    namespace, directory, known_files,
+                    ns_map=cs_ns_map, class_map=cs_class_map
+                )
+                _cache.put('cs', namespace, None, cached)
+            resolved_list, is_external = cached
+            if hide_system and is_external:
+                continue
+            for resolved in resolved_list:
                 if resolved != filename:
                     _add_edge(filename, resolved)
-            for m in PHP_REQUIRE_RE.finditer(content):
-                req_path = m.group(1)
-                cached = _cache.get('php_req', req_path, filename)
-                if cached is None:
-                    cached = resolve_php_require(
-                        req_path, filename, directory, known_files
-                    )
-                    _cache.put('php_req', req_path, filename, cached)
-                resolved, is_external = cached
-                if hide_system and is_external:
-                    continue
-                _add_edge(filename, resolved)
-            continue
 
-        # --- Dart/Flutter imports ---
-        if is_dart_file:
-            for m in DART_IMPORT_RE.finditer(content):
-                import_path = m.group(1)
-                cached = _cache.get('dart', import_path, filename)
-                if cached is None:
-                    cached = resolve_dart_import(
-                        import_path, filename, directory, known_files
-                    )
-                    _cache.put('dart', import_path, filename, cached)
-                resolved, is_external = cached
-                if hide_system and is_external:
-                    continue
-                _add_edge(filename, resolved)
-            continue
+    def _handle_swift(content, filename) -> None:
+        """Handle Swift imports."""
+        for m in SWIFT_IMPORT_RE.finditer(content):
+            module_name = m.group(1)
+            cached = _cache.get('swift', module_name, filename)
+            if cached is None:
+                cached = resolve_swift_import(
+                    module_name, filename, directory, known_files
+                )
+                _cache.put('swift', module_name, filename, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
 
-        # --- Elixir imports ---
-        if is_elixir_file:
-            for m in ELIXIR_ALIAS_RE.finditer(content):
-                module_name = m.group(1)
-                cached = _cache.get('elixir', module_name, filename)
-                if cached is None:
-                    cached = resolve_elixir_module(
-                        module_name, filename, directory, known_files
-                    )
-                    _cache.put('elixir', module_name, filename, cached)
-                resolved, is_external = cached
-                if hide_system and is_external:
-                    continue
-                _add_edge(filename, resolved)
-            continue
+    def _handle_ruby(content, filename) -> None:
+        """Handle Ruby requires (both relative and standard)."""
+        for m in RUBY_REQUIRE_RELATIVE_RE.finditer(content):
+            req_path = m.group(1)
+            cached = _cache.get('ruby_rel', req_path, filename)
+            if cached is None:
+                cached = resolve_ruby_require(
+                    req_path, filename, directory, known_files, relative=True
+                )
+                _cache.put('ruby_rel', req_path, filename, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+        for m in RUBY_REQUIRE_RE.finditer(content):
+            req_path = m.group(1)
+            line_text = content[max(0, content.rfind('\n', 0, m.start())+1):m.end()]
+            if 'require_relative' in line_text:
+                continue
+            cached = _cache.get('ruby', req_path)
+            if cached is None:
+                cached = resolve_ruby_require(
+                    req_path, filename, directory, known_files, relative=False
+                )
+                _cache.put('ruby', req_path, None, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
 
-        # --- C / C++ and JS/TS (line-by-line) ---
+    def _handle_kotlin(content, filename) -> None:
+        """Handle Kotlin imports."""
+        for m in KOTLIN_IMPORT_RE.finditer(content):
+            import_path = m.group(1)
+            cached = _cache.get('kotlin', import_path)
+            if cached is None:
+                cached = resolve_kotlin_import(
+                    import_path, directory, known_files
+                )
+                _cache.put('kotlin', import_path, None, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+
+    def _handle_scala(content, filename) -> None:
+        """Handle Scala imports."""
+        for m in SCALA_IMPORT_RE.finditer(content):
+            import_path = m.group(1)
+            cached = _cache.get('scala', import_path)
+            if cached is None:
+                cached = resolve_scala_import(
+                    import_path, directory, known_files
+                )
+                _cache.put('scala', import_path, None, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+
+    def _handle_php(content, filename) -> None:
+        """Handle PHP use statements and require/include."""
+        for m in PHP_USE_RE.finditer(content):
+            namespace = m.group(1)
+            cached = _cache.get('php_use', namespace)
+            if cached is None:
+                cached = resolve_php_use(
+                    namespace, directory, known_files,
+                    ns_map=php_ns_map, class_map=php_class_map
+                )
+                _cache.put('php_use', namespace, None, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            if resolved != filename:
+                _add_edge(filename, resolved)
+        for m in PHP_REQUIRE_RE.finditer(content):
+            req_path = m.group(1)
+            cached = _cache.get('php_req', req_path, filename)
+            if cached is None:
+                cached = resolve_php_require(
+                    req_path, filename, directory, known_files
+                )
+                _cache.put('php_req', req_path, filename, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+
+    def _handle_dart(content, filename) -> None:
+        """Handle Dart/Flutter imports."""
+        for m in DART_IMPORT_RE.finditer(content):
+            import_path = m.group(1)
+            cached = _cache.get('dart', import_path, filename)
+            if cached is None:
+                cached = resolve_dart_import(
+                    import_path, filename, directory, known_files
+                )
+                _cache.put('dart', import_path, filename, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+
+    def _handle_elixir(content, filename) -> None:
+        """Handle Elixir module aliases."""
+        for m in ELIXIR_ALIAS_RE.finditer(content):
+            module_name = m.group(1)
+            cached = _cache.get('elixir', module_name, filename)
+            if cached is None:
+                cached = resolve_elixir_module(
+                    module_name, filename, directory, known_files
+                )
+                _cache.put('elixir', module_name, filename, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+
+    def _handle_lua(content, filename) -> None:
+        """Handle Lua require() statements."""
+        for m in LUA_REQUIRE_RE.finditer(content):
+            req_path = m.group(1)
+            cached = _cache.get('lua', req_path, filename)
+            if cached is None:
+                cached = resolve_lua_require(
+                    req_path, filename, directory, known_files
+                )
+                _cache.put('lua', req_path, filename, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+
+    def _handle_zig(content, filename) -> None:
+        """Handle Zig @import() statements."""
+        for m in ZIG_IMPORT_RE.finditer(content):
+            import_path = m.group(1)
+            cached = _cache.get('zig', import_path, filename)
+            if cached is None:
+                cached = resolve_zig_import(
+                    import_path, filename, directory, known_files
+                )
+                _cache.put('zig', import_path, filename, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+
+    def _handle_haskell(content, filename) -> None:
+        """Handle Haskell import statements."""
+        for m in HASKELL_IMPORT_RE.finditer(content):
+            module_name = m.group(1)
+            cached = _cache.get('haskell', module_name, filename)
+            if cached is None:
+                cached = resolve_haskell_import(
+                    module_name, filename, directory, known_files
+                )
+                _cache.put('haskell', module_name, filename, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+
+    def _handle_r(content, filename) -> None:
+        """Handle R library(), require(), and source() statements."""
+        for m in R_LIBRARY_RE.finditer(content):
+            pkg_name = m.group(1)
+            if pkg_name:
+                # library()/require() always refer to packages — external
+                if hide_system:
+                    continue
+                _add_edge(filename, pkg_name)
+        for m in R_SOURCE_RE.finditer(content):
+            source_path = m.group(1)
+            cached = _cache.get('r_source', source_path, filename)
+            if cached is None:
+                cached = resolve_r_source(
+                    source_path, filename, directory, known_files
+                )
+                _cache.put('r_source', source_path, filename, cached)
+            resolved, is_external = cached
+            if hide_system and is_external:
+                continue
+            _add_edge(filename, resolved)
+
+    def _handle_c_cpp_js(content, filename) -> None:
+        """Handle C/C++ includes and JS/TS imports (line-by-line)."""
+        is_js = filename.endswith(JS_EXTENSIONS)
         for line in content.splitlines():
-            if not is_js_file:
+            if not is_js:
                 match = INCLUDE_RE.search(line)
                 if not match:
                     continue
@@ -890,6 +971,107 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
 
                 _add_edge(filename, resolved)
 
+    # Populate the dispatch table based on enabled languages
+    if lang_flags.get('show_py'):
+        _handlers.append((PY_EXTENSIONS, _handle_python))
+    if lang_flags.get('show_java'):
+        _handlers.append((JAVA_EXTENSIONS, _handle_java))
+    if lang_flags.get('show_go'):
+        _handlers.append((GO_EXTENSIONS, _handle_go))
+    if lang_flags.get('show_rust'):
+        _handlers.append((RUST_EXTENSIONS, _handle_rust))
+    if lang_flags.get('show_cs'):
+        _handlers.append((CS_EXTENSIONS, _handle_cs))
+    if lang_flags.get('show_swift'):
+        _handlers.append((SWIFT_EXTENSIONS, _handle_swift))
+    if lang_flags.get('show_ruby'):
+        _handlers.append((RUBY_EXTENSIONS, _handle_ruby))
+    if lang_flags.get('show_kotlin'):
+        _handlers.append((KOTLIN_EXTENSIONS, _handle_kotlin))
+    if lang_flags.get('show_scala'):
+        _handlers.append((SCALA_EXTENSIONS, _handle_scala))
+    if lang_flags.get('show_php'):
+        _handlers.append((PHP_EXTENSIONS, _handle_php))
+    if lang_flags.get('show_dart'):
+        _handlers.append((DART_EXTENSIONS, _handle_dart))
+    if lang_flags.get('show_elixir'):
+        _handlers.append((ELIXIR_EXTENSIONS, _handle_elixir))
+    if lang_flags.get('show_lua'):
+        _handlers.append((LUA_EXTENSIONS, _handle_lua))
+    if lang_flags.get('show_zig'):
+        _handlers.append((ZIG_EXTENSIONS, _handle_zig))
+    if lang_flags.get('show_haskell'):
+        _handlers.append((HASKELL_EXTENSIONS, _handle_haskell))
+    if lang_flags.get('show_r'):
+        _handlers.append((R_EXTENSIONS, _handle_r))
+
+    # Build combined C/C++/JS extension tuple
+    c_cpp_js_exts = ()
+    if lang_flags.get('show_c'):
+        c_cpp_js_exts += C_EXTENSIONS
+    if lang_flags.get('show_h'):
+        c_cpp_js_exts += H_EXTENSIONS
+    if lang_flags.get('show_cpp'):
+        c_cpp_js_exts += CPP_EXTENSIONS
+    if lang_flags.get('show_js'):
+        c_cpp_js_exts += JS_EXTENSIONS
+    if c_cpp_js_exts:
+        _handlers.append((c_cpp_js_exts, _handle_c_cpp_js))
+
+    # Main parsing loop using dispatch table
+    _total_files = len(files_to_parse)
+    _log_interval = max(200, _total_files // 5)  # progress every ~20%
+    for _fi, filepath in enumerate(files_to_parse):
+        if _fi > 0 and _fi % _log_interval == 0:
+            log.debug('Parsing progress  %d/%d files (%.0f%%)',
+                      _fi, _total_files, _fi / _total_files * 100)
+
+        filename = os.path.relpath(filepath, directory)
+
+        if filename not in node_set:
+            nodes.append({"data": {"id": filename, "color": _color_for_path(filename)}})
+            node_set.add(filename)
+
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+
+        for ext_tuple, handler in _handlers:
+            if filepath.endswith(ext_tuple):
+                handler(content, filename)
+                break
+
+    _t_parsed = _time.time()
+    log.info('Parsing complete  files=%d  nodes=%d  edges=%d  %.2fs',
+             _total_files, len(nodes), len(edges), _t_parsed - _t0)
+
+    # --- Transitive reduction ---
+    # Remove edge A→C when a path A→B→…→C exists of length ≥ 2.
+    # This dramatically declutters the visual graph without losing info.
+    _adj_set = {}
+    for edge in edges:
+        _adj_set.setdefault(edge["data"]["source"], set()).add(edge["data"]["target"])
+
+    _redundant = set()
+    for src, direct_targets in _adj_set.items():
+        for mid in direct_targets:
+            # BFS/DFS from mid — any node reachable from mid that is also
+            # a direct target of src is redundant.
+            _stack = list(_adj_set.get(mid, []))
+            _visited = set()
+            while _stack:
+                _cur = _stack.pop()
+                if _cur in _visited:
+                    continue
+                _visited.add(_cur)
+                if _cur in direct_targets and _cur != mid:
+                    _redundant.add((src, _cur))
+                _stack.extend(_adj_set.get(_cur, []))
+
+    if _redundant:
+        edges = [e for e in edges
+                 if (e["data"]["source"], e["data"]["target"]) not in _redundant]
+        log.info('Transitive reduction removed %d redundant edges', len(_redundant))
+
     # --- Cycle detection via SCCs ---
     adj = {node["data"]["id"]: [] for node in nodes}
     for edge in edges:
@@ -930,8 +1112,11 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         if target in in_degrees:
             in_degrees[target] += 1
 
+    total_nodes_for_size = len(nodes)
     for node in nodes:
-        node["data"]["size"] = 80 + in_degrees[node["data"]["id"]] * 40
+        node["data"]["size"] = node_size_for_degree(
+            in_degrees[node["data"]["id"]], total_nodes_for_size
+        )
 
     # --- Compute out-degrees ---
     out_degrees = {node["data"]["id"]: 0 for node in nodes}
@@ -985,7 +1170,7 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
         rev_adj.setdefault(edge["data"]["target"], []).append(edge["data"]["source"])
 
     impact = {}
-    def _downstream_closure(node_id):
+    def _downstream_closure(node_id) -> int:
         if node_id in impact:
             return impact[node_id]
         visited = set()
@@ -1102,15 +1287,34 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
 
     depth_warnings.sort(key=lambda w: (0 if w["severity"] == "critical" else 1, -w["reach_pct"]))
 
-    # --- Risk classification & node sizing (final pass, needs reach_pct) ---
+    # --- Risk classification (final pass, needs reach_pct) ---
+    node_data_lookup = {}
     for node in nodes:
         nd = node["data"]
         risk = classify_node_risk(nd, total_files)
         nd["risk"] = risk
         nd["risk_color"] = RISK_COLORS[risk]
         nd["risk_label"] = RISK_LABELS[risk]
-        nd["node_size"] = node_size_for_degree(nd.get("in_degree", 0), total_files)
         nd["dir_color"] = _dir_color(nd["id"])
+        node_data_lookup[nd["id"]] = nd
+
+    # --- Edge weighting (based on target node importance) ---
+    import math as _math
+    _max_in = max(in_degrees.values()) if in_degrees else 1
+    for edge in edges:
+        tgt = edge["data"]["target"]
+        tgt_data = node_data_lookup.get(tgt, {})
+        tgt_in = in_degrees.get(tgt, 0)
+        tgt_reach = tgt_data.get("reach_pct", 0)
+        # Weight 1-5: blend of in-degree importance and reach
+        raw = (tgt_in / max(_max_in, 1)) * 0.6 + (tgt_reach / 100) * 0.4
+        edge["data"]["weight"] = round(1 + 4 * min(raw, 1.0), 2)
+
+    _elapsed = _time.time() - _t0
+    log.info('Graph complete  nodes=%d  edges=%d  cycles=%d  warnings=%d  '
+             'cache_hits=%d  %.2fs',
+             len(nodes), len(edges), len(cycles_list),
+             len(depth_warnings), _cache.size, _elapsed)
 
     return {
         "nodes": nodes,
@@ -1127,7 +1331,7 @@ def build_graph(directory, hide_system=False, show_c=True, show_h=True,
 # Language detection
 # =========================================================================
 
-def detect_languages(directory):
+def detect_languages(directory: str) -> Dict[str, bool]:
     """Scan *directory* for source files and return which language groups exist.
 
     Returns a dict mapping ``has_*`` keys (one per entry in
@@ -1161,7 +1365,7 @@ def detect_languages(directory):
 _DEFAULT_ON_LANGS = frozenset({"show_c", "show_h", "show_cpp"})
 
 
-def parse_filters(source, detected=None):
+def parse_filters(source: Dict[str, Any], detected: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
     """Extract filter flags from a request args or form dict.
 
     When *detected* is provided (a dict from ``detect_languages``), the
@@ -1170,6 +1374,14 @@ def parse_filters(source, detected=None):
 
     The returned dict is ready to be passed to ``build_graph(**result)``.
     """
+    def _to_bool(val, default=False) -> bool:
+        """Accept bool, str ('true'/'false'), or fallback to default."""
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, str):
+            return val.lower() == 'true'
+        return default
+
     mode = source.get('mode', '')
 
     if mode == 'auto' and detected:
@@ -1184,12 +1396,12 @@ def parse_filters(source, detected=None):
         # "true"; all others default to "false".
         lang = {}
         for flag, _ in LANG_EXTENSION_TABLE:
-            default = 'true' if flag in _DEFAULT_ON_LANGS else 'false'
-            lang[flag] = source.get(flag, default).lower() == 'true'
+            default = flag in _DEFAULT_ON_LANGS
+            lang[flag] = _to_bool(source.get(flag, default), default)
 
     return {
-        "hide_system": source.get('hide_system', 'false').lower() == 'true',
+        "hide_system": _to_bool(source.get('hide_system', False)),
         **lang,
-        "hide_isolated": source.get('hide_isolated', 'false').lower() == 'true',
+        "hide_isolated": _to_bool(source.get('hide_isolated', False)),
         "filter_dir": source.get('filter_dir', ''),
     }

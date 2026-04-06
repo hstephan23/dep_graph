@@ -5,6 +5,8 @@ for language-specific import resolution).  Both modules use only the Python
 standard library so they can be imported by the CLI without Flask.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import subprocess
@@ -14,6 +16,7 @@ import shutil
 import threading
 import time
 import secrets
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -50,24 +53,25 @@ except ImportError:
 
 if _HAS_FLASK:
     app = Flask(__name__, static_folder='static')
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 else:
     # Provide a stub so @app.route() etc. don't crash at import time.
     # This allows cli.py to import the core graph logic without Flask.
     class _StubApp:
         config = {}
-        def route(self, *a, **kw):
+        def route(self, *a, **kw) -> Any:
             return lambda f: f
-        def before_request(self, f):
+        def before_request(self, f) -> Any:
             return f
     app = _StubApp()
 
-    def secure_filename(f):
+    def secure_filename(f) -> str:
         return f
 
-    def jsonify(*a, **kw):
+    def jsonify(*a, **kw) -> Any:
         pass
 
-    def abort(code):
+    def abort(code) -> None:
         pass
 
     class _StubRequest:
@@ -90,7 +94,7 @@ _csrf_token = os.environ.get('CSRF_SECRET') or secrets.token_hex(32)
 # Base directory that the server is allowed to scan. Set DEPGRAPH_BASE_DIR
 # environment variable to restrict access; defaults to the current working
 # directory.
-_ALLOWED_BASE_DIR = os.path.abspath(
+_ALLOWED_BASE_DIR = os.path.realpath(
     os.environ.get('DEPGRAPH_BASE_DIR', os.getcwd())
 )
 
@@ -107,7 +111,7 @@ _RATE_CLEANUP_INTERVAL = 300  # purge stale IPs every 5 minutes
 _rate_last_cleanup = 0
 
 
-def _rate_limit_check():
+def _rate_limit_check() -> bool:
     """Return True if the request should be rate-limited (rejected)."""
     global _rate_last_cleanup
     ip = request.remote_addr or 'unknown'
@@ -133,26 +137,30 @@ def _rate_limit_check():
     return False
 
 
-def _validate_directory(directory):
+def _validate_directory(directory: str) -> str | None:
     """Validate that a directory path is within the allowed base directory.
 
-    Returns the absolute path if valid, or None if invalid.
+    Uses ``os.path.realpath()`` to resolve symlinks before checking
+    containment, preventing symlink-based path traversal attacks.
+
+    Returns the canonicalized absolute path if valid, or None if invalid.
     """
-    abs_dir = os.path.abspath(directory)
-    # Ensure the path is within the allowed base
-    if not (abs_dir == _ALLOWED_BASE_DIR
-            or abs_dir.startswith(_ALLOWED_BASE_DIR + os.sep)):
-        log.warning('Directory access denied  path=%s  base=%s',
-                    abs_dir, _ALLOWED_BASE_DIR)
+    # Resolve symlinks so a symlink inside the base pointing outside is caught.
+    real_dir = os.path.realpath(directory)
+    real_base = os.path.realpath(_ALLOWED_BASE_DIR)
+    if not (real_dir == real_base
+            or real_dir.startswith(real_base + os.sep)):
+        log.warning('Directory access denied  path=%s  resolved=%s  base=%s',
+                    directory, real_dir, real_base)
         return None
-    if not os.path.isdir(abs_dir):
-        log.info('Directory not found  path=%s', abs_dir)
+    if not os.path.isdir(real_dir):
+        log.info('Directory not found  path=%s  resolved=%s', directory, real_dir)
         return None
-    return abs_dir
+    return real_dir
 
 
 @app.before_request
-def _before_request():
+def _before_request() -> tuple[dict[str, Any], int] | None:
     """Global rate limiting (skipped in debug/dev mode)."""
     if _DEBUG_MODE:
         return
@@ -169,11 +177,11 @@ def _before_request():
 # ---------------------------------------------------------------------------
 
 @app.route('/')
-def index():
+def index() -> Any:
     return app.send_static_file('index.html')
 
 
-def _get_json_body():
+def _get_json_body() -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
     """Parse request JSON, returning (body, None) on success or (None, error_response) on failure."""
     try:
         body = request.get_json(force=True)
@@ -185,14 +193,14 @@ def _get_json_body():
 
 
 @app.route('/api/config')
-def get_config():
+def get_config() -> Any:
     """Expose non-sensitive configuration flags to the frontend."""
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     return jsonify({"dev_mode": debug})
 
 
 @app.route('/api/file', methods=['GET'])
-def get_file():
+def get_file() -> tuple[Any, int] | Any:
     """Return the contents of a source file for preview.
 
     Query params:
@@ -281,7 +289,7 @@ def get_file():
 
 
 @app.route('/api/detect', methods=['GET'])
-def detect_languages_route():
+def detect_languages_route() -> tuple[Any, int] | Any:
     """Scan a directory and return which language groups are present."""
     directory = request.args.get('dir', '.')
 
@@ -293,7 +301,7 @@ def detect_languages_route():
 
 
 @app.route('/api/graph', methods=['GET'])
-def get_graph():
+def get_graph() -> tuple[Any, int] | Any:
     # Support re-filtering uploaded/cloned projects via upload_token
     upload_token = request.args.get('upload_token', '')
     if upload_token:
@@ -344,20 +352,20 @@ _UPLOAD_TTL = int(os.environ.get('DEPGRAPH_UPLOAD_TTL', '3600'))  # 1 hour
 _upload_lock = threading.Lock()
 
 
-def _session_file(token):
+def _session_file(token: str) -> str:
     """Return the path to the marker file for *token*."""
     # Sanitise token so it can't escape the directory
     safe = token.replace('/', '').replace('..', '').replace(os.sep, '')
     return os.path.join(_UPLOAD_SESSION_ROOT, safe + '.session')
 
 
-def _save_upload_session(token, temp_dir):
+def _save_upload_session(token: str, temp_dir: str) -> None:
     """Persist a token → temp_dir mapping to disk."""
     with open(_session_file(token), 'w') as f:
         f.write(temp_dir)
 
 
-def _load_upload_session(token):
+def _load_upload_session(token: str) -> str | None:
     """Load a temp_dir path from a persisted token. Returns None if missing or expired."""
     path = _session_file(token)
     try:
@@ -377,7 +385,7 @@ def _load_upload_session(token):
         return None
 
 
-def _expire_session(marker_path):
+def _expire_session(marker_path: str) -> None:
     """Remove an expired session marker and its temp directory."""
     try:
         with open(marker_path, 'r') as f:
@@ -389,7 +397,7 @@ def _expire_session(marker_path):
         pass
 
 
-def _cleanup_expired_sessions():
+def _cleanup_expired_sessions() -> None:
     """Sweep the session root and remove anything older than _UPLOAD_TTL."""
     now = time.time()
     try:
@@ -406,7 +414,7 @@ def _cleanup_expired_sessions():
         pass
 
 
-def _safe_extract_zip(zip_path, dest_dir):
+def _safe_extract_zip(zip_path: str, dest_dir: str) -> None:
     """Extract a ZIP file while guarding against Zip Slip (path traversal).
 
     Rejects entries that:
@@ -458,7 +466,7 @@ def _safe_extract_zip(zip_path, dest_dir):
 
 
 @app.route('/api/upload', methods=['POST'])
-def upload_files():
+def upload_files() -> tuple[Any, int] | Any:
     from parsers import (
         C_EXTENSIONS, H_EXTENSIONS, CPP_EXTENSIONS, JS_EXTENSIONS,
         PY_EXTENSIONS, JAVA_EXTENSIONS, GO_EXTENSIONS, RUST_EXTENSIONS,
@@ -561,7 +569,7 @@ def upload_files():
 
 
 @app.route('/api/diff', methods=['POST'])
-def diff_graphs():
+def diff_graphs() -> tuple[Any, int] | Any:
     """Accept two JSON graph payloads and return a merged diff view."""
     body, err = _get_json_body()
     if err: return err
@@ -600,7 +608,7 @@ def diff_graphs():
 
 
 @app.route('/api/layers', methods=['POST'])
-def check_layers():
+def check_layers() -> tuple[Any, int] | Any:
     """Check for layering violations given a layer ordering and a graph.
 
     Expects JSON: {"layers": ["ui", "service", "data", "util"],
@@ -618,7 +626,7 @@ def check_layers():
 
     layer_rank = {name.lower(): i for i, name in enumerate(layer_order)}
 
-    def _layer_of(filepath):
+    def _layer_of(filepath) -> tuple[str | None, int | None]:
         parts = filepath.replace('\\', '/').split('/')
         for part in parts:
             low = part.lower()
@@ -642,7 +650,7 @@ def check_layers():
 
 
 @app.route('/api/rules', methods=['POST'])
-def check_rules():
+def check_rules() -> tuple[Any, int] | Any:
     """Check dependency rules against the current graph.
 
     Expects JSON: {
@@ -703,7 +711,7 @@ def check_rules():
 
 
 @app.route('/api/simulate', methods=['POST'])
-def simulate_removal():
+def simulate_removal() -> tuple[Any, int] | Any:
     """Simulate removing a node or edge and report what would break.
 
     Expects JSON: {
@@ -855,7 +863,7 @@ def simulate_removal():
 
 
 @app.route('/api/simulate-merge', methods=['POST'])
-def simulate_merge():
+def simulate_merge() -> tuple[Any, int] | Any:
     """Simulate merging two files or splitting one file and report impact.
 
     Merge expects: {
@@ -1079,7 +1087,7 @@ def simulate_merge():
 
 
 @app.route('/api/churn', methods=['GET'])
-def api_churn():
+def api_churn() -> tuple[Any, int] | Any:
     """Return git churn (commit frequency / recency) for files in the project."""
     directory = request.args.get('dir', '.')
     abs_dir = _validate_directory(directory)
@@ -1095,7 +1103,7 @@ def api_churn():
 
 
 @app.route('/api/churn-remote', methods=['POST'])
-def api_churn_remote():
+def api_churn_remote() -> tuple[Any, int] | Any:
     """Fetch churn data from a remote git repository (GitHub/GitLab/Bitbucket)."""
     body = request.get_json(silent=True)
     if not body or not body.get('repo'):
@@ -1115,7 +1123,7 @@ def api_churn_remote():
 
 
 @app.route('/api/github', methods=['POST'])
-def api_github():
+def api_github() -> tuple[Any, int] | Any:
     """Clone a GitHub/GitLab/Bitbucket repo and return graph + churn data.
 
     Accepts JSON body: { "repo": "owner/repo" or full URL }
@@ -1193,7 +1201,7 @@ def api_github():
 
 
 @app.route('/api/story', methods=['POST'])
-def generate_story():
+def generate_story() -> tuple[Any, int] | Any:
     """Generate a guided narrative walkthrough of the dependency graph."""
     try:
         return _generate_story_impl()
@@ -1206,7 +1214,7 @@ def generate_story():
         }), 500
 
 
-def _generate_story_impl():
+def _generate_story_impl() -> tuple[Any, int] | Any:
     body, err = _get_json_body()
     if err: return err
     graph = body.get('graph', {})
@@ -1477,7 +1485,7 @@ def _generate_story_impl():
 
 
 @app.route('/api/csrf-token', methods=['GET'])
-def get_csrf_token():
+def get_csrf_token() -> Any:
     """Return a CSRF token for the frontend to include in POST requests."""
     return jsonify({"token": _csrf_token})
 
@@ -1487,7 +1495,7 @@ _CSRF_ENABLED = os.environ.get('DEPGRAPH_CSRF', 'true').lower() != 'false'
 
 
 @app.before_request
-def _check_csrf():
+def _check_csrf() -> tuple[Any, int] | None:
     """Validate CSRF token on state-changing requests (skipped when disabled)."""
     if not _CSRF_ENABLED:
         return

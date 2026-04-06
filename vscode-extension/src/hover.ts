@@ -81,6 +81,26 @@ const IMPORT_PATTERNS: { langs: string[]; pattern: RegExp }[] = [
     langs: ['elixir'],
     pattern: /^\s*(?:alias|import|use|require)\s+([\w.]+)/,
   },
+  // Lua: require("module") | require 'module'
+  {
+    langs: ['lua'],
+    pattern: /require\s*[\(]?\s*['"]([^'"]+)['"]\s*[\)]?/,
+  },
+  // Zig: @import("file.zig")
+  {
+    langs: ['zig'],
+    pattern: /@import\s*\(\s*"([^"]+)"\s*\)/,
+  },
+  // Haskell: import Module.Name | import qualified Module.Name
+  {
+    langs: ['haskell'],
+    pattern: /^\s*import\s+(?:qualified\s+)?([\w.]+)/,
+  },
+  // R: library(pkg) | require(pkg) | source("file.R")
+  {
+    langs: ['r'],
+    pattern: /(?:library|require)\s*\(\s*['"]?([\w.]+)['"]?\s*\)|source\s*\(\s*['"]([^'"]+)['"]\s*\)/,
+  },
 ];
 
 // ── Hover provider ───────────────────────────────────────────────

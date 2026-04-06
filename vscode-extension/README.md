@@ -36,7 +36,7 @@ A spacious hierarchical tree view shows downstream ("What breaks?") or upstream 
 
 Hover over any import statement to see a mini dependency graph for the imported file — its metrics (depth, impact, stability, blast radius), who imports it, and what it imports, with second-level dependencies shown inline. Cycle membership is flagged with a warning.
 
-Supported across all 14 languages: C/C++, JavaScript/TypeScript, Python, Java, Go, Rust, C#, Swift, Ruby, Kotlin, Scala, PHP, Dart, and Elixir.
+Supported across all 18 languages: C/C++, JavaScript/TypeScript, Python, Java, Go, Rust, C#, Swift, Ruby, Kotlin, Scala, PHP, Dart, Elixir, Lua, Zig, Haskell, and R.
 
 ### CodeLens
 
@@ -81,7 +81,7 @@ Configure under `depgraph.*` in VS Code settings:
 
 ## Supported Languages
 
-C, C++, JavaScript, TypeScript, Python, Java, Go, Rust, C#, Swift, Ruby, Kotlin, Scala, PHP, Dart, and Elixir. Language detection is automatic based on which file types are present in the workspace.
+C, C++, JavaScript, TypeScript, Python, Java, Go, Rust, C#, Swift, Ruby, Kotlin, Scala, PHP, Dart, Elixir, Lua, Zig, Haskell, and R. Language detection is automatic based on which file types are present in the workspace.
 
 ## Development
 
@@ -102,7 +102,7 @@ Press `F5` in VS Code to launch an Extension Development Host for testing. The e
 | `sidebar.ts` | Tree view providers for dependencies, cycles, and metrics |
 | `commands.ts` | Command implementations (graph, cycles, blast radius, export) |
 | `webview.ts` | Interactive Cytoscape.js graph and tree view in a VS Code panel |
-| `hover.ts` | Mini dependency graph on import hover (14 language patterns) |
+| `hover.ts` | Mini dependency graph on import hover (18 language patterns) |
 | `codeLens.ts` | Inline dependency counts and metrics above files |
 | `diagnostics.ts` | Cycle, depth, and high-impact warnings in Problems panel |
 | `config.ts` | Reads workspace settings |

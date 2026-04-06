@@ -1,3 +1,6 @@
+# AUTO-SYNCED from project root — do not edit this copy.
+# Source: ../app.py
+
 """DepGraph — Flask server for visualizing source file dependencies.
 
 The core graph-building logic lives in ``graph.py`` (which uses ``parsers.py``
@@ -5,13 +8,36 @@ for language-specific import resolution).  Both modules use only the Python
 standard library so they can be imported by the CLI without Flask.
 """
 
+from __future__ import annotations
+
+import logging
 import os
+import subprocess
 import tempfile
 import zipfile
 import shutil
 import threading
 import time
 import secrets
+from typing import Any
+
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+# Configure a module-level logger.  In production (Gunicorn) the root logger
+# is already wired to stderr; in development ``app.run(debug=True)`` does the
+# same.  We avoid calling ``basicConfig`` here so we don't fight the host.
+
+log = logging.getLogger('depgraph.server')
+
+# If no handlers have been configured yet (e.g. running ``python app.py``
+# directly), add a sensible default so messages aren't swallowed.
+if not logging.root.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s  %(levelname)-8s  [%(name)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    )
 
 from graph import (
     build_graph,
@@ -19,6 +45,7 @@ from graph import (
     parse_filters,
     find_sccs,
 )
+from churn import get_churn, get_churn_from_remote, _normalise_git_url
 
 try:
     from werkzeug.utils import secure_filename
@@ -29,24 +56,25 @@ except ImportError:
 
 if _HAS_FLASK:
     app = Flask(__name__, static_folder='static')
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 else:
     # Provide a stub so @app.route() etc. don't crash at import time.
     # This allows cli.py to import the core graph logic without Flask.
     class _StubApp:
         config = {}
-        def route(self, *a, **kw):
+        def route(self, *a, **kw) -> Any:
             return lambda f: f
-        def before_request(self, f):
+        def before_request(self, f) -> Any:
             return f
     app = _StubApp()
 
-    def secure_filename(f):
+    def secure_filename(f) -> str:
         return f
 
-    def jsonify(*a, **kw):
+    def jsonify(*a, **kw) -> Any:
         pass
 
-    def abort(code):
+    def abort(code) -> None:
         pass
 
     class _StubRequest:
@@ -69,7 +97,7 @@ _csrf_token = os.environ.get('CSRF_SECRET') or secrets.token_hex(32)
 # Base directory that the server is allowed to scan. Set DEPGRAPH_BASE_DIR
 # environment variable to restrict access; defaults to the current working
 # directory.
-_ALLOWED_BASE_DIR = os.path.abspath(
+_ALLOWED_BASE_DIR = os.path.realpath(
     os.environ.get('DEPGRAPH_BASE_DIR', os.getcwd())
 )
 
@@ -86,7 +114,7 @@ _RATE_CLEANUP_INTERVAL = 300  # purge stale IPs every 5 minutes
 _rate_last_cleanup = 0
 
 
-def _rate_limit_check():
+def _rate_limit_check() -> bool:
     """Return True if the request should be rate-limited (rejected)."""
     global _rate_last_cleanup
     ip = request.remote_addr or 'unknown'
@@ -104,29 +132,38 @@ def _rate_limit_check():
         timestamps = [t for t in timestamps if now - t < _RATE_WINDOW]
         if len(timestamps) >= _RATE_LIMIT:
             _rate_store[ip] = timestamps
+            log.warning('Rate limit exceeded  ip=%s  count=%d  window=%ds',
+                        ip, len(timestamps), _RATE_WINDOW)
             return True
         timestamps.append(now)
         _rate_store[ip] = timestamps
     return False
 
 
-def _validate_directory(directory):
+def _validate_directory(directory: str) -> str | None:
     """Validate that a directory path is within the allowed base directory.
 
-    Returns the absolute path if valid, or None if invalid.
+    Uses ``os.path.realpath()`` to resolve symlinks before checking
+    containment, preventing symlink-based path traversal attacks.
+
+    Returns the canonicalized absolute path if valid, or None if invalid.
     """
-    abs_dir = os.path.abspath(directory)
-    # Ensure the path is within the allowed base
-    if not (abs_dir == _ALLOWED_BASE_DIR
-            or abs_dir.startswith(_ALLOWED_BASE_DIR + os.sep)):
+    # Resolve symlinks so a symlink inside the base pointing outside is caught.
+    real_dir = os.path.realpath(directory)
+    real_base = os.path.realpath(_ALLOWED_BASE_DIR)
+    if not (real_dir == real_base
+            or real_dir.startswith(real_base + os.sep)):
+        log.warning('Directory access denied  path=%s  resolved=%s  base=%s',
+                    directory, real_dir, real_base)
         return None
-    if not os.path.isdir(abs_dir):
+    if not os.path.isdir(real_dir):
+        log.info('Directory not found  path=%s  resolved=%s', directory, real_dir)
         return None
-    return abs_dir
+    return real_dir
 
 
 @app.before_request
-def _before_request():
+def _before_request() -> tuple[dict[str, Any], int] | None:
     """Global rate limiting (skipped in debug/dev mode)."""
     if _DEBUG_MODE:
         return
@@ -143,11 +180,11 @@ def _before_request():
 # ---------------------------------------------------------------------------
 
 @app.route('/')
-def index():
+def index() -> Any:
     return app.send_static_file('index.html')
 
 
-def _get_json_body():
+def _get_json_body() -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
     """Parse request JSON, returning (body, None) on success or (None, error_response) on failure."""
     try:
         body = request.get_json(force=True)
@@ -159,14 +196,14 @@ def _get_json_body():
 
 
 @app.route('/api/config')
-def get_config():
+def get_config() -> Any:
     """Expose non-sensitive configuration flags to the frontend."""
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     return jsonify({"dev_mode": debug})
 
 
 @app.route('/api/file', methods=['GET'])
-def get_file():
+def get_file() -> tuple[Any, int] | Any:
     """Return the contents of a source file for preview.
 
     Query params:
@@ -192,6 +229,8 @@ def get_file():
 
     # Reject obviously malicious path components
     if '..' in filepath.split('/') or '..' in filepath.split(os.sep):
+        log.warning('Path traversal attempt  ip=%s  filepath=%s',
+                    request.remote_addr, filepath)
         return jsonify({
             "error": "Invalid file path.",
             "suggestion": "File paths must not contain '..' components.",
@@ -203,6 +242,8 @@ def get_file():
     full_path = os.path.realpath(os.path.join(abs_dir, filepath))
     real_dir = os.path.realpath(abs_dir)
     if not full_path.startswith(real_dir + os.sep) and full_path != real_dir:
+        log.warning('Path escape attempt  ip=%s  filepath=%s  resolved=%s',
+                    request.remote_addr, filepath, full_path)
         return jsonify({
             "error": "Invalid file path.",
             "suggestion": "The requested file is outside the allowed directory.",
@@ -251,7 +292,7 @@ def get_file():
 
 
 @app.route('/api/detect', methods=['GET'])
-def detect_languages_route():
+def detect_languages_route() -> tuple[Any, int] | Any:
     """Scan a directory and return which language groups are present."""
     directory = request.args.get('dir', '.')
 
@@ -263,21 +304,39 @@ def detect_languages_route():
 
 
 @app.route('/api/graph', methods=['GET'])
-def get_graph():
-    directory = request.args.get('dir', '.')
+def get_graph() -> tuple[Any, int] | Any:
+    # Support re-filtering uploaded/cloned projects via upload_token
+    upload_token = request.args.get('upload_token', '')
+    if upload_token:
+        abs_dir = _load_upload_session(upload_token)
+        if abs_dir is None:
+            return jsonify({
+                "error": "Upload session expired or not found.",
+                "suggestion": "Re-upload or re-clone the project.",
+                "code": "SESSION_EXPIRED",
+            }), 400
+    else:
+        directory = request.args.get('dir', '.')
+        abs_dir = _validate_directory(directory)
+        if abs_dir is None:
+            return jsonify({
+                "error": "Directory not found or access denied.",
+                "suggestion": "Check that the directory path exists and is within the allowed base directory.",
+                "code": "INVALID_DIRECTORY",
+            }), 400
 
-    abs_dir = _validate_directory(directory)
-    if abs_dir is None:
-        return jsonify({
-            "error": "Directory not found or access denied.",
-            "suggestion": "Check that the directory path exists and is within the allowed base directory.",
-            "code": "INVALID_DIRECTORY",
-        }), 400
-
+    log.info('Building graph  dir=%s', abs_dir)
+    t0 = time.time()
     detected = detect_languages(abs_dir)
     filters = parse_filters(request.args, detected=detected)
     result = build_graph(abs_dir, **filters)
     result["detected"] = detected
+    if upload_token:
+        result["upload_token"] = upload_token
+    elapsed = time.time() - t0
+    log.info('Graph built  nodes=%d  edges=%d  cycles=%d  %.2fs',
+             len(result['nodes']), len(result['edges']),
+             len(result.get('cycles', [])), elapsed)
     return jsonify(result)
 
 
@@ -296,20 +355,20 @@ _UPLOAD_TTL = int(os.environ.get('DEPGRAPH_UPLOAD_TTL', '3600'))  # 1 hour
 _upload_lock = threading.Lock()
 
 
-def _session_file(token):
+def _session_file(token: str) -> str:
     """Return the path to the marker file for *token*."""
     # Sanitise token so it can't escape the directory
     safe = token.replace('/', '').replace('..', '').replace(os.sep, '')
     return os.path.join(_UPLOAD_SESSION_ROOT, safe + '.session')
 
 
-def _save_upload_session(token, temp_dir):
+def _save_upload_session(token: str, temp_dir: str) -> None:
     """Persist a token → temp_dir mapping to disk."""
     with open(_session_file(token), 'w') as f:
         f.write(temp_dir)
 
 
-def _load_upload_session(token):
+def _load_upload_session(token: str) -> str | None:
     """Load a temp_dir path from a persisted token. Returns None if missing or expired."""
     path = _session_file(token)
     try:
@@ -329,7 +388,7 @@ def _load_upload_session(token):
         return None
 
 
-def _expire_session(marker_path):
+def _expire_session(marker_path: str) -> None:
     """Remove an expired session marker and its temp directory."""
     try:
         with open(marker_path, 'r') as f:
@@ -341,7 +400,7 @@ def _expire_session(marker_path):
         pass
 
 
-def _cleanup_expired_sessions():
+def _cleanup_expired_sessions() -> None:
     """Sweep the session root and remove anything older than _UPLOAD_TTL."""
     now = time.time()
     try:
@@ -358,7 +417,7 @@ def _cleanup_expired_sessions():
         pass
 
 
-def _safe_extract_zip(zip_path, dest_dir):
+def _safe_extract_zip(zip_path: str, dest_dir: str) -> None:
     """Extract a ZIP file while guarding against Zip Slip (path traversal).
 
     Rejects entries that:
@@ -410,7 +469,7 @@ def _safe_extract_zip(zip_path, dest_dir):
 
 
 @app.route('/api/upload', methods=['POST'])
-def upload_files():
+def upload_files() -> tuple[Any, int] | Any:
     from parsers import (
         C_EXTENSIONS, H_EXTENSIONS, CPP_EXTENSIONS, JS_EXTENSIONS,
         PY_EXTENSIONS, JAVA_EXTENSIONS, GO_EXTENSIONS, RUST_EXTENSIONS,
@@ -450,6 +509,9 @@ def upload_files():
     # Generate an opaque upload token for this session
     upload_token = secrets.token_urlsafe(16)
 
+    log.info('Upload started  filename=%s  size=%s  ip=%s',
+             file.filename, request.content_length, request.remote_addr)
+
     temp_dir = tempfile.mkdtemp()
 
     try:
@@ -486,8 +548,12 @@ def upload_files():
         # Opportunistically clean up expired sessions
         _cleanup_expired_sessions()
 
+        log.info('Upload processed  token=%s…  nodes=%d  edges=%d',
+                 upload_token[:8], len(result['nodes']), len(result['edges']))
         return jsonify(result)
     except ValueError as e:
+        log.warning('Unsafe archive rejected  ip=%s  filename=%s  reason=%s',
+                    request.remote_addr, file.filename, e)
         shutil.rmtree(temp_dir, ignore_errors=True)
         return jsonify({
             "error": "Invalid archive contents.",
@@ -495,6 +561,8 @@ def upload_files():
             "code": "UNSAFE_ARCHIVE",
         }), 400
     except Exception:
+        log.exception('Upload processing failed  ip=%s  filename=%s',
+                      request.remote_addr, file.filename)
         shutil.rmtree(temp_dir, ignore_errors=True)
         return jsonify({
             "error": "Failed to process uploaded file.",
@@ -504,7 +572,7 @@ def upload_files():
 
 
 @app.route('/api/diff', methods=['POST'])
-def diff_graphs():
+def diff_graphs() -> tuple[Any, int] | Any:
     """Accept two JSON graph payloads and return a merged diff view."""
     body, err = _get_json_body()
     if err: return err
@@ -543,7 +611,7 @@ def diff_graphs():
 
 
 @app.route('/api/layers', methods=['POST'])
-def check_layers():
+def check_layers() -> tuple[Any, int] | Any:
     """Check for layering violations given a layer ordering and a graph.
 
     Expects JSON: {"layers": ["ui", "service", "data", "util"],
@@ -561,7 +629,7 @@ def check_layers():
 
     layer_rank = {name.lower(): i for i, name in enumerate(layer_order)}
 
-    def _layer_of(filepath):
+    def _layer_of(filepath) -> tuple[str | None, int | None]:
         parts = filepath.replace('\\', '/').split('/')
         for part in parts:
             low = part.lower()
@@ -585,7 +653,7 @@ def check_layers():
 
 
 @app.route('/api/rules', methods=['POST'])
-def check_rules():
+def check_rules() -> tuple[Any, int] | Any:
     """Check dependency rules against the current graph.
 
     Expects JSON: {
@@ -646,7 +714,7 @@ def check_rules():
 
 
 @app.route('/api/simulate', methods=['POST'])
-def simulate_removal():
+def simulate_removal() -> tuple[Any, int] | Any:
     """Simulate removing a node or edge and report what would break.
 
     Expects JSON: {
@@ -798,7 +866,7 @@ def simulate_removal():
 
 
 @app.route('/api/simulate-merge', methods=['POST'])
-def simulate_merge():
+def simulate_merge() -> tuple[Any, int] | Any:
     """Simulate merging two files or splitting one file and report impact.
 
     Merge expects: {
@@ -1021,14 +1089,127 @@ def simulate_merge():
     })
 
 
+@app.route('/api/churn', methods=['GET'])
+def api_churn() -> tuple[Any, int] | Any:
+    """Return git churn (commit frequency / recency) for files in the project."""
+    directory = request.args.get('dir', '.')
+    abs_dir = _validate_directory(directory)
+    if abs_dir is None:
+        return jsonify({"error": "Directory not found or access denied."}), 400
+
+    days = request.args.get('days', 365, type=int)
+    recent_days = request.args.get('recent_days', 90, type=int)
+    log.info('Churn request  dir=%s  days=%d  recent=%d', abs_dir, days, recent_days)
+
+    result = get_churn(abs_dir, days=days, recent_days=recent_days)
+    return jsonify(result)
+
+
+@app.route('/api/churn-remote', methods=['POST'])
+def api_churn_remote() -> tuple[Any, int] | Any:
+    """Fetch churn data from a remote git repository (GitHub/GitLab/Bitbucket)."""
+    body = request.get_json(silent=True)
+    if not body or not body.get('repo'):
+        return jsonify({"error": "Missing 'repo' field."}), 400
+
+    repo_url = body['repo'].strip()
+    days = body.get('days', 365)
+    recent_days = body.get('recent_days', 90)
+
+    log.info('Remote churn request  repo=%s  days=%d  recent=%d', repo_url, days, recent_days)
+    result = get_churn_from_remote(repo_url, days=days, recent_days=recent_days)
+
+    if result.get('error'):
+        return jsonify(result), 400
+
+    return jsonify(result)
+
+
+@app.route('/api/github', methods=['POST'])
+def api_github() -> tuple[Any, int] | Any:
+    """Clone a GitHub/GitLab/Bitbucket repo and return graph + churn data.
+
+    Accepts JSON body: { "repo": "owner/repo" or full URL }
+    Returns the same shape as /api/graph, plus a "churn" key with churn data.
+    """
+    body = request.get_json(silent=True)
+    if not body or not body.get('repo'):
+        return jsonify({"error": "Missing 'repo' field.",
+                        "suggestion": "Paste a GitHub URL like owner/repo or https://github.com/owner/repo"}), 400
+
+    raw_url = body['repo'].strip()
+    git_url = _normalise_git_url(raw_url)
+    if git_url is None:
+        return jsonify({"error": "Invalid repository URL.",
+                        "suggestion": "Use owner/repo or https://github.com/owner/repo"}), 400
+
+    filters_body = body.get('filters', {})
+
+    log.info('GitHub clone request  repo=%s  url=%s', raw_url, git_url)
+
+    temp_dir = tempfile.mkdtemp(prefix="depgraph_github_")
+    try:
+        # Full shallow clone (need actual files for graph, history for churn)
+        clone_cmd = [
+            "git", "clone", "--single-branch", "--depth=500",
+            git_url, temp_dir,
+        ]
+        r = subprocess.run(clone_cmd, capture_output=True, text=True, timeout=180)
+        if r.returncode != 0:
+            err_msg = r.stderr.strip()[:300]
+            log.warning('git clone failed: %s', err_msg)
+            if "not found" in err_msg.lower() or "404" in err_msg:
+                return jsonify({"error": "Repository not found.",
+                                "suggestion": "Check the URL and make sure the repo is public."}), 400
+            if "authentication" in err_msg.lower() or "403" in err_msg:
+                return jsonify({"error": "Authentication failed.",
+                                "suggestion": "Check that your git credentials are configured for this repo."}), 400
+            return jsonify({"error": f"Clone failed: {err_msg}"}), 400
+
+        # Detect root — skip single wrapper dirs
+        scan_dir = temp_dir
+        entries = [e for e in os.listdir(temp_dir)
+                   if not e.startswith('.') and e not in {'__MACOSX', '__pycache__'}]
+        if len(entries) == 1 and os.path.isdir(os.path.join(temp_dir, entries[0])):
+            scan_dir = os.path.join(temp_dir, entries[0])
+
+        # Build graph
+        detected = detect_languages(scan_dir)
+        filters = parse_filters(filters_body, detected=detected)
+        result = build_graph(scan_dir, **filters)
+        result["detected"] = detected
+        result["source"] = "github"
+        result["repo"] = raw_url
+
+        # Persist for file previews
+        upload_token = secrets.token_urlsafe(16)
+        result["upload_token"] = upload_token
+        _save_upload_session(upload_token, scan_dir)
+
+        # Run churn from the clone root (where .git lives, not scan_dir)
+        churn_data = get_churn(temp_dir)
+        result["churn"] = churn_data
+
+        log.info('GitHub processed  repo=%s  nodes=%d  edges=%d  churn_files=%d',
+                 raw_url, len(result['nodes']), len(result['edges']), len(churn_data.get('files', {})))
+
+        return jsonify(result)
+
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Clone timed out.",
+                        "suggestion": "The repository may be too large. Try a smaller repo."}), 400
+    except Exception as exc:
+        log.exception('GitHub clone error')
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route('/api/story', methods=['POST'])
-def generate_story():
+def generate_story() -> tuple[Any, int] | Any:
     """Generate a guided narrative walkthrough of the dependency graph."""
     try:
         return _generate_story_impl()
-    except Exception as exc:
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        log.exception('Story generation failed')
         return jsonify({
             "error": "Story generation failed.",
             "suggestion": "Try with a smaller graph or check that graph data is valid.",
@@ -1036,7 +1217,7 @@ def generate_story():
         }), 500
 
 
-def _generate_story_impl():
+def _generate_story_impl() -> tuple[Any, int] | Any:
     body, err = _get_json_body()
     if err: return err
     graph = body.get('graph', {})
@@ -1307,7 +1488,7 @@ def _generate_story_impl():
 
 
 @app.route('/api/csrf-token', methods=['GET'])
-def get_csrf_token():
+def get_csrf_token() -> Any:
     """Return a CSRF token for the frontend to include in POST requests."""
     return jsonify({"token": _csrf_token})
 
@@ -1317,7 +1498,7 @@ _CSRF_ENABLED = os.environ.get('DEPGRAPH_CSRF', 'true').lower() != 'false'
 
 
 @app.before_request
-def _check_csrf():
+def _check_csrf() -> tuple[Any, int] | None:
     """Validate CSRF token on state-changing requests (skipped when disabled)."""
     if not _CSRF_ENABLED:
         return
@@ -1325,11 +1506,21 @@ def _check_csrf():
         token = (request.headers.get('X-CSRF-Token')
                  or request.form.get('_csrf_token'))
         if token != _csrf_token:
+            log.warning('CSRF validation failed  ip=%s  method=%s  path=%s',
+                        request.remote_addr, request.method, request.path)
             return jsonify({"error": "Invalid or missing CSRF token."}), 403
+
+
+if _HAS_FLASK:
+    log.info('DepGraph server ready  base_dir=%s  csrf=%s  rate_limit=%d/%ds  debug=%s',
+             _ALLOWED_BASE_DIR, 'on' if _CSRF_ENABLED else 'off',
+             _RATE_LIMIT, _RATE_WINDOW, _DEBUG_MODE)
 
 
 if __name__ == '__main__':
     import os
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     port = int(os.environ.get('PORT', 8080))
+    if debug:
+        logging.getLogger('depgraph').setLevel(logging.DEBUG)
     app.run(host='0.0.0.0', debug=debug, port=port)

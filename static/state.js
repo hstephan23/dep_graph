@@ -31,21 +31,10 @@ let currentMode = 'local', currentUploadedFile = null, currentUploadToken = null
 // Post-render hooks: modules can push callbacks here to run after renderGraph()
 const _postRenderHooks = [];
 
-// --- Compound node state ---
-const COMPOUND_THRESHOLD = 100;
-let _compound = {
-    active: false,
-    raw: null,
-    collapsed: new Set(),
-    dirMap: new Map(),
-    allDirs: [],
-};
-const _COMPOUND_PALETTE = [
-    '#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6',
-    '#3b82f6','#ec4899','#14b8a6','#f97316','#06b6d4',
-    '#84cc16','#a855f7','#0ea5e9','#eab308','#22d3ee',
-    '#e879f9','#4ade80','#fb923c','#818cf8','#2dd4bf',
-];
+// --- Compound node state (directory graph view removed — kept as stub) ---
+const COMPOUND_THRESHOLD = Infinity; // effectively disabled
+let _compound = { active: false, raw: null, collapsed: new Set(), dirMap: new Map(), allDirs: [] };
+const _COMPOUND_PALETTE = [];
 
 // Running layout tracker (prevents race conditions)
 let _runningLayout = null;

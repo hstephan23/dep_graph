@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import re
 from functools import lru_cache
-from typing import Optional
+from typing import Match
 
 # =========================================================================
 # Regex patterns
@@ -108,6 +108,29 @@ ELIXIR_ALIAS_RE = re.compile(
     r'^\s*(?:alias|import|use|require)\s+([\w.]+)', re.MULTILINE
 )
 
+# Lua: require("module"), require "module", require 'module'
+LUA_REQUIRE_RE = re.compile(
+    r'''require\s*[\(]?\s*['"]([^'"]+)['"]\s*[\)]?''', re.MULTILINE
+)
+
+# Zig: @import("file.zig"), @import("std")
+ZIG_IMPORT_RE = re.compile(
+    r'@import\s*\(\s*"([^"]+)"\s*\)', re.MULTILINE
+)
+
+# Haskell: import Module.Name, import qualified Module.Name as Alias
+HASKELL_IMPORT_RE = re.compile(
+    r'^\s*import\s+(?:qualified\s+)?([\w.]+)', re.MULTILINE
+)
+
+# R: library(pkg), require(pkg), source("file.R")
+R_LIBRARY_RE = re.compile(
+    r'''^\s*(?:library|require)\s*\(\s*(?:['"]?([\w.]+)['"]?)\s*\)''', re.MULTILINE
+)
+R_SOURCE_RE = re.compile(
+    r'''^\s*source\s*\(\s*['"]([^'"]+)['"]\s*\)''', re.MULTILINE
+)
+
 
 # =========================================================================
 # File extension groups
@@ -129,6 +152,10 @@ SCALA_EXTENSIONS = ('.scala', '.sc')
 PHP_EXTENSIONS = ('.php',)
 DART_EXTENSIONS = ('.dart',)
 ELIXIR_EXTENSIONS = ('.ex', '.exs')
+LUA_EXTENSIONS = ('.lua',)
+ZIG_EXTENSIONS = ('.zig',)
+HASKELL_EXTENSIONS = ('.hs',)
+R_EXTENSIONS = ('.R', '.r')
 
 
 # =========================================================================
@@ -239,6 +266,70 @@ RUBY_STDLIB = frozenset([
     'sinatra', 'rspec', 'nokogiri', 'httparty', 'faraday', 'devise',
 ])
 
+LUA_STDLIB = frozenset([
+    'coroutine', 'debug', 'io', 'math', 'os', 'package', 'string',
+    'table', 'utf8', 'bit32', 'bit',
+    # Common third-party / engine modules treated as external
+    'lfs', 'socket', 'ssl', 'mime', 'ltn12', 'lpeg', 'cjson',
+    'love', 'love.audio', 'love.data', 'love.event', 'love.filesystem',
+    'love.font', 'love.graphics', 'love.image', 'love.joystick',
+    'love.keyboard', 'love.math', 'love.mouse', 'love.physics',
+    'love.sound', 'love.system', 'love.thread', 'love.timer',
+    'love.touch', 'love.video', 'love.window',
+])
+
+ZIG_STDLIB = frozenset([
+    'std', 'builtin',
+])
+
+HASKELL_STDLIB = frozenset([
+    'Prelude', 'Control.Applicative', 'Control.Arrow', 'Control.Category',
+    'Control.Concurrent', 'Control.Exception', 'Control.Monad',
+    'Control.Monad.IO.Class', 'Control.Monad.Fix', 'Control.Monad.Fail',
+    'Control.Monad.ST', 'Control.Monad.Zip',
+    'Data.Bits', 'Data.Bool', 'Data.Char', 'Data.Complex', 'Data.Data',
+    'Data.Dynamic', 'Data.Either', 'Data.Eq', 'Data.Fixed', 'Data.Foldable',
+    'Data.Function', 'Data.Functor', 'Data.IORef', 'Data.Int', 'Data.Ix',
+    'Data.Kind', 'Data.List', 'Data.Map', 'Data.Maybe', 'Data.Monoid',
+    'Data.Ord', 'Data.Proxy', 'Data.Ratio', 'Data.STRef', 'Data.Semigroup',
+    'Data.Sequence', 'Data.Set', 'Data.String', 'Data.Traversable',
+    'Data.Tuple', 'Data.Typeable', 'Data.Unique', 'Data.Void', 'Data.Word',
+    'Data.ByteString', 'Data.Text', 'Data.Map.Strict', 'Data.Map.Lazy',
+    'Data.IntMap', 'Data.IntSet', 'Data.HashMap.Strict', 'Data.HashSet',
+    'Data.Vector', 'Data.Aeson', 'Data.Time',
+    'Debug.Trace',
+    'Foreign', 'Foreign.C', 'Foreign.Marshal', 'Foreign.Ptr',
+    'Foreign.StablePtr', 'Foreign.Storable',
+    'GHC.Base', 'GHC.Generics', 'GHC.IO', 'GHC.TypeLits',
+    'Numeric', 'Numeric.Natural',
+    'System.Directory', 'System.Environment', 'System.Exit', 'System.IO',
+    'System.Info', 'System.Mem', 'System.Posix', 'System.Process',
+    'System.Random', 'System.Timeout',
+    'Text.ParserCombinators.ReadP', 'Text.Printf', 'Text.Read',
+    'Text.Show', 'Text.Megaparsec', 'Text.Parsec',
+    'Network.HTTP', 'Network.Socket', 'Network.URI',
+    'Test.HUnit', 'Test.QuickCheck', 'Test.Hspec',
+])
+
+# Haskell: top-level module prefixes that indicate stdlib/external
+HASKELL_STDLIB_PREFIXES = (
+    'Control.', 'Data.', 'Debug.', 'Foreign.', 'GHC.', 'Numeric.',
+    'System.', 'Text.', 'Network.', 'Test.',
+)
+
+R_STDLIB = frozenset([
+    'base', 'compiler', 'datasets', 'grDevices', 'graphics', 'grid',
+    'methods', 'parallel', 'splines', 'stats', 'stats4', 'tcltk',
+    'tools', 'utils',
+    # Common CRAN/external packages treated as external
+    'ggplot2', 'dplyr', 'tidyr', 'readr', 'purrr', 'tibble', 'stringr',
+    'forcats', 'lubridate', 'tidyverse', 'shiny', 'knitr', 'rmarkdown',
+    'devtools', 'testthat', 'roxygen2', 'magrittr', 'rlang', 'glue',
+    'httr', 'jsonlite', 'xml2', 'rvest', 'plyr', 'reshape2', 'data.table',
+    'caret', 'randomForest', 'xgboost', 'e1071', 'MASS', 'lattice',
+    'survival', 'nlme', 'lme4', 'Matrix',
+])
+
 
 # =========================================================================
 # Helper functions
@@ -246,7 +337,7 @@ RUBY_STDLIB = frozenset([
 
 def collapse_py_multiline_imports(source: str) -> str:
     """Replace parenthesised import lists with single-line equivalents."""
-    def _repl(m):
+    def _repl(m: Match[str]) -> str:
         prefix = m.group(1)             # "from foo import "
         body = m.group(2)               # "a,\n    b,\n    c\n"
         names = ', '.join(
@@ -535,7 +626,7 @@ def resolve_cs_using(namespace: str, directory: str, known_files: set[str], ns_m
     # --- Strategy 2: path heuristics (fallback) ---
     parts = namespace.split('.')
 
-    def _normalize(s):
+    def _normalize(s: str) -> str:
         """Normalise a string for fuzzy directory matching."""
         return s.lower().replace('-', '_')
 
@@ -913,3 +1004,142 @@ def resolve_elixir_module(module_name: str, source_file: str, directory: str, kn
             return f, False
 
     return module_name, True
+
+
+def resolve_lua_require(req_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
+    """Resolve a Lua ``require("module")`` to a project file.
+
+    Lua's ``require`` uses dot-separated module paths that map to directories
+    (e.g. ``require("models.user")`` → ``models/user.lua``).
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # Check stdlib / well-known external modules
+    top = req_path.split('.')[0]
+    if top in LUA_STDLIB or req_path in LUA_STDLIB:
+        return req_path, True
+
+    # Convert dot-separated path to filesystem path
+    candidate = req_path.replace('.', os.sep) + '.lua'
+    if candidate in known_files:
+        return candidate, False
+
+    # Try init.lua (package-style: models/init.lua)
+    init_candidate = os.path.join(req_path.replace('.', os.sep), 'init.lua')
+    if init_candidate in known_files:
+        return init_candidate, False
+
+    # Try relative to source file
+    source_dir = os.path.dirname(source_file)
+    rel_candidate = os.path.normpath(os.path.join(source_dir, candidate))
+    if rel_candidate in known_files:
+        return rel_candidate, False
+
+    # Try as bare filename
+    bare = req_path + '.lua'
+    if bare in known_files:
+        return bare, False
+
+    return req_path, True
+
+
+def resolve_zig_import(import_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
+    """Resolve a Zig ``@import("file.zig")`` to a project file.
+
+    Zig imports reference files directly (``@import("file.zig")``) or the
+    standard library (``@import("std")``).
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # Check stdlib
+    if import_path in ZIG_STDLIB:
+        return import_path, True
+
+    # Direct file reference — resolve relative to source file
+    source_dir = os.path.dirname(source_file)
+    candidate = os.path.normpath(os.path.join(source_dir, import_path))
+    if candidate in known_files:
+        return candidate, False
+
+    # Try from project root
+    if import_path in known_files:
+        return import_path, False
+
+    # Try adding .zig extension if not present
+    if not import_path.endswith('.zig'):
+        probe = candidate + '.zig'
+        if probe in known_files:
+            return probe, False
+        probe_root = import_path + '.zig'
+        if probe_root in known_files:
+            return probe_root, False
+
+    return import_path, True
+
+
+def resolve_haskell_import(module_name: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
+    """Resolve a Haskell ``import Module.Name`` to a project file.
+
+    Haskell modules map to files via path conversion:
+    ``Data.Models.User`` → ``Data/Models/User.hs``
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # Check stdlib by exact match
+    if module_name in HASKELL_STDLIB:
+        return module_name, True
+
+    # Check stdlib by prefix
+    for prefix in HASKELL_STDLIB_PREFIXES:
+        if module_name.startswith(prefix):
+            return module_name, True
+
+    # Check single-word well-known module
+    if module_name == 'Prelude':
+        return module_name, True
+
+    # Convert module path to filesystem path
+    candidate = module_name.replace('.', os.sep) + '.hs'
+    if candidate in known_files:
+        return candidate, False
+
+    # Try src/ prefix (common Haskell project layout)
+    src_candidate = os.path.join('src', candidate)
+    if src_candidate in known_files:
+        return src_candidate, False
+
+    # Try lib/ prefix
+    lib_candidate = os.path.join('lib', candidate)
+    if lib_candidate in known_files:
+        return lib_candidate, False
+
+    # Try app/ prefix (stack projects)
+    app_candidate = os.path.join('app', candidate)
+    if app_candidate in known_files:
+        return app_candidate, False
+
+    # Try just the last component as a filename
+    base = module_name.split('.')[-1] + '.hs'
+    for f in known_files:
+        if os.path.basename(f) == base:
+            return f, False
+
+    return module_name, True
+
+
+def resolve_r_source(source_path: str, source_file: str, directory: str, known_files: set[str]) -> tuple[str, bool]:
+    """Resolve an R ``source("file.R")`` to a project file.
+
+    Returns ``(resolved_path, is_external)``.
+    """
+    # Resolve relative to source file
+    source_dir = os.path.dirname(source_file)
+    candidate = os.path.normpath(os.path.join(source_dir, source_path))
+    if candidate in known_files:
+        return candidate, False
+
+    # Try from project root
+    if source_path in known_files:
+        return source_path, False
+
+    return candidate, False
