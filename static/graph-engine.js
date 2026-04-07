@@ -2249,12 +2249,12 @@ const DepGraphEngine = (function() {
                 connected.add(edge.data.source);
                 connected.add(edge.data.target);
             }
+            // Compute the filtered list BEFORE mutating `nodes`, otherwise
+            // `nodes.length = 0` would wipe everything and leave dangling edges,
+            // which then crashes Cytoscape with "Cannot find node to create..."
+            const kept = nodes.filter(node => connected.has(node.data.id));
             nodes.length = 0;
-            for (const node of [...nodes]) {
-                if (connected.has(node.data.id)) {
-                    nodes.push(node);
-                }
-            }
+            nodes.push(...kept);
         }
 
         if (filterDir) {
