@@ -181,7 +181,7 @@
                 <div class="pill-group" title="Color mode">
                     <input type="radio" name="colorMode" id="colorRisk" value="risk" checked onchange="changeColorMode(this.value)"><label for="colorRisk">Risk</label>
                     <input type="radio" name="colorMode" id="colorDir" value="directory" onchange="changeColorMode(this.value)"><label for="colorDir">Directory</label>
-                    <input type="radio" name="colorMode" id="colorChurn" value="churn" onchange="changeColorMode(this.value)"><label for="colorChurn" title="Git commit frequency heatmap — loaded automatically from GitHub repos">Churn</label>
+                    <input type="radio" name="colorMode" id="colorChurn" value="churn" class="dev-only" onchange="changeColorMode(this.value)"><label for="colorChurn" class="dev-only" title="Git commit frequency heatmap — loaded automatically from GitHub repos">Churn</label>
                 </div>
             </div>
 

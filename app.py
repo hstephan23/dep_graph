@@ -1088,7 +1088,15 @@ def simulate_merge() -> tuple[Any, int] | Any:
 
 @app.route('/api/churn', methods=['GET'])
 def api_churn() -> tuple[Any, int] | Any:
-    """Return git churn (commit frequency / recency) for files in the project."""
+    """Return git churn (commit frequency / recency) for files in the project.
+
+    Dev-only: churn analysis is only exposed when FLASK_DEBUG=true. In
+    production the endpoint responds 404 so the feature is effectively
+    hidden from the hosted web app.
+    """
+    if not _DEBUG_MODE:
+        return jsonify({"error": "Not found."}), 404
+
     directory = request.args.get('dir', '.')
     abs_dir = _validate_directory(directory)
     if abs_dir is None:
@@ -1104,7 +1112,13 @@ def api_churn() -> tuple[Any, int] | Any:
 
 @app.route('/api/churn-remote', methods=['POST'])
 def api_churn_remote() -> tuple[Any, int] | Any:
-    """Fetch churn data from a remote git repository (GitHub/GitLab/Bitbucket)."""
+    """Fetch churn data from a remote git repository (GitHub/GitLab/Bitbucket).
+
+    Dev-only: see :func:`api_churn`.
+    """
+    if not _DEBUG_MODE:
+        return jsonify({"error": "Not found."}), 404
+
     body = request.get_json(silent=True)
     if not body or not body.get('repo'):
         return jsonify({"error": "Missing 'repo' field."}), 400
@@ -1185,12 +1199,18 @@ def api_github() -> tuple[Any, int] | Any:
         result["upload_token"] = upload_token
         _save_upload_session(upload_token, scan_dir)
 
-        # Run churn from the clone root (where .git lives, not scan_dir)
-        churn_data = get_churn(temp_dir)
-        result["churn"] = churn_data
-
-        log.info('GitHub processed  repo=%s  nodes=%d  edges=%d  churn_files=%d',
-                 raw_url, len(result['nodes']), len(result['edges']), len(churn_data.get('files', {})))
+        # Run churn from the clone root (where .git lives, not scan_dir).
+        # Dev-only: skip churn entirely in production to keep it hidden from
+        # the hosted web app.
+        if _DEBUG_MODE:
+            churn_data = get_churn(temp_dir)
+            result["churn"] = churn_data
+            log.info('GitHub processed  repo=%s  nodes=%d  edges=%d  churn_files=%d',
+                     raw_url, len(result['nodes']), len(result['edges']),
+                     len(churn_data.get('files', {})))
+        else:
+            log.info('GitHub processed  repo=%s  nodes=%d  edges=%d  churn=skipped',
+                     raw_url, len(result['nodes']), len(result['edges']))
 
         return jsonify(result)
 
