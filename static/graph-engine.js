@@ -1435,6 +1435,36 @@ const DepGraphEngine = (function() {
             fileContents = m;
         }
 
+        // --- Skip test/cmake directories, per-language skip dirs, and test files ---
+        // This mirrors the Python backend behavior: directories and filenames
+        // containing "test" or "cmake" are skipped, plus language-specific dirs
+        // like node_modules, __pycache__, vendor, target, etc.
+        const activeSkipDirs = new Set();
+        for (const [flag, dirs] of Object.entries(LANG_SKIP_DIRS)) {
+            if (langFlags[flag]) {
+                for (const d of dirs) activeSkipDirs.add(d);
+            }
+        }
+
+        const _filteredContents = new Map();
+        for (const [path, content] of fileContents) {
+            const parts = path.split('/').filter(Boolean);
+            if (parts.length === 0) continue;
+            const basename = parts[parts.length - 1];
+            const dirParts = parts.slice(0, -1);
+
+            let skip = false;
+            for (const seg of dirParts) {
+                if (activeSkipDirs.has(seg) || shouldSkipDir(seg)) {
+                    skip = true;
+                    break;
+                }
+            }
+            if (!skip && shouldSkipFile(basename)) skip = true;
+            if (!skip) _filteredContents.set(path, content);
+        }
+        fileContents = _filteredContents;
+
         const nodes = [];
         const edges = [];
         const nodeSet = new Set();
