@@ -111,13 +111,10 @@ function _fetchChurnData() {
     if (_churnData || _churnLoading) return Promise.resolve(_churnData);
     // Upload mode: no git history available
     if (typeof currentMode !== 'undefined' && currentMode === 'upload') {
-        _churnData = { files: {}, is_git: false, period: 'Upload via GitHub URL to see churn data' };
+        _churnData = { files: {}, is_git: false, period: 'Churn data requires git history — use the CLI or VS Code extension' };
         return Promise.resolve(_churnData);
     }
-    // GitHub mode: churn comes bundled with the clone response — don't fetch separately
-    if (typeof currentMode !== 'undefined' && currentMode === 'github') {
-        return Promise.resolve(_churnData);
-    }
+    // (GitHub clone mode removed — all analysis is now client-side)
     // Local directory mode: fetch from the server
     _churnLoading = true;
     var dir = (typeof _lastLoadedDir !== 'undefined' && _lastLoadedDir) ? _lastLoadedDir : '.';
@@ -836,13 +833,13 @@ function renderGraph(data) {
 
 function handleZipSelect(e) { const f = e.target.files[0]; if (!f) return; currentUploadedFile = f; uploadZip(); e.target.value = ''; }
 
+// --- Client-side file contents cache (for re-filtering without re-reading) ---
+let _clientFileContents = null; // Map<string, string> from last upload
+
 function updateGraph() {
-    // If we have an upload token (from upload or GitHub clone), re-filter
-    // via /api/graph?upload_token=... instead of re-uploading/re-cloning.
-    if (currentUploadToken && (currentMode === 'github' || currentMode === 'upload')) {
-        refilterGraph();
-    } else if (currentMode === 'github' && _lastGitHubRepo) {
-        loadFromGitHub();
+    // Re-filter client-side using cached file contents
+    if (_clientFileContents && currentMode === 'upload') {
+        refilterGraphClientSide();
     } else if (currentMode === 'upload' && currentUploadedFile) {
         uploadZip();
     } else {
@@ -850,103 +847,144 @@ function updateGraph() {
     }
 }
 
-function refilterGraph() {
+function refilterGraphClientSide() {
     document.getElementById('loading').classList.add('active');
-    const params = { upload_token: currentUploadToken, ...getFilterValues() };
-    _fetchWithTimeout('/api/graph?' + new URLSearchParams(params))
-        .then(r => r.json()).then(d => {
-            if (d.error) {
-                showToast('Error: ' + (d.suggestion || d.error), 4000);
-                document.getElementById('loading').classList.remove('active');
-            } else {
-                currentUploadToken = d.upload_token || currentUploadToken;
-                showDetectedLanguages(d.detected);
-                try {
-                    renderGraph(d);
-                    showDepthWarnings(d);
-                } catch (renderErr) {
-                    console.error('Render error after re-filter:', renderErr);
-                }
-            }
-        }).catch(err => {
-            _handleApiError(err, 'Failed to re-filter graph.');
-            document.getElementById('loading').classList.remove('active');
-        });
-}
-
-let _lastGitHubRepo = '';
-
-function loadFromGitHub() {
-    const input = document.getElementById('githubUrlInput');
-    const btn = document.getElementById('githubGoBtn');
-    const repo = input.value.trim();
-    if (!repo) { console.warn('[DepGraph] GitHub: empty repo input'); return; }
-    console.log('[DepGraph] GitHub: loading', repo);
-
-    _lastGitHubRepo = repo;
-    currentMode = 'github';
-    dismissDemo();
     const loadingMsg = document.getElementById('loadingMessage');
-    if (loadingMsg) loadingMsg.innerHTML = 'Cloning repository locally…<br><span style="font-size:0.72rem;opacity:0.7;">Your code stays on your machine. Nothing is sent to external servers.</span>';
-    document.getElementById('loading').classList.add('active');
-    btn.querySelector('span').textContent = 'Cloning…';
-    btn.disabled = true;
+    if (loadingMsg) loadingMsg.innerHTML = 'Re-analyzing with new filters…<br><span style="font-size:0.72rem;opacity:0.7;">100% client-side — your code never leaves your browser.</span>';
 
-    _fetchWithTimeout('/api/github', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ..._csrfHeaders() },
-        body: JSON.stringify({ repo: repo, filters: getFilterValues() }),
-    }, 200000) // 200s — clones can be slow
-        .then(r => r.json())
-        .then(d => {
-            btn.querySelector('span').textContent = 'Go';
-            btn.disabled = false;
+    // Run in a setTimeout to allow the loading spinner to render
+    setTimeout(() => {
+        try {
+            const detected = DepGraphEngine.detectLanguages(_clientFileContents);
+            const filterSource = { ...getFilterValues(), mode: 'auto' };
+            const filters = DepGraphEngine.parseFilters(filterSource, detected);
+            const result = DepGraphEngine.buildGraph(_clientFileContents, {
+                langFlags: filters,
+                hideSystem: filters.hide_system || false,
+                hideIsolated: filters.hide_isolated || false,
+                filterDir: filters.filter_dir || '',
+            });
+            result.detected = detected;
+            showDetectedLanguages(detected);
+            renderGraph(result);
+            showDepthWarnings(result);
             if (loadingMsg) loadingMsg.innerHTML = '';
-            if (d.error) {
-                showToast('Error: ' + (d.suggestion || d.error), 5000);
-                document.getElementById('loading').classList.remove('active');
-                if (!currentGraphData) loadDemoGraph();
-            } else {
-                currentUploadToken = d.upload_token || null;
-                showDetectedLanguages(d.detected);
-                try {
-                    renderGraph(d);
-                    showDepthWarnings(d);
-                } catch (renderErr) {
-                    console.error('Render error after GitHub clone:', renderErr);
-                }
-            }
-        })
-        .catch(err => {
-            btn.querySelector('span').textContent = 'Go';
-            btn.disabled = false;
-            if (loadingMsg) loadingMsg.innerHTML = '';
-            _handleApiError(err, 'Failed to load from GitHub.');
+        } catch (err) {
+            console.error('Client-side re-filter error:', err);
+            showToast('Analysis failed: ' + err.message, 5000);
             document.getElementById('loading').classList.remove('active');
-            if (!currentGraphData) loadDemoGraph();
-        });
+            if (loadingMsg) loadingMsg.innerHTML = '';
+        }
+    }, 50);
 }
 
-function uploadZip() {
+/**
+ * Read files from a ZIP or individual file upload, then build the graph
+ * entirely client-side. No server round-trip needed.
+ */
+async function uploadZip() {
     if (!currentUploadedFile) return;
     currentMode = 'upload';
-    const fd = new FormData(); fd.append('file', currentUploadedFile);
-    for (const [k, v] of Object.entries(getFilterValues())) fd.append(k, v);
+    dismissDemo();
     document.getElementById('loading').classList.add('active');
-    _fetchWithTimeout('/api/upload', { method: 'POST', headers: _csrfHeaders(), body: fd }, _UPLOAD_TIMEOUT_MS)
-        .then(r => r.json()).then(d => {
-            if (d.error) { showToast('Error: ' + (d.suggestion || d.error), 5000); document.getElementById('loading').classList.remove('active'); }
-            else {
-                currentUploadToken = d.upload_token || null;
-                showDetectedLanguages(d.detected);
-                try {
-                    renderGraph(d);
-                    showDepthWarnings(d);
-                } catch (renderErr) {
-                    console.error('Render error after successful upload:', renderErr);
-                }
+    const loadingMsg = document.getElementById('loadingMessage');
+    if (loadingMsg) loadingMsg.innerHTML = 'Reading files…<br><span style="font-size:0.72rem;opacity:0.7;">100% client-side — your code never leaves your browser.</span>';
+
+    try {
+        const fileContents = new Map(); // relativePath → content
+
+        if (currentUploadedFile.name.endsWith('.zip')) {
+            // --- ZIP extraction via JSZip (client-side) ---
+            const arrayBuf = await currentUploadedFile.arrayBuffer();
+            const zip = await JSZip.loadAsync(arrayBuf);
+
+            // Find common prefix (skip single wrapper directory)
+            const allPaths = [];
+            zip.forEach((relativePath, zipEntry) => {
+                if (!zipEntry.dir) allPaths.push(relativePath);
+            });
+            const prefix = _findCommonPrefix(allPaths);
+
+            // Read text content of each file
+            if (loadingMsg) loadingMsg.innerHTML = `Extracting ${allPaths.length} files…<br><span style="font-size:0.72rem;opacity:0.7;">100% client-side — your code never leaves your browser.</span>`;
+
+            const readPromises = [];
+            zip.forEach((relativePath, zipEntry) => {
+                if (zipEntry.dir) return;
+                // Skip hidden/system files
+                const name = relativePath.split('/').pop();
+                if (name.startsWith('.') || name === 'Thumbs.db' || name === 'desktop.ini') return;
+
+                readPromises.push(
+                    zipEntry.async('string').then(content => {
+                        let cleanPath = relativePath;
+                        if (prefix) cleanPath = relativePath.substring(prefix.length);
+                        if (cleanPath) fileContents.set(cleanPath, content);
+                    }).catch(() => { /* skip binary/unreadable files */ })
+                );
+            });
+            await Promise.all(readPromises);
+        } else {
+            // --- Single file upload ---
+            const text = await currentUploadedFile.text();
+            fileContents.set(currentUploadedFile.name, text);
+        }
+
+        if (fileContents.size === 0) {
+            showToast('No readable source files found in the upload.', 4000);
+            document.getElementById('loading').classList.remove('active');
+            if (loadingMsg) loadingMsg.innerHTML = '';
+            return;
+        }
+
+        // Cache for re-filtering
+        _clientFileContents = fileContents;
+
+        // Detect languages and build graph client-side
+        if (loadingMsg) loadingMsg.innerHTML = `Analyzing ${fileContents.size} files…<br><span style="font-size:0.72rem;opacity:0.7;">100% client-side — your code never leaves your browser.</span>`;
+
+        // Use setTimeout to let the UI update before heavy computation
+        setTimeout(() => {
+            try {
+                const detected = DepGraphEngine.detectLanguages(fileContents);
+                const filterSource = { ...getFilterValues(), mode: 'auto' };
+                const filters = DepGraphEngine.parseFilters(filterSource, detected);
+                const result = DepGraphEngine.buildGraph(fileContents, {
+                    langFlags: filters,
+                    hideSystem: filters.hide_system || false,
+                    hideIsolated: filters.hide_isolated || false,
+                    filterDir: filters.filter_dir || '',
+                });
+                result.detected = detected;
+                showDetectedLanguages(detected);
+                renderGraph(result);
+                showDepthWarnings(result);
+                if (loadingMsg) loadingMsg.innerHTML = '';
+            } catch (err) {
+                console.error('Client-side analysis error:', err);
+                showToast('Analysis failed: ' + err.message, 5000);
+                document.getElementById('loading').classList.remove('active');
+                if (loadingMsg) loadingMsg.innerHTML = '';
             }
-        }).catch(err => { _handleApiError(err, 'Upload failed.'); document.getElementById('loading').classList.remove('active'); });
+        }, 50);
+
+    } catch (err) {
+        console.error('File reading error:', err);
+        showToast('Failed to read file: ' + err.message, 5000);
+        document.getElementById('loading').classList.remove('active');
+        if (loadingMsg) loadingMsg.innerHTML = '';
+    }
+}
+
+/** Find common directory prefix in ZIP paths (skip single wrapper dir). */
+function _findCommonPrefix(paths) {
+    if (!paths.length) return '';
+    const first = paths[0];
+    const firstSlash = first.indexOf('/');
+    if (firstSlash < 0) return '';
+    const candidate = first.substring(0, firstSlash + 1);
+    if (paths.every(p => p.startsWith(candidate))) return candidate;
+    return '';
 }
 
 let _selectedLang = 'auto';
